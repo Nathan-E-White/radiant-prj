@@ -19,3 +19,4 @@ terraform.tfstate*
 .env
 .env.*
 !.env.example
+/bun.lock
