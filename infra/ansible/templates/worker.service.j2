@@ -1,0 +1,14 @@
+[Unit]
+Description=Kaleidos readiness mock compute worker
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory={{ kaleidos_compute_root }}
+Environment=READINESS_MODE=dry-run
+ExecStart=/usr/bin/env node scripts/mock-worker.mjs
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

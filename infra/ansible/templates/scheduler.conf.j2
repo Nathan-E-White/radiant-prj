@@ -1,0 +1,7 @@
+cluster_name = kaleidos-readiness
+control_machine = readiness-scheduler-01
+artifact_root = {{ kaleidos_compute_root }}/artifacts
+scratch_root = {{ kaleidos_compute_root }}/scratch
+module_inventory = {{ module_inventory | join(",") }}
+worker_partitions = transport,thermal,fleet
+health_check_interval_seconds = 30

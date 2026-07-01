@@ -1,0 +1,447 @@
+{
+  "publicFacts": [
+    {
+      "id": "PF-001",
+      "topic": "Product architecture",
+      "claim": "Kaleidos is described publicly as a transportable high-temperature gas-cooled microreactor using TRISO fuel, helium coolant, and prismatic graphite moderator blocks.",
+      "sourceTitle": "NRC advanced reactor pre-application page: Kaleidos",
+      "sourceUrl": "https://www.nrc.gov/reactors/new-reactors/advanced/who-were-working-with/pre-application-activities/kaleidos",
+      "sourceType": "public-source",
+      "confidence": "high",
+      "boundary": "Public architectural description only; no proprietary design basis inferred."
+    },
+    {
+      "id": "PF-002",
+      "topic": "Mission profile",
+      "claim": "Radiant markets Kaleidos as a portable microreactor intended to replace similar-sized diesel generators for remote sites, defense installations, data centers, and critical assets.",
+      "sourceTitle": "Radiant Nuclear homepage",
+      "sourceUrl": "https://www.radiantnuclear.com/",
+      "sourceType": "public-source",
+      "confidence": "high",
+      "boundary": "Marketing-level mission statement; not a verified deployment claim."
+    },
+    {
+      "id": "PF-003",
+      "topic": "Factory readiness",
+      "claim": "Radiant has publicly discussed an R-50 production facility and related licensing path for manufacturing microreactor units.",
+      "sourceTitle": "Radiant R-50 factory site license announcement",
+      "sourceUrl": "https://www.radiantnuclear.com/blog/factory-site-license/",
+      "sourceType": "public-source",
+      "confidence": "medium",
+      "boundary": "Used as a toy readiness milestone, not as a licensing conclusion."
+    },
+    {
+      "id": "PF-004",
+      "topic": "Test readiness",
+      "claim": "Radiant has publicly tied Kaleidos demonstration work to the National Reactor Innovation Center DOME test path at Idaho National Laboratory.",
+      "sourceTitle": "Radiant DOE PDSA approval announcement",
+      "sourceUrl": "https://www.radiantnuclear.com/blog/doe-pdsa-approval/",
+      "sourceType": "public-source",
+      "confidence": "medium",
+      "boundary": "Public program milestone only; no safety significance implied."
+    },
+    {
+      "id": "PF-005",
+      "topic": "Deployment context",
+      "claim": "Radiant has publicly discussed Buckley Space Force Base as a target context for microreactor deployment under the Advanced Nuclear Power for Installations program.",
+      "sourceTitle": "Radiant Buckley Space Force announcement",
+      "sourceUrl": "https://www.radiantnuclear.com/blog/buckley-space-force/",
+      "sourceType": "public-source",
+      "confidence": "medium",
+      "boundary": "Scenario context for synthetic readiness analysis; not a deployment guarantee."
+    }
+  ],
+  "milestones": [
+    {
+      "id": "MS-001",
+      "title": "Public pre-application engagement",
+      "phase": "Regulatory",
+      "status": "public",
+      "target": "NRC pre-application record",
+      "sourceUrl": "https://www.nrc.gov/reactors/new-reactors/advanced/who-were-working-with/pre-application-activities/kaleidos",
+      "dependencies": ["PF-001"],
+      "note": "Source-linked fact set establishes what the demo is allowed to say."
+    },
+    {
+      "id": "MS-002",
+      "title": "DOME demonstration readiness",
+      "phase": "Test",
+      "status": "in-progress",
+      "target": "KDU full-power readiness thread",
+      "sourceUrl": "https://www.radiantnuclear.com/blog/doe-pdsa-approval/",
+      "dependencies": ["PF-004", "SR-003"],
+      "note": "Synthetic compute bundle mirrors how evidence is gathered and triaged."
+    },
+    {
+      "id": "MS-003",
+      "title": "R-50 manufacturing path",
+      "phase": "Production",
+      "status": "planned",
+      "target": "Controlled factory-readiness artifacts",
+      "sourceUrl": "https://www.radiantnuclear.com/blog/factory-site-license/",
+      "dependencies": ["PF-003", "SR-004"],
+      "note": "Requirements matrix emphasizes configuration control and objective evidence."
+    },
+    {
+      "id": "MS-004",
+      "title": "Installation-facing deployment scenario",
+      "phase": "Deployment",
+      "status": "planned",
+      "target": "Remote-site compute and operations readiness",
+      "sourceUrl": "https://www.radiantnuclear.com/blog/buckley-space-force/",
+      "dependencies": ["PF-005", "SW-004"],
+      "note": "Fleet monitoring and site-readiness checks stay synthetic and public-safe."
+    }
+  ],
+  "requirements": [
+    {
+      "id": "SR-001",
+      "kind": "system",
+      "text": "The console shall distinguish public facts from synthetic analysis outputs at every user-facing claim boundary.",
+      "rationale": "Interview demo must communicate disciplined technical claims without implying proprietary or safety-significant analysis.",
+      "source": "Public-source control need",
+      "verificationMethod": "inspection",
+      "linkedJobs": [],
+      "linkedArtifacts": ["PF-001", "PF-002", "PF-003", "PF-004", "PF-005"],
+      "owner": "Systems",
+      "status": "verified"
+    },
+    {
+      "id": "SR-002",
+      "kind": "system",
+      "text": "The workbench shall provide a deterministic transport-style toy calculation with reproducible scalar flux, leakage, and balance metrics.",
+      "rationale": "Computational transport background should show up in a concrete, safe, small calculation.",
+      "source": "Role-tailored technical objective",
+      "verificationMethod": "test",
+      "linkedJobs": ["JOB-TRN-001"],
+      "linkedArtifacts": ["EP-TRN-001"],
+      "owner": "Analysis",
+      "status": "verified"
+    },
+    {
+      "id": "SR-003",
+      "kind": "system",
+      "text": "The readiness bundle shall include passive thermal margin and load-following toy checks linked to test-readiness evidence.",
+      "rationale": "Kaleidos public positioning emphasizes portable power and air-cooling context; the demo needs an engineering-facing thermal thread.",
+      "source": "Public mission and product constraints",
+      "verificationMethod": "analysis",
+      "linkedJobs": ["JOB-THM-001"],
+      "linkedArtifacts": ["EP-KDU-001"],
+      "owner": "Thermal",
+      "status": "verified"
+    },
+    {
+      "id": "SR-004",
+      "kind": "system",
+      "text": "The project shall maintain a requirements-to-evidence matrix with artifact hashes and controlled status.",
+      "rationale": "The hidden signal is mature engineering evidence practice without making compliance claims.",
+      "source": "Evidence discipline objective",
+      "verificationMethod": "configuration-audit",
+      "linkedJobs": ["JOB-TRN-001", "JOB-THM-001", "JOB-FLT-001"],
+      "linkedArtifacts": ["EP-TRN-001", "EP-KDU-001", "EP-FLT-001"],
+      "owner": "Quality",
+      "status": "verified"
+    },
+    {
+      "id": "SW-001",
+      "kind": "software",
+      "text": "The scheduler emulator shall expose queued, running, completed, failed, and held states with traceable logs.",
+      "rationale": "The role calls for HPC workload scheduling, job failure analysis, and stakeholder triage.",
+      "source": "JD-derived compute workflow objective",
+      "verificationMethod": "test",
+      "linkedJobs": ["JOB-TRN-001", "JOB-HPC-404"],
+      "linkedArtifacts": ["EP-TRN-001", "EP-HPC-404"],
+      "owner": "Software",
+      "status": "verified"
+    },
+    {
+      "id": "SW-002",
+      "kind": "software",
+      "text": "The diagnostic engine shall map environment failures to a root cause, next action, and preventative deployment control.",
+      "rationale": "The demo should show Linux/HPC debugging rather than just charts.",
+      "source": "JD-derived infrastructure objective",
+      "verificationMethod": "test",
+      "linkedJobs": ["JOB-HPC-404"],
+      "linkedArtifacts": ["EP-HPC-404"],
+      "owner": "Compute",
+      "status": "verified"
+    },
+    {
+      "id": "SW-003",
+      "kind": "software",
+      "text": "The frontend shall display source-linked public facts, compute jobs, evidence packs, and deployment checks from controlled fixtures.",
+      "rationale": "A compact app should still preserve traceability and fixture validation.",
+      "source": "Demo architecture objective",
+      "verificationMethod": "demonstration",
+      "linkedJobs": ["JOB-TRN-001", "JOB-THM-001", "JOB-FLT-001", "JOB-HPC-404"],
+      "linkedArtifacts": ["EP-KDU-001"],
+      "owner": "Software",
+      "status": "verified"
+    },
+    {
+      "id": "SW-004",
+      "kind": "deployment",
+      "text": "The DevOps layer shall define dry-run-safe local container, Terraform, and Ansible artifacts for hybrid compute readiness.",
+      "rationale": "The role asks for Linux, file systems, process management, networking, Ansible/Terraform-style infrastructure, and resilient compute environments.",
+      "source": "JD-derived deployment objective",
+      "verificationMethod": "configuration-audit",
+      "linkedJobs": ["JOB-HPC-404"],
+      "linkedArtifacts": ["DEP-001", "DEP-002", "DEP-003"],
+      "owner": "Infrastructure",
+      "status": "verified"
+    }
+  ],
+  "computeJobs": [
+    {
+      "id": "JOB-TRN-001",
+      "title": "One-dimensional SN transport toy sweep",
+      "discipline": "transport",
+      "state": "completed",
+      "scenario": "DOME synthetic full-power readiness bundle",
+      "priority": "mission",
+      "stakeholder": "Nuclear analysis",
+      "resources": {
+        "nodes": 1,
+        "ranks": 8,
+        "walltimeMin": 12,
+        "storageGb": 2,
+        "modules": ["radlab_transport/0.4", "openmpi/4.1"]
+      },
+      "inputs": {
+        "cells": 12,
+        "sourceStrength": 1,
+        "absorption": 0.16,
+        "scatter": 0.62,
+        "boundary": "vacuum"
+      },
+      "logs": [
+        "module load radlab_transport/0.4 openmpi/4.1",
+        "mpirun -np 8 radlab-sn --cells 12 --boundary vacuum",
+        "balance residual converged below synthetic threshold",
+        "artifact manifest written to artifacts/JOB-TRN-001"
+      ],
+      "outputs": {
+        "peakScalarFlux": 3.12,
+        "edgeLeakageProxy": 0.074,
+        "balanceResidual": 0.0008,
+        "iterations": 28
+      },
+      "linkedRequirements": ["SR-002", "SW-001", "SR-004"],
+      "artifacts": ["flux-profile.csv", "transport-run.log", "manifest.json"]
+    },
+    {
+      "id": "JOB-THM-001",
+      "title": "Passive air-cooling margin toy check",
+      "discipline": "thermal",
+      "state": "completed",
+      "scenario": "DOME synthetic full-power readiness bundle",
+      "priority": "elevated",
+      "stakeholder": "Thermal systems",
+      "resources": {
+        "nodes": 1,
+        "ranks": 4,
+        "walltimeMin": 8,
+        "storageGb": 1,
+        "modules": ["radlab_thermal/0.2", "python/3.12"]
+      },
+      "inputs": {
+        "heatKw": 950,
+        "ambientC": 42,
+        "thermalResistanceCPerKw": 0.18,
+        "limitC": 260
+      },
+      "logs": [
+        "module load radlab_thermal/0.2 python/3.12",
+        "solving lumped passive cooling model",
+        "peak cladding proxy remains below synthetic limit",
+        "artifact manifest written to artifacts/JOB-THM-001"
+      ],
+      "outputs": {
+        "peakTemperatureC": 213,
+        "marginC": 47,
+        "loadFollowSettlingMin": 18,
+        "status": "margin-positive"
+      },
+      "linkedRequirements": ["SR-003", "SR-004"],
+      "artifacts": ["thermal-margin.json", "load-following.csv", "thermal-run.log"]
+    },
+    {
+      "id": "JOB-FLT-001",
+      "title": "Fleet telemetry anomaly pass",
+      "discipline": "fleet",
+      "state": "completed",
+      "scenario": "Buckley synthetic remote-site readiness",
+      "priority": "normal",
+      "stakeholder": "Operations",
+      "resources": {
+        "nodes": 1,
+        "ranks": 1,
+        "walltimeMin": 5,
+        "storageGb": 1,
+        "modules": ["radlab_ops/0.1", "python/3.12"]
+      },
+      "inputs": {
+        "sensorCount": 9,
+        "sampleWindowMin": 45,
+        "zLimit": 2.5,
+        "missingPacketLimitPct": 1.5
+      },
+      "logs": [
+        "loading synthetic fleet telemetry",
+        "checking drift, packet loss, and thermal trend outliers",
+        "one pressure channel flagged for engineering review",
+        "artifact manifest written to artifacts/JOB-FLT-001"
+      ],
+      "outputs": {
+        "channelsFlagged": 1,
+        "maxZScore": 2.8,
+        "packetLossPct": 0.7,
+        "status": "review-required"
+      },
+      "linkedRequirements": ["SR-004", "SW-003"],
+      "artifacts": ["telemetry-window.csv", "anomaly-report.json", "fleet-run.log"]
+    },
+    {
+      "id": "JOB-HPC-404",
+      "title": "Held transport rerun: worker module mismatch",
+      "discipline": "infrastructure",
+      "state": "failed",
+      "scenario": "DOME synthetic full-power readiness bundle",
+      "priority": "mission",
+      "stakeholder": "Compute infrastructure",
+      "resources": {
+        "nodes": 2,
+        "ranks": 32,
+        "walltimeMin": 20,
+        "storageGb": 12,
+        "modules": ["radlab_transport/0.4", "openmpi/4.1", "lustre-client/2.15"]
+      },
+      "inputs": {
+        "cells": 96,
+        "restart": true,
+        "artifactPath": "/hpc/artifacts/kdu/restart-042",
+        "requiredModule": "radlab_transport/0.4"
+      },
+      "logs": [
+        "slurmstepd: launching 32 ranks across worker-a,worker-b",
+        "worker-b: modulecmd: module 'radlab_transport/0.4' not found",
+        "rank 17 exited with status 127",
+        "scheduler: job failed before restart file open",
+        "triage: worker image is stale relative to scheduler module index"
+      ],
+      "outputs": {
+        "failedRank": 17,
+        "exitCode": 127,
+        "artifactWrite": false,
+        "status": "environment-failure"
+      },
+      "diagnosis": {
+        "rootCause": "Worker image drift: worker-b lacks the transport module advertised by the scheduler.",
+        "nextAction": "Drain worker-b, rerun Ansible baseline, refresh module index, then resubmit from the last verified artifact.",
+        "preventativeControl": "Add CI check that compares scheduler module inventory with worker role templates before deployment."
+      },
+      "linkedRequirements": ["SW-001", "SW-002", "SW-004"],
+      "artifacts": ["slurm-404.out", "module-inventory.diff", "triage-note.md"]
+    }
+  ],
+  "evidencePacks": [
+    {
+      "id": "EP-TRN-001",
+      "runId": "JOB-TRN-001",
+      "title": "Transport toy sweep objective evidence",
+      "requirementIds": ["SR-002", "SW-001", "SR-004"],
+      "artifactHashes": {
+        "flux-profile.csv": "fnv1a-5e6d9324",
+        "transport-run.log": "fnv1a-36fa126c",
+        "manifest.json": "fnv1a-17b4a210"
+      },
+      "summary": "Deterministic SN-style toy sweep completed with bounded balance residual and traceable artifact manifest.",
+      "limitations": "Synthetic calculation only; not a reactor physics, shielding, criticality, or safety analysis.",
+      "approver": "Analysis lead",
+      "generatedAt": "2026-06-30T19:20:00-05:00"
+    },
+    {
+      "id": "EP-KDU-001",
+      "runId": "JOB-THM-001",
+      "title": "DOME readiness thermal toy evidence",
+      "requirementIds": ["SR-003", "SR-004"],
+      "artifactHashes": {
+        "thermal-margin.json": "fnv1a-d004e8f2",
+        "load-following.csv": "fnv1a-0a31b781",
+        "thermal-run.log": "fnv1a-771cba44"
+      },
+      "summary": "Passive cooling toy margin remained positive under the synthetic ambient and heat-load case.",
+      "limitations": "Synthetic lumped educational model; not qualified thermal hydraulics, accident analysis, or licensing evidence.",
+      "approver": "Thermal reviewer",
+      "generatedAt": "2026-06-30T19:21:00-05:00"
+    },
+    {
+      "id": "EP-FLT-001",
+      "runId": "JOB-FLT-001",
+      "title": "Fleet telemetry toy anomaly evidence",
+      "requirementIds": ["SR-004", "SW-003"],
+      "artifactHashes": {
+        "telemetry-window.csv": "fnv1a-93021dc0",
+        "anomaly-report.json": "fnv1a-b61e9971",
+        "fleet-run.log": "fnv1a-f40ab23b"
+      },
+      "summary": "Synthetic fleet screen found one channel requiring engineering review while packet loss remained below the demo threshold.",
+      "limitations": "Synthetic telemetry only; not a remote operations, cybersecurity, or plant monitoring qualification.",
+      "approver": "Operations reviewer",
+      "generatedAt": "2026-06-30T19:22:00-05:00"
+    },
+    {
+      "id": "EP-HPC-404",
+      "runId": "JOB-HPC-404",
+      "title": "HPC failure triage objective evidence",
+      "requirementIds": ["SW-001", "SW-002", "SW-004"],
+      "artifactHashes": {
+        "slurm-404.out": "fnv1a-2079e800",
+        "module-inventory.diff": "fnv1a-900722a4",
+        "triage-note.md": "fnv1a-2caa0100"
+      },
+      "summary": "Failed rerun was diagnosed as worker image drift before restart file access, with an Ansible baseline action and deployment gate.",
+      "limitations": "Synthetic scheduler and module logs; not evidence of any actual Radiant infrastructure.",
+      "approver": "Compute reviewer",
+      "generatedAt": "2026-06-30T19:23:00-05:00"
+    }
+  ],
+  "deploymentChecks": [
+    {
+      "id": "DEP-001",
+      "hostRole": "scheduler",
+      "configStatus": "pass",
+      "serviceStatus": "pass",
+      "networkStorage": "warn",
+      "finding": "Scheduler module index is controlled, but artifact mount latency is above the synthetic readiness threshold.",
+      "linkedRequirement": "SW-004"
+    },
+    {
+      "id": "DEP-002",
+      "hostRole": "worker",
+      "configStatus": "warn",
+      "serviceStatus": "pass",
+      "networkStorage": "pass",
+      "finding": "Worker baseline requires module inventory refresh before transport restart jobs are allowed.",
+      "linkedRequirement": "SW-002"
+    },
+    {
+      "id": "DEP-003",
+      "hostRole": "artifact-store",
+      "configStatus": "pass",
+      "serviceStatus": "pass",
+      "networkStorage": "pass",
+      "finding": "Artifact path, retention policy, and manifest hash checks are aligned with the objective evidence index.",
+      "linkedRequirement": "SR-004"
+    },
+    {
+      "id": "DEP-004",
+      "hostRole": "monitor",
+      "configStatus": "pass",
+      "serviceStatus": "warn",
+      "networkStorage": "pass",
+      "finding": "Monitoring endpoint accepts worker health checks; alert route remains in dry-run mode.",
+      "linkedRequirement": "SW-004"
+    }
+  ]
+}

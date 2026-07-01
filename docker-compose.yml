@@ -1,0 +1,25 @@
+services:
+  console:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      mock-worker:
+        condition: service_completed_successfully
+    labels:
+      org.opencontainers.image.title: "Kaleidos Compute Readiness Console"
+      org.opencontainers.image.description: "Public-safe synthetic compute readiness demo"
+
+  mock-worker:
+    build:
+      context: .
+      dockerfile: worker.Dockerfile
+    volumes:
+      - evidence-cache:/worker/generated
+    environment:
+      READINESS_MODE: "dry-run"
+
+volumes:
+  evidence-cache:

@@ -1,0 +1,8 @@
+{{ kaleidos_compute_root }}/logs/*.log {
+  daily
+  rotate 7
+  missingok
+  compress
+  notifempty
+  copytruncate
+}

@@ -1,0 +1,32 @@
+{
+  "name": "kaleidos-compute-readiness-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Interview-facing Kaleidos compute readiness console with synthetic transport jobs, evidence traceability, and dry-run DevOps artifacts.",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "validate:fixtures": "node scripts/validate-fixtures.mjs",
+    "evidence:generate": "node scripts/generate-evidence.mjs",
+    "infra:check": "node scripts/check-infra.mjs",
+    "mock:worker": "node scripts/mock-worker.mjs",
+    "ci": "bun run typecheck && bun run test && bun run validate:fixtures && bun run evidence:generate && bun run infra:check"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.1.1",
+    "lucide-react": "^0.468.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "vite": "^7.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.3",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  }
+}

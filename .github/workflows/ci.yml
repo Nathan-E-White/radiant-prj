@@ -1,0 +1,33 @@
+name: readiness-console-ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Unit tests
+        run: bun run test
+
+      - name: Validate fixtures
+        run: bun run validate:fixtures
+
+      - name: Generate objective evidence index
+        run: bun run evidence:generate
+
+      - name: Check infrastructure artifacts
+        run: bun run infra:check

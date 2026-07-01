@@ -1,0 +1,66 @@
+---
+- name: Kaleidos compute readiness Linux baseline
+  hosts: all
+  gather_facts: false
+  vars:
+    kaleidos_compute_root: "/tmp/kaleidos-readiness"
+    kaleidos_compute_group: "kaleidos-compute"
+    module_inventory:
+      - "radlab_transport/0.4"
+      - "radlab_thermal/0.2"
+      - "openmpi/4.1"
+      - "python/3.12"
+    managed_directories:
+      - "{{ kaleidos_compute_root }}/artifacts"
+      - "{{ kaleidos_compute_root }}/modules"
+      - "{{ kaleidos_compute_root }}/scratch"
+      - "{{ kaleidos_compute_root }}/logs"
+
+  tasks:
+    - name: Record intended service account and group
+      ansible.builtin.debug:
+        msg: "Baseline expects service account radlab-runner in group {{ kaleidos_compute_group }}."
+
+    - name: Create dry-run compute directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        mode: "0775"
+      loop: "{{ managed_directories }}"
+
+    - name: Render scheduler configuration template
+      ansible.builtin.template:
+        src: "templates/scheduler.conf.j2"
+        dest: "{{ kaleidos_compute_root }}/scheduler.conf"
+        mode: "0644"
+
+    - name: Render worker systemd unit template
+      ansible.builtin.template:
+        src: "templates/worker.service.j2"
+        dest: "{{ kaleidos_compute_root }}/kaleidos-worker.service"
+        mode: "0644"
+
+    - name: Render logrotate policy template
+      ansible.builtin.template:
+        src: "templates/logrotate.conf.j2"
+        dest: "{{ kaleidos_compute_root }}/logrotate.conf"
+        mode: "0644"
+
+    - name: Capture firewall placeholder
+      ansible.builtin.copy:
+        dest: "{{ kaleidos_compute_root }}/firewall-placeholder.rules"
+        mode: "0644"
+        content: |
+          # Dry-run only. Expected scheduler ports:
+          # 22/tcp operator access
+          # 6817/tcp scheduler control
+          # 6818/tcp worker task launch
+          # 443/tcp artifact store access
+
+    - name: Validate module inventory contains transport baseline
+      ansible.builtin.assert:
+        that:
+          - "'radlab_transport/0.4' in module_inventory"
+          - "'openmpi/4.1' in module_inventory"
+        fail_msg: "Worker role template is missing required transport/MPI modules."
+        success_msg: "Module inventory covers the synthetic transport baseline."
