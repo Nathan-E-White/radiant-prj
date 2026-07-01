@@ -32,6 +32,14 @@ bun run infra:check
 
 `bun run ci` runs the full local verification chain.
 
+## Version Checkpoint
+
+```bash
+scripts/checkpoint-v1.sh
+```
+
+The checkpoint script runs verification, stages source files while excluding `JD.mhtml` and generated/build output, creates a signed checkpoint commit if needed, creates a signed `v1.0.0` tag, and pushes the branch and tag to `origin` with push signing requested when the remote supports it. Use `--dry-run --skip-checks --no-push` to preview it.
+
 ## Repository Map
 
 - `src/data/readiness-fixtures.json` is the controlled fixture source for public facts, jobs, requirements, evidence, milestones, and deployment checks.
