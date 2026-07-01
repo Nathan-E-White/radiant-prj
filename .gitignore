@@ -1,5 +1,21 @@
-# Object file
-*.o
+# JavaScript / TypeScript
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
 
-# Ada Library Information
-*.ali
+# Generated evidence and local runtime state
+generated/
+.vite/
+
+# Infrastructure tooling caches
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate*
+
+# Local environment
+.env
+.env.*
+!.env.example
