@@ -12,8 +12,12 @@
     "validate:fixtures": "node scripts/validate-fixtures.mjs",
     "evidence:generate": "node scripts/generate-evidence.mjs",
     "infra:check": "node scripts/check-infra.mjs",
+    "quality:check": "node scripts/check-quality-docs.mjs",
     "mock:worker": "node scripts/mock-worker.mjs",
-    "ci": "bun run typecheck && bun run test && bun run validate:fixtures && bun run evidence:generate && bun run infra:check"
+    "checkpoint:wip": "scripts/checkpoint-wip.sh",
+    "fold:v2": "scripts/fold-v2-to-main.sh",
+    "checkpoint:v2": "scripts/checkpoint-v2.sh",
+    "ci": "bun run typecheck && bun run test && bun run validate:fixtures && bun run evidence:generate && bun run infra:check && bun run quality:check"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.1.1",

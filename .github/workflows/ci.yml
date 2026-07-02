@@ -31,3 +31,6 @@ jobs:
 
       - name: Check infrastructure artifacts
         run: bun run infra:check
+
+      - name: Check quality documentation package
+        run: bun run quality:check
