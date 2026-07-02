@@ -48,11 +48,13 @@ Version 2 work is isolated on `codex/v2-quality-docs` in the sibling `radiant-pr
 scripts/checkpoint-wip.sh --dry-run --skip-checks --no-push
 scripts/fold-v2-to-main.sh --dry-run --skip-checks
 scripts/checkpoint-v2.sh --dry-run --skip-checks --no-push --unsigned
+scripts/cleanup-v2-hygiene.sh --dry-run --skip-checks --unsigned
 ```
 
 `scripts/checkpoint-wip.sh` creates a recoverable WIP checkpoint commit on the current branch.
 `scripts/fold-v2-to-main.sh` folds the v2 branch into the worktree that has `main` checked out.
 `scripts/checkpoint-v2.sh` runs release verification, stages controlled source files while excluding `JD.mhtml` and generated/build output, creates a `v2.0.0` checkpoint tag, and optionally pushes the branch and tag.
+`scripts/cleanup-v2-hygiene.sh` verifies `main`, creates or confirms the `v2.0.0` tag, pushes branch and tag, removes the extra v2 worktree, and deletes the merged v2 branch.
 
 The existing `scripts/checkpoint-v1.sh` remains available for the historical v1 checkpoint flow.
 
