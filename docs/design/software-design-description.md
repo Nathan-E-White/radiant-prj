@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Document ID | SDD-001 |
-| Revision | 2.0 |
-| Status | Draft for v2 review |
+| Revision | 2.1 |
+| Status | Draft for v2.1 review |
 | Owner | Software |
-| Baseline | v2 candidate |
+| Baseline | v2.1 candidate |
 
 ## Purpose
 
@@ -23,7 +23,7 @@ The console is a local React and TypeScript application that presents source-lin
 | UI console | `src/App.tsx`, `src/styles.css` | Renders brief, workbench, and evidence views from controlled fixtures |
 | Domain logic | `src/domain/readiness.ts` | Performs deterministic toy calculations, diagnosis, hashing, and traceability checks |
 | Domain types | `src/domain/types.ts` | Defines controlled fixture and result shapes |
-| Fixtures | `src/data/readiness-fixtures.json` | Source of public facts, synthetic jobs, requirements, evidence packs, and deployment checks |
+| Fixtures | `src/data/readiness-fixtures.json` | Source of public facts, synthetic jobs, requirements, compute evidence, controlled process evidence, and deployment checks |
 | Evidence generation | `scripts/generate-evidence.mjs` | Generates reproducible local evidence index |
 | Fixture validation | `scripts/validate-fixtures.mjs` | Enforces fixture integrity and traceability |
 | Infrastructure checks | `scripts/check-infra.mjs` | Verifies local-safe infrastructure artifact completeness |
@@ -38,7 +38,7 @@ The console is a local React and TypeScript application that presents source-lin
 
 ## Data Flow
 
-1. Controlled fixtures define facts, requirements, jobs, evidence packs, milestones, and deployment checks.
+1. Controlled fixtures define facts, requirements, jobs, compute evidence packs, controlled evidence records, milestones, and deployment checks.
 2. Domain functions compute toy transport, thermal, fleet, diagnosis, evidence, and coverage outputs.
 3. The UI renders controlled fixture records and derived outputs.
 4. Validation scripts check fixture consistency and infrastructure artifact presence.
@@ -47,4 +47,3 @@ The console is a local React and TypeScript application that presents source-lin
 ## Design Outputs
 
 Design outputs are source files, fixture records, test cases, infrastructure artifacts, quality documentation, release scripts, and generated evidence procedures.
-

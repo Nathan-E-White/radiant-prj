@@ -3,8 +3,8 @@
 | Field | Value |
 | --- | --- |
 | Document ID | QP-003 |
-| Revision | 2.0 |
-| Status | Draft for v2 review |
+| Revision | 2.1 |
+| Status | Draft for v2.1 review |
 | Owner | Quality |
 | Parent Plan | QP-001 |
 
@@ -30,7 +30,7 @@ This procedure defines how the project identifies configuration items, controls 
 | Working baseline | Active branch or worktree for development | Branch creation or worktree checkout |
 | WIP checkpoint | Recoverable intermediate work state | `scripts/checkpoint-wip.sh` |
 | Release candidate | Reviewed version-ready state | Completed release checklist |
-| Version baseline | Tagged version checkpoint | `scripts/checkpoint-v2.sh` |
+| Version baseline | Tagged version checkpoint | `scripts/checkpoint-version.sh` |
 
 ## Change Control
 
@@ -43,4 +43,3 @@ The current baseline status is derived from `git status`, branch name, latest ch
 ## Recovery
 
 Recovery from an interrupted change shall start from the latest clean branch, WIP checkpoint, or version tag. Generated files may be regenerated and shall not be treated as authoritative source records unless explicitly promoted into release records.
-

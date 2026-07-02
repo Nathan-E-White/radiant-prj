@@ -586,6 +586,11 @@ a:hover {
   padding: 13px;
 }
 
+.controlled-evidence-card {
+  border-color: #c9d4dc;
+  background: #f8fbfc;
+}
+
 .evidence-card small,
 .deployment-card small {
   display: block;

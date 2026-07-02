@@ -3,14 +3,14 @@
 | Field | Value |
 | --- | --- |
 | Document ID | QP-001 |
-| Revision | 2.0 |
-| Status | Draft for v2 review |
+| Revision | 2.1 |
+| Status | Draft for v2.1 review |
 | Owner | Quality |
-| Effective Baseline | v2 candidate |
+| Effective Baseline | v2.1 candidate |
 
 ## Purpose
 
-This plan defines the controlled practices used for the Kaleidos Compute Readiness Console v2 baseline. It establishes the documentation, configuration, verification, and records controls expected for a professional engineering demonstration.
+This plan defines the controlled practices used for the Kaleidos Compute Readiness Console v2.1 baseline. It establishes the documentation, configuration, verification, traceability, and records controls expected for a professional engineering demonstration.
 
 ## Scope
 
@@ -35,7 +35,7 @@ The controlled scope includes source code, fixtures, infrastructure artifacts, s
 
 ## Controlled Processes
 
-The v2 baseline uses the process documents in this directory as the controlling procedures for document control, configuration management, software lifecycle, V&V, corrective action, records, tool control, supplier control, and release readiness.
+The v2.1 baseline uses the process documents in this directory as the controlling procedures for document control, configuration management, software lifecycle, V&V, corrective action, records, tool control, supplier control, and release readiness.
 
 ## Required Release Evidence
 
@@ -44,4 +44,3 @@ The v2 baseline uses the process documents in this directory as the controlling 
 - CI/build output or local equivalent.
 - Release checklist and approval record.
 - Change log with affected records and verification references.
-

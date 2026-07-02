@@ -3,36 +3,34 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Finalize v2 push/tag hygiene and remove the extra v2 worktree.
+Finalize version push/tag hygiene and optionally clean a merged branch/worktree.
 
 Usage:
-  scripts/cleanup-v2-hygiene.sh [options]
+  scripts/cleanup-version-hygiene.sh --version VERSION [options]
 
 Options:
-  --dry-run             Show what would happen without fetching, tagging, pushing, or removing.
-  --skip-checks         Skip local verification commands.
-  --no-push             Do not push the target branch or tag.
-  --unsigned            Create an unsigned annotated tag if the tag is missing.
-  --force-tag           Recreate the local tag if it exists at a different commit.
-  --keep-worktree       Leave the extra v2 worktree in place.
-  --keep-v2-branch      Leave the merged v2 branch in place.
-  --target-branch NAME  Branch to push and tag. Default: main.
-  --v2-branch NAME      Merged v2 branch to clean up. Default: codex/v2-quality-docs.
-  --worktree PATH       Extra worktree path. Default: ../radiant-prj-v2.
-  --tag NAME            Version tag. Default: v2.0.0.
-  --message TEXT        Tag message. Default: Version 2 checkpoint.
-  -h, --help            Show this help text.
+  --version NAME          Version tag to create or verify.
+  --tag NAME              Alias for --version.
+  --dry-run               Show what would happen without fetching, tagging, pushing, or removing.
+  --skip-checks           Skip local verification commands.
+  --no-push               Do not push the target branch or tag.
+  --unsigned              Create an unsigned annotated tag if the tag is missing.
+  --force-tag             Recreate the local tag if it exists at a different commit.
+  --keep-worktree         Leave the extra worktree in place.
+  --keep-merged-branch    Leave the merged branch in place.
+  --target-branch NAME    Branch to push and tag. Default: main.
+  --merged-branch NAME    Merged branch to clean up. Optional.
+  --worktree PATH         Extra worktree path to remove. Optional.
+  --message TEXT          Tag message. Default: Version <version> checkpoint.
+  -h, --help              Show this help text.
 
 Environment:
-  REMOTE                Git remote to push to. Default: origin
-
-Default behavior:
-  1. Verify the current worktree is the clean target branch.
-  2. Run local verification.
-  3. Fetch remote refs and tags.
-  4. Create or verify the v2 tag at the target branch HEAD.
-  5. Push the target branch and tag.
-  6. Remove the extra v2 worktree and delete the merged v2 branch.
+  VERSION_TAG             Version tag to create or verify. Required unless --version is supplied.
+  TARGET_BRANCH           Branch to push and tag. Default: main.
+  MERGED_BRANCH           Merged branch to clean up. Optional.
+  EXTRA_WORKTREE          Extra worktree path to remove. Optional.
+  TAG_MESSAGE             Tag message. Default: Version <version> checkpoint.
+  REMOTE                  Git remote to push to. Default: origin.
 USAGE
 }
 
@@ -42,38 +40,38 @@ PUSH=1
 SIGNED=1
 FORCE_TAG=0
 KEEP_WORKTREE=0
-KEEP_V2_BRANCH=0
+KEEP_MERGED_BRANCH=0
 
 REMOTE="${REMOTE:-origin}"
 TARGET_BRANCH="${TARGET_BRANCH:-main}"
-V2_BRANCH="${V2_BRANCH:-codex/v2-quality-docs}"
-EXTRA_WORKTREE="${EXTRA_WORKTREE:-../radiant-prj-v2}"
-VERSION_TAG="${VERSION_TAG:-v2.0.0}"
-TAG_MESSAGE="${TAG_MESSAGE:-Version 2 checkpoint}"
+MERGED_BRANCH="${MERGED_BRANCH:-}"
+EXTRA_WORKTREE="${EXTRA_WORKTREE:-}"
+VERSION_TAG="${VERSION_TAG:-}"
+TAG_MESSAGE="${TAG_MESSAGE:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --version|--tag)
+      VERSION_TAG="${2:-}"
+      shift
+      ;;
     --dry-run) DRY_RUN=1 ;;
     --skip-checks) SKIP_CHECKS=1 ;;
     --no-push) PUSH=0 ;;
     --unsigned) SIGNED=0 ;;
     --force-tag) FORCE_TAG=1 ;;
     --keep-worktree) KEEP_WORKTREE=1 ;;
-    --keep-v2-branch) KEEP_V2_BRANCH=1 ;;
+    --keep-merged-branch) KEEP_MERGED_BRANCH=1 ;;
     --target-branch)
       TARGET_BRANCH="${2:-}"
       shift
       ;;
-    --v2-branch)
-      V2_BRANCH="${2:-}"
+    --merged-branch)
+      MERGED_BRANCH="${2:-}"
       shift
       ;;
     --worktree)
       EXTRA_WORKTREE="${2:-}"
-      shift
-      ;;
-    --tag)
-      VERSION_TAG="${2:-}"
       shift
       ;;
     --message)
@@ -92,6 +90,16 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if [[ -z "$VERSION_TAG" ]]; then
+  echo "A version tag is required. Supply --version, --tag, or VERSION_TAG." >&2
+  usage >&2
+  exit 2
+fi
+
+if [[ -z "$TAG_MESSAGE" ]]; then
+  TAG_MESSAGE="Version ${VERSION_TAG} checkpoint"
+fi
 
 run() {
   printf '+ '
@@ -130,13 +138,15 @@ if ! git show-ref --verify --quiet "refs/heads/${TARGET_BRANCH}"; then
   exit 1
 fi
 
-if git show-ref --verify --quiet "refs/heads/${V2_BRANCH}"; then
-  if ! git merge-base --is-ancestor "$V2_BRANCH" "$TARGET_BRANCH"; then
-    echo "V2 branch '${V2_BRANCH}' is not merged into '${TARGET_BRANCH}'." >&2
-    exit 1
+if [[ -n "$MERGED_BRANCH" ]]; then
+  if git show-ref --verify --quiet "refs/heads/${MERGED_BRANCH}"; then
+    if ! git merge-base --is-ancestor "$MERGED_BRANCH" "$TARGET_BRANCH"; then
+      echo "Merged branch '${MERGED_BRANCH}' is not merged into '${TARGET_BRANCH}'." >&2
+      exit 1
+    fi
+  else
+    echo "Merged branch '${MERGED_BRANCH}' is already absent; branch cleanup will be skipped."
   fi
-else
-  echo "V2 branch '${V2_BRANCH}' is already absent; branch cleanup will be skipped."
 fi
 
 if [[ "$SKIP_CHECKS" -eq 0 ]]; then
@@ -205,7 +215,7 @@ else
   echo "Push skipped by --no-push."
 fi
 
-if [[ "$KEEP_WORKTREE" -eq 0 ]]; then
+if [[ "$KEEP_WORKTREE" -eq 0 && -n "$EXTRA_WORKTREE" ]]; then
   if git -C "$EXTRA_WORKTREE" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     extra_root="$(git -C "$EXTRA_WORKTREE" rev-parse --show-toplevel)"
     if [[ -n "$(git -C "$extra_root" status --porcelain)" ]]; then
@@ -216,23 +226,26 @@ if [[ "$KEEP_WORKTREE" -eq 0 ]]; then
   else
     echo "Extra worktree '${EXTRA_WORKTREE}' is already absent."
   fi
-else
+elif [[ -n "$EXTRA_WORKTREE" ]]; then
   echo "Extra worktree cleanup skipped by --keep-worktree."
+else
+  echo "No extra worktree supplied; worktree cleanup skipped."
 fi
 
-if [[ "$KEEP_V2_BRANCH" -eq 0 ]]; then
-  if git show-ref --verify --quiet "refs/heads/${V2_BRANCH}"; then
-    run git branch -d "$V2_BRANCH"
+if [[ "$KEEP_MERGED_BRANCH" -eq 0 && -n "$MERGED_BRANCH" ]]; then
+  if git show-ref --verify --quiet "refs/heads/${MERGED_BRANCH}"; then
+    run git branch -d "$MERGED_BRANCH"
   else
-    echo "V2 branch '${V2_BRANCH}' is already absent."
+    echo "Merged branch '${MERGED_BRANCH}' is already absent."
   fi
+elif [[ -n "$MERGED_BRANCH" ]]; then
+  echo "Merged branch cleanup skipped by --keep-merged-branch."
 else
-  echo "V2 branch cleanup skipped by --keep-v2-branch."
+  echo "No merged branch supplied; branch cleanup skipped."
 fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "Dry run complete; no refs, remote state, branches, or worktrees were changed."
 else
-  echo "V2 hygiene cleanup complete: pushed '${TARGET_BRANCH}', handled '${VERSION_TAG}', and cleaned '${V2_BRANCH}'."
+  echo "Version hygiene cleanup complete: handled '${VERSION_TAG}' on '${TARGET_BRANCH}'."
 fi
-

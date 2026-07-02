@@ -1,5 +1,6 @@
 import fixturesJson from "../data/readiness-fixtures.json";
 import type {
+  ControlledEvidenceRecord,
   ComputeJob,
   DeploymentCheck,
   EvidencePack,
@@ -207,6 +208,7 @@ export function validateTraceability(data: ReadinessFixtures = fixtures): string
   const artifactIds = new Set([
     ...data.publicFacts.map((fact) => fact.id),
     ...data.evidencePacks.map((pack) => pack.id),
+    ...data.controlledEvidence.map((record) => record.id),
     ...data.deploymentChecks.map((check) => check.id),
     ...data.computeJobs.flatMap((job) => job.artifacts)
   ]);
@@ -245,6 +247,14 @@ export function validateTraceability(data: ReadinessFixtures = fixtures): string
     }
   }
 
+  for (const record of data.controlledEvidence) {
+    for (const requirementId of record.requirementIds) {
+      if (!requirementIds.has(requirementId)) {
+        problems.push(`${record.id} links missing requirement ${requirementId}`);
+      }
+    }
+  }
+
   for (const check of data.deploymentChecks) {
     if (!requirementIds.has(check.linkedRequirement)) {
       problems.push(`${check.id} links missing requirement ${check.linkedRequirement}`);
@@ -256,16 +266,18 @@ export function validateTraceability(data: ReadinessFixtures = fixtures): string
 
 export function requirementCoverage(
   requirements: Requirement[] = fixtures.requirements,
-  jobs: ComputeJob[] = fixtures.computeJobs
+  jobs: ComputeJob[] = fixtures.computeJobs,
+  evidencePacks: EvidencePack[] = fixtures.evidencePacks,
+  controlledEvidence: ControlledEvidenceRecord[] = fixtures.controlledEvidence
 ) {
   return requirements.map((requirement) => ({
     id: requirement.id,
     status: requirement.status,
     verificationMethod: requirement.verificationMethod,
     linkedJobs: requirement.linkedJobs.length,
-    linkedEvidence: fixtures.evidencePacks.filter((pack) =>
-      pack.requirementIds.includes(requirement.id)
-    ).length,
+    linkedEvidence:
+      evidencePacks.filter((pack) => pack.requirementIds.includes(requirement.id)).length +
+      controlledEvidence.filter((record) => record.requirementIds.includes(requirement.id)).length,
     jobStates: jobs
       .filter((job) => job.linkedRequirements.includes(requirement.id))
       .map((job) => job.state)

@@ -8,6 +8,7 @@ const ids = {
   requirements: new Set(fixtures.requirements.map((requirement) => requirement.id)),
   jobs: new Set(fixtures.computeJobs.map((job) => job.id)),
   evidence: new Set(fixtures.evidencePacks.map((pack) => pack.id)),
+  controlledEvidence: new Set(fixtures.controlledEvidence.map((record) => record.id)),
   deployments: new Set(fixtures.deploymentChecks.map((check) => check.id))
 };
 
@@ -34,6 +35,7 @@ for (const requirement of fixtures.requirements) {
     if (
       !ids.facts.has(artifactId) &&
       !ids.evidence.has(artifactId) &&
+      !ids.controlledEvidence.has(artifactId) &&
       !ids.deployments.has(artifactId) &&
       !fixtures.computeJobs.some((job) => job.artifacts.includes(artifactId))
     ) {
@@ -72,6 +74,24 @@ for (const pack of fixtures.evidencePacks) {
   }
 }
 
+for (const record of fixtures.controlledEvidence) {
+  requireField(record, "title", record.id);
+  requireField(record, "category", record.id);
+  if (!record.artifacts.length) {
+    problems.push(`${record.id} must include controlled artifacts`);
+  }
+
+  if (!record.limitations.toLowerCase().includes("controlled")) {
+    problems.push(`${record.id} must state controlled limitations`);
+  }
+
+  for (const requirementId of record.requirementIds) {
+    if (!ids.requirements.has(requirementId)) {
+      problems.push(`${record.id} links missing requirement ${requirementId}`);
+    }
+  }
+}
+
 for (const check of fixtures.deploymentChecks) {
   if (!ids.requirements.has(check.linkedRequirement)) {
     problems.push(`${check.id} links missing requirement ${check.linkedRequirement}`);
@@ -86,7 +106,7 @@ if (problems.length) {
   process.exit(1);
 }
 
-console.log(`Fixture validation passed: ${fixtures.requirements.length} requirements, ${fixtures.computeJobs.length} jobs, ${fixtures.evidencePacks.length} evidence packs.`);
+console.log(`Fixture validation passed: ${fixtures.requirements.length} requirements, ${fixtures.computeJobs.length} jobs, ${fixtures.evidencePacks.length} compute evidence packs, ${fixtures.controlledEvidence.length} controlled evidence records.`);
 
 function requireField(record, field, label) {
   if (record[field] == null || record[field] === "") {

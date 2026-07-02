@@ -4,7 +4,7 @@
 | --- | --- |
 | Document ID | REL-003 |
 | Revision | 2.0 |
-| Status | Template |
+| Status | Recorded v2 baseline |
 | Owner | Quality |
 | Target Version | v2.0.0 |
 
@@ -12,10 +12,10 @@
 
 | Role | Name | Date | Approval / Disposition |
 | --- | --- | --- | --- |
-| Quality | TBD | TBD | TBD |
-| Systems | TBD | TBD | TBD |
-| Software | TBD | TBD | TBD |
-| Infrastructure | TBD | TBD | TBD |
+| Quality | Local release record | 2026-07-02 | Existing `v2.0.0` tag accepted as baseline record |
+| Systems | Local release record | 2026-07-02 | Public-safe claim boundaries retained |
+| Software | Local release record | 2026-07-02 | Existing source baseline recorded |
+| Infrastructure | Local release record | 2026-07-02 | Existing dry-run infrastructure baseline recorded |
 
 ## Basis for Approval
 
@@ -23,5 +23,4 @@ Approval is based on completed release checklist, passing verification, current 
 
 ## Conditions
 
-Record any conditions, limitations, or follow-up actions accepted with the release.
-
+The approval record documents the already-existing v2.0.0 baseline. It does not claim external compliance approval, production release approval, or Radiant review.

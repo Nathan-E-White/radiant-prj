@@ -92,6 +92,18 @@ export type EvidencePack = {
   generatedAt: string;
 };
 
+export type ControlledEvidenceRecord = {
+  id: string;
+  title: string;
+  category: "documentation-baseline" | "release-tooling";
+  requirementIds: string[];
+  artifacts: string[];
+  summary: string;
+  limitations: string;
+  approver: string;
+  generatedAt: string;
+};
+
 export type DeploymentCheck = {
   id: string;
   hostRole: "scheduler" | "worker" | "artifact-store" | "monitor";
@@ -108,5 +120,6 @@ export type ReadinessFixtures = {
   requirements: Requirement[];
   computeJobs: ComputeJob[];
   evidencePacks: EvidencePack[];
+  controlledEvidence: ControlledEvidenceRecord[];
   deploymentChecks: DeploymentCheck[];
 };

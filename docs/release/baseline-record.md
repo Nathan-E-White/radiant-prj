@@ -4,7 +4,7 @@
 | --- | --- |
 | Document ID | REL-002 |
 | Revision | 2.0 |
-| Status | Template |
+| Status | Recorded v2 baseline |
 | Owner | Quality |
 | Target Version | v2.0.0 |
 
@@ -13,11 +13,11 @@
 | Field | Entry |
 | --- | --- |
 | Version tag | `v2.0.0` |
-| Branch | `codex/v2-quality-docs` |
-| Commit | TBD |
-| Release date | TBD |
-| Prepared by | TBD |
-| Reviewed by | TBD |
+| Branch | `main` |
+| Commit | `481490ecf58c5dc44227c9fbe008f73c329efe20` |
+| Release date | 2026-07-02 |
+| Prepared by | Local release record |
+| Reviewed by | Existing tag reconciliation |
 
 ## Included Configuration Items
 
@@ -32,5 +32,4 @@
 
 ## Known Limitations
 
-Record accepted limitations, skipped optional checks, and unresolved nonblocking findings.
-
+The v2.0.0 tag was already present and points at the recorded commit. No tag recreation, push, merge, or branch cleanup was performed as part of the v2.1 hygiene update.

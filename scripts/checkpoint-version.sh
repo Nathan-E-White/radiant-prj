@@ -3,24 +3,25 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Create the version 2 checkpoint commit/tag and optionally push it.
+Create a version checkpoint commit/tag and optionally push it.
 
 Usage:
-  scripts/checkpoint-v2.sh [options]
+  scripts/checkpoint-version.sh --version VERSION [options]
 
 Options:
-  --dry-run       Show what would happen without staging, committing, tagging, or pushing.
-  --skip-checks   Skip local verification commands.
-  --no-push       Create the local commit/tag but do not push to the remote.
-  --allow-jd      Allow JD.mhtml to be staged. By default it is excluded.
-  --force-tag     Recreate the local version tag if it already exists.
-  --unsigned      Create unsigned commit/tag instead of requesting signatures.
-  -h, --help      Show this help text.
+  --version NAME   Version tag to create, such as v2.1.0.
+  --dry-run        Show what would happen without staging, committing, tagging, or pushing.
+  --skip-checks    Skip local verification commands.
+  --no-push        Create the local commit/tag but do not push to the remote.
+  --allow-jd       Allow JD.mhtml to be staged. By default it is excluded.
+  --force-tag      Recreate the local version tag if it already exists.
+  --unsigned       Create unsigned commit/tag instead of requesting signatures.
+  -h, --help       Show this help text.
 
 Environment:
-  CHECKPOINT_VERSION   Version tag to create. Default: v2.0.0
-  CHECKPOINT_MESSAGE   Commit/tag message. Default: Version 2 checkpoint
-  REMOTE               Git remote to push to. Default: origin
+  CHECKPOINT_VERSION   Version tag to create. Required unless --version is supplied.
+  CHECKPOINT_MESSAGE   Commit/tag message. Default: Version <version> checkpoint.
+  REMOTE               Git remote to push to. Default: origin.
 
 The script excludes JD.mhtml, node_modules, dist, generated, local environment
 files, and tool caches unless --allow-jd is supplied.
@@ -34,12 +35,16 @@ ALLOW_JD=0
 FORCE_TAG=0
 SIGNED=1
 
-CHECKPOINT_VERSION="${CHECKPOINT_VERSION:-v2.0.0}"
-CHECKPOINT_MESSAGE="${CHECKPOINT_MESSAGE:-Version 2 checkpoint}"
+CHECKPOINT_VERSION="${CHECKPOINT_VERSION:-}"
+CHECKPOINT_MESSAGE="${CHECKPOINT_MESSAGE:-}"
 REMOTE="${REMOTE:-origin}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
+    --version)
+      CHECKPOINT_VERSION="${2:-}"
+      shift
+      ;;
     --dry-run) DRY_RUN=1 ;;
     --skip-checks) SKIP_CHECKS=1 ;;
     --no-push) PUSH=0 ;;
@@ -58,6 +63,16 @@ while [[ $# -gt 0 ]]; do
   esac
   shift
 done
+
+if [[ -z "$CHECKPOINT_VERSION" ]]; then
+  echo "A checkpoint version is required. Supply --version or CHECKPOINT_VERSION." >&2
+  usage >&2
+  exit 2
+fi
+
+if [[ -z "$CHECKPOINT_MESSAGE" ]]; then
+  CHECKPOINT_MESSAGE="Version ${CHECKPOINT_VERSION} checkpoint"
+fi
 
 run() {
   printf '+ '
@@ -146,13 +161,19 @@ fi
 if git rev-parse -q --verify "refs/tags/${CHECKPOINT_VERSION}" >/dev/null; then
   if [[ "$FORCE_TAG" -eq 1 ]]; then
     run git tag -d "$CHECKPOINT_VERSION"
+  elif [[ "$DRY_RUN" -eq 1 ]]; then
+    echo "Dry run: tag ${CHECKPOINT_VERSION} already exists; an actual run would require --force-tag to recreate it."
   else
     echo "Tag ${CHECKPOINT_VERSION} already exists. Use --force-tag to recreate it." >&2
     exit 1
   fi
 fi
 
-run "${tag_args[@]}"
+if [[ "$DRY_RUN" -eq 1 && "$FORCE_TAG" -eq 0 ]] && git rev-parse -q --verify "refs/tags/${CHECKPOINT_VERSION}" >/dev/null; then
+  echo "Dry run: would skip tag creation because ${CHECKPOINT_VERSION} already exists."
+else
+  run "${tag_args[@]}"
+fi
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "Dry run complete; no commit, tag, or push was created."

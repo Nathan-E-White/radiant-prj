@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Document ID | OEI-001 |
-| Revision | 2.0 |
-| Status | Draft for v2 review |
+| Revision | 2.1 |
+| Status | Draft for v2.1 review |
 | Owner | Quality |
-| Baseline | v2 candidate |
+| Baseline | v2.1 candidate |
 
 The evidence records below are synthetic and public-safe. They demonstrate traceability habits and reproducible engineering records.
 
@@ -16,12 +16,12 @@ The evidence records below are synthetic and public-safe. They demonstrate trace
 | EP-KDU-001 | JOB-THM-001 | SR-003, SR-004 | `thermal-margin.json`, `load-following.csv`, `thermal-run.log` | Lumped educational thermal model only |
 | EP-FLT-001 | JOB-FLT-001 | SR-004, SW-003 | `telemetry-window.csv`, `anomaly-report.json`, `fleet-run.log` | Synthetic telemetry only |
 | EP-HPC-404 | JOB-HPC-404 | SW-001, SW-002, SW-004 | `slurm-404.out`, `module-inventory.diff`, `triage-note.md` | Synthetic scheduler and module logs only |
-| DOC-V2-001 | Documentation baseline | SR-005, SW-005 | `docs/quality/`, `docs/design/`, `docs/verification/`, `docs/release/` | Controlled documentation package only |
-| REL-V2-001 | Release operation baseline | SR-006, SW-006 | `scripts/checkpoint-wip.sh`, `scripts/fold-v2-to-main.sh`, `scripts/checkpoint-v2.sh` | Local git release operation only |
+| DOC-V2-001 | Documentation baseline | SR-005, SW-005 | `docs/quality/`, `docs/design/`, `docs/verification/`, `docs/release/`, `docs/requirements/` | Controlled documentation package only |
+| REL-TOOL-001 | Version-aware release tooling baseline | SR-006, SW-006 | `scripts/checkpoint-version.sh`, `scripts/fold-branch.sh`, `scripts/cleanup-version-hygiene.sh`, v2 wrappers | Local git release operation only |
 
 ## Generated Evidence
 
-`bun run evidence:generate` creates `generated/evidence-index.json` from the controlled fixture set. Generated files are intentionally ignored by git so local evidence regeneration can be repeated without source churn.
+`bun run evidence:generate` creates `generated/evidence-index.json` from the controlled fixture set, including compute evidence summaries and controlled process evidence summaries. Generated files are intentionally ignored by git so local evidence regeneration can be repeated without source churn.
 
 ## Artifact Hashing
 
@@ -29,4 +29,4 @@ The app fixtures use stable toy FNV-1a identifiers. The generation script uses S
 
 ## Release Evidence
 
-The v2 release package shall include completed release checklist, baseline record, approval record, test report, and dry-run output for checkpoint/fold/version scripts.
+The v2 release package is recorded by the existing `v2.0.0` tag. The v2.1 release package shall include completed release checklist, baseline record, approval record, test report, and dry-run output for generic checkpoint/fold/version scripts.

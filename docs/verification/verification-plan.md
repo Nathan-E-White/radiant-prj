@@ -4,9 +4,9 @@
 | --- | --- |
 | Document ID | VVP-001 |
 | Revision | 2.0 |
-| Status | Draft for v2 review |
+| Status | Draft for v2.1 review |
 | Owner | Quality |
-| Baseline | v2 candidate |
+| Baseline | v2.1 candidate |
 
 ## Purpose
 

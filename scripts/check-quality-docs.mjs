@@ -59,19 +59,23 @@ requireContent("docs/quality/document-index.md", [
 requireContent("docs/requirements/verification-matrix.md", [
   "SR-005",
   "SW-006",
-  "bun run quality:check"
+  "bun run quality:check",
+  "REL-TOOL-001"
 ]);
 requireContent("docs/release/release-checklist.md", [
   "checkpoint-wip.sh",
-  "fold-v2-to-main.sh",
-  "checkpoint-v2.sh"
+  "fold-branch.sh",
+  "checkpoint-version.sh"
 ]);
 requireContent("README.md", [
-  "Version 2",
+  "Version 2.1",
   "quality:check",
-  "checkpoint-v2.sh"
+  "checkpoint-version.sh"
 ]);
 requireContent("package.json", [
+  "\"checkpoint:version\"",
+  "\"fold:branch\"",
+  "\"cleanup:version\"",
   "\"quality:check\"",
   "\"checkpoint:v2\"",
   "\"fold:v2\""
@@ -100,4 +104,3 @@ function requireContent(path, tokens) {
     }
   }
 }
-

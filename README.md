@@ -10,7 +10,7 @@ This is public-safe demo material. It is not reactor design, safety analysis, li
 - **Compute Workbench:** deterministic toy transport, thermal, fleet, and infrastructure jobs with scheduler states, logs, artifacts, and diagnosis.
 - **Evidence Matrix:** requirements, verification methods, evidence packs, artifact hashes, deployment checks, and controlled change notes.
 - **DevOps Layer:** Docker Compose, dry-run Terraform, Ansible baseline templates, and CI checks for the synthetic hybrid compute environment.
-- **Version 2 Quality Package:** controlled quality, design, verification, release, and records documentation suitable for serious engineering review.
+- **Version 2.1 Quality Package:** controlled quality, design, verification, release, records documentation, and fixture-backed process evidence suitable for serious engineering review.
 
 ## Run Locally
 
@@ -46,21 +46,22 @@ Version 2 work is isolated on `codex/v2-quality-docs` in the sibling `radiant-pr
 
 ```bash
 scripts/checkpoint-wip.sh --dry-run --skip-checks --no-push
-scripts/fold-v2-to-main.sh --dry-run --skip-checks
-scripts/checkpoint-v2.sh --dry-run --skip-checks --no-push --unsigned
-scripts/cleanup-v2-hygiene.sh --dry-run --skip-checks --unsigned
+scripts/fold-branch.sh --dry-run --skip-checks --source-branch codex/v2-quality-docs --target-branch main
+scripts/checkpoint-version.sh --version v2.1.0 --dry-run --skip-checks --no-push --unsigned
+scripts/cleanup-version-hygiene.sh --version v2.1.0 --dry-run --skip-checks --no-push --unsigned
 ```
 
 `scripts/checkpoint-wip.sh` creates a recoverable WIP checkpoint commit on the current branch.
-`scripts/fold-v2-to-main.sh` folds the v2 branch into the worktree that has `main` checked out.
-`scripts/checkpoint-v2.sh` runs release verification, stages controlled source files while excluding `JD.mhtml` and generated/build output, creates a `v2.0.0` checkpoint tag, and optionally pushes the branch and tag.
-`scripts/cleanup-v2-hygiene.sh` verifies `main`, creates or confirms the `v2.0.0` tag, pushes branch and tag, removes the extra v2 worktree, and deletes the merged v2 branch.
+`scripts/fold-branch.sh` folds a source branch into the worktree that has the target branch checked out.
+`scripts/checkpoint-version.sh` runs release verification, stages controlled source files while excluding `JD.mhtml` and generated/build output, creates the requested version checkpoint tag, and optionally pushes the branch and tag.
+`scripts/cleanup-version-hygiene.sh` verifies the target branch, creates or confirms the requested version tag, optionally pushes branch and tag, and can remove a supplied extra worktree or merged branch.
+The v2-specific `scripts/fold-v2-to-main.sh`, `scripts/checkpoint-v2.sh`, and `scripts/cleanup-v2-hygiene.sh` wrappers remain available for historical v2 commands.
 
 The existing `scripts/checkpoint-v1.sh` remains available for the historical v1 checkpoint flow.
 
 ## Repository Map
 
-- `src/data/readiness-fixtures.json` is the controlled fixture source for public facts, jobs, requirements, evidence, milestones, and deployment checks.
+- `src/data/readiness-fixtures.json` is the controlled fixture source for public facts, jobs, requirements, compute evidence, controlled process evidence, milestones, and deployment checks.
 - `src/domain/readiness.ts` contains deterministic toy calculations, diagnosis rules, evidence hashing, and traceability checks.
 - `docs/requirements/` contains the requirements, verification matrix, change log, and objective evidence index.
 - `docs/quality/` contains quality program, document control, configuration management, lifecycle, V&V, corrective action, records, tool, supplier, release readiness, and document-index procedures.

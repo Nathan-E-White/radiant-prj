@@ -189,6 +189,54 @@
       "linkedArtifacts": ["DEP-001", "DEP-002", "DEP-003"],
       "owner": "Infrastructure",
       "status": "verified"
+    },
+    {
+      "id": "SR-005",
+      "kind": "system",
+      "text": "The project shall maintain controlled quality, design, verification, and release documentation for the v2 and v2.1 baselines.",
+      "rationale": "Reviewers should be able to inspect the engineering-control story without relying on oral explanation.",
+      "source": "Quality documentation objective",
+      "verificationMethod": "configuration-audit",
+      "linkedJobs": [],
+      "linkedArtifacts": ["DOC-V2-001"],
+      "owner": "Quality",
+      "status": "verified"
+    },
+    {
+      "id": "SR-006",
+      "kind": "system",
+      "text": "The release process shall provide version-aware checkpoint, branch-fold, and release-hygiene scripts with dry-run capability.",
+      "rationale": "Baseline transitions should be reproducible and recoverable without cloning release logic for every version.",
+      "source": "Release process objective",
+      "verificationMethod": "configuration-audit",
+      "linkedJobs": [],
+      "linkedArtifacts": ["REL-TOOL-001"],
+      "owner": "Quality",
+      "status": "verified"
+    },
+    {
+      "id": "SW-005",
+      "kind": "software",
+      "text": "The documentation quality check shall verify required controlled document structure, metadata, and v2.1 traceability content.",
+      "rationale": "Release readiness needs enforceable documentation completeness checks.",
+      "source": "Quality checker objective",
+      "verificationMethod": "test",
+      "linkedJobs": [],
+      "linkedArtifacts": ["DOC-V2-001"],
+      "owner": "Software",
+      "status": "verified"
+    },
+    {
+      "id": "SW-006",
+      "kind": "software",
+      "text": "The release operation scripts shall support version-aware dry-run execution, signed checkpoints, conservative exclusions, and v2 compatibility wrappers.",
+      "rationale": "Release operations should be previewable before mutating git state and should not depend on version-specific script copies.",
+      "source": "Release tooling objective",
+      "verificationMethod": "configuration-audit",
+      "linkedJobs": [],
+      "linkedArtifacts": ["REL-TOOL-001"],
+      "owner": "Software",
+      "status": "verified"
     }
   ],
   "computeJobs": [
@@ -404,6 +452,43 @@
       "limitations": "Synthetic scheduler and module logs; not evidence of any actual Radiant infrastructure.",
       "approver": "Compute reviewer",
       "generatedAt": "2026-06-30T19:23:00-05:00"
+    }
+  ],
+  "controlledEvidence": [
+    {
+      "id": "DOC-V2-001",
+      "title": "Controlled documentation baseline",
+      "category": "documentation-baseline",
+      "requirementIds": ["SR-005", "SW-005"],
+      "artifacts": [
+        "docs/quality/",
+        "docs/design/",
+        "docs/verification/",
+        "docs/release/",
+        "docs/requirements/"
+      ],
+      "summary": "Controlled quality, design, verification, release, and requirements records are maintained as fixture-linked evidence.",
+      "limitations": "Controlled documentation package only; not a formal compliance, licensing, or production quality-system claim.",
+      "approver": "Quality reviewer",
+      "generatedAt": "2026-07-02T17:30:00-05:00"
+    },
+    {
+      "id": "REL-TOOL-001",
+      "title": "Version-aware release tooling baseline",
+      "category": "release-tooling",
+      "requirementIds": ["SR-006", "SW-006"],
+      "artifacts": [
+        "scripts/checkpoint-version.sh",
+        "scripts/fold-branch.sh",
+        "scripts/cleanup-version-hygiene.sh",
+        "scripts/checkpoint-v2.sh",
+        "scripts/fold-v2-to-main.sh",
+        "scripts/cleanup-v2-hygiene.sh"
+      ],
+      "summary": "Generic release scripts provide version-aware checkpoint, fold, and cleanup flows while v2 wrappers preserve existing commands.",
+      "limitations": "Controlled local release tooling only; dry-run checks do not create remote refs or mutate GitHub state.",
+      "approver": "Release reviewer",
+      "generatedAt": "2026-07-02T17:30:00-05:00"
     }
   ],
   "deploymentChecks": [

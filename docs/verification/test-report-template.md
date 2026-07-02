@@ -6,7 +6,7 @@
 | Revision | 2.0 |
 | Status | Template |
 | Owner | Quality |
-| Baseline | v2 candidate |
+| Baseline | v2.1 candidate |
 
 ## Test Report
 

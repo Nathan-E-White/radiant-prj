@@ -28,6 +28,7 @@ import {
   validateTraceability
 } from "./domain/readiness";
 import type {
+  ControlledEvidenceRecord,
   ComputeJob,
   DeploymentCheck,
   EvidencePack,
@@ -167,6 +168,7 @@ export default function App() {
         <EvidenceTab
           requirements={fixtures.requirements}
           evidencePacks={fixtures.evidencePacks}
+          controlledEvidence={fixtures.controlledEvidence}
           deploymentChecks={fixtures.deploymentChecks}
           coverage={coverage}
           traceabilityProblems={traceabilityProblems}
@@ -406,12 +408,14 @@ function WorkbenchTab({
 function EvidenceTab({
   requirements,
   evidencePacks,
+  controlledEvidence,
   deploymentChecks,
   coverage,
   traceabilityProblems
 }: {
   requirements: Requirement[];
   evidencePacks: EvidencePack[];
+  controlledEvidence: ControlledEvidenceRecord[];
   deploymentChecks: DeploymentCheck[];
   coverage: ReturnType<typeof requirementCoverage>;
   traceabilityProblems: string[];
@@ -453,8 +457,9 @@ function EvidenceTab({
         <div className="panel-heading">
           <div>
             <p className="eyebrow">Objective evidence</p>
-            <h2>Artifact index</h2>
+            <h2>Artifact and control index</h2>
           </div>
+          <Metric icon={FileText} label="Controlled" value={`${controlledEvidence.length}`} tone="info" />
         </div>
         <div className="evidence-list">
           {evidencePacks.map((pack) => (
@@ -470,6 +475,24 @@ function EvidenceTab({
                   <span key={artifact}>
                     {artifact}
                     <strong>{hash}</strong>
+                  </span>
+                ))}
+              </div>
+            </article>
+          ))}
+          {controlledEvidence.map((record) => (
+            <article className="evidence-card controlled-evidence-card" key={record.id}>
+              <div>
+                <span className="record-id">{record.id}</span>
+                <h3>{record.title}</h3>
+              </div>
+              <p>{record.summary}</p>
+              <small>{record.limitations}</small>
+              <div className="hash-grid">
+                {record.artifacts.map((artifact) => (
+                  <span key={artifact}>
+                    {artifact}
+                    <strong>{record.category}</strong>
                   </span>
                 ))}
               </div>

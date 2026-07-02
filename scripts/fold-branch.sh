@@ -3,10 +3,10 @@ set -euo pipefail
 
 usage() {
   cat <<'USAGE'
-Fold the v2 branch back into the target branch using the target branch worktree.
+Fold one branch into a target branch using the target branch worktree.
 
 Usage:
-  scripts/fold-v2-to-main.sh [options]
+  scripts/fold-branch.sh [options]
 
 Options:
   --dry-run             Show what would happen without merging or pushing.
@@ -21,10 +21,12 @@ Options:
 Environment:
   SOURCE_BRANCH   Branch to merge. Default: current branch.
   TARGET_BRANCH   Branch to merge into. Default: main.
-  REMOTE          Git remote to push to. Default: origin
+  MERGE_MESSAGE   Merge commit message. Default: Fold <source> into <target>.
+  REMOTE          Git remote to push to. Default: origin.
 
-The script is worktree-aware. If main is checked out in a sibling worktree, the
-merge is performed there instead of trying to switch branches in this worktree.
+The script is worktree-aware. If the target branch is checked out in a sibling
+worktree, the merge is performed there instead of trying to switch branches in
+this worktree.
 USAGE
 }
 
@@ -34,7 +36,7 @@ PUSH=0
 SOURCE_BRANCH="${SOURCE_BRANCH:-}"
 TARGET_BRANCH="${TARGET_BRANCH:-main}"
 REMOTE="${REMOTE:-origin}"
-MERGE_MESSAGE="${MERGE_MESSAGE:-Fold v2 quality documentation into main}"
+MERGE_MESSAGE="${MERGE_MESSAGE:-}"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -86,6 +88,10 @@ fi
 if [[ -z "$SOURCE_BRANCH" ]]; then
   echo "Could not determine source branch." >&2
   exit 1
+fi
+
+if [[ -z "$MERGE_MESSAGE" ]]; then
+  MERGE_MESSAGE="Fold ${SOURCE_BRANCH} into ${TARGET_BRANCH}"
 fi
 
 if [[ "$SOURCE_BRANCH" == "$TARGET_BRANCH" ]]; then

@@ -8,7 +8,7 @@ const generated = {
   generatedAt,
   source: "src/data/readiness-fixtures.json",
   limitation: "Synthetic interview demonstration; not reactor design, safety, licensing, cybersecurity, or infrastructure evidence.",
-  packs: fixtures.computeJobs.map((job) => ({
+  computePacks: fixtures.computeJobs.map((job) => ({
     id: `GEN-${job.id}`,
     runId: job.id,
     requirementIds: job.linkedRequirements,
@@ -20,6 +20,20 @@ const generated = {
     ),
     schedulerState: job.state,
     diagnosis: job.diagnosis?.rootCause ?? "No failure diagnosis required."
+  })),
+  controlledRecords: fixtures.controlledEvidence.map((record) => ({
+    id: `GEN-${record.id}`,
+    sourceRecordId: record.id,
+    category: record.category,
+    requirementIds: record.requirementIds,
+    artifactHashes: Object.fromEntries(
+      record.artifacts.map((artifact) => [
+        artifact,
+        sha256({ artifact, recordId: record.id, category: record.category }).slice(0, 16)
+      ])
+    ),
+    summary: record.summary,
+    limitation: record.limitations
   }))
 };
 
@@ -29,7 +43,7 @@ writeFileSync(
   `${JSON.stringify(generated, null, 2)}\n`
 );
 
-console.log(`Generated ${generated.packs.length} evidence pack summaries in generated/evidence-index.json.`);
+console.log(`Generated ${generated.computePacks.length} compute evidence summaries and ${generated.controlledRecords.length} controlled evidence summaries in generated/evidence-index.json.`);
 
 function sha256(value) {
   return createHash("sha256").update(stableStringify(value)).digest("hex");

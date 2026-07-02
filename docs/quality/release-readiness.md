@@ -3,8 +3,8 @@
 | Field | Value |
 | --- | --- |
 | Document ID | QP-010 |
-| Revision | 2.0 |
-| Status | Draft for v2 review |
+| Revision | 2.1 |
+| Status | Draft for v2.1 review |
 | Owner | Quality |
 | Parent Plan | QP-001 |
 
@@ -26,12 +26,11 @@ The release candidate shall pass local CI, build, quality documentation checks, 
 ## Release Actions
 
 1. Complete the release checklist.
-2. Run `scripts/checkpoint-v2.sh --dry-run --skip-checks --no-push`.
+2. Run `scripts/checkpoint-version.sh --version v2.1.0 --dry-run --skip-checks --no-push`.
 3. Run the full verification chain.
-4. Run `scripts/checkpoint-v2.sh` with the selected push/signing options.
+4. Run `scripts/checkpoint-version.sh --version v2.1.0` with the selected push/signing options.
 5. Record tag, commit, verification summary, and unresolved limitations.
 
 ## Exit Criteria
 
-The release baseline is complete when the v2 tag exists, release records identify the tagged commit, and required verification evidence is available.
-
+The release baseline is complete when the version tag exists, release records identify the tagged commit, and required verification evidence is available.

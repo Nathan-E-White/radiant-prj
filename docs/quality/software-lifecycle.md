@@ -4,7 +4,7 @@
 | --- | --- |
 | Document ID | QP-004 |
 | Revision | 2.0 |
-| Status | Draft for v2 review |
+| Status | Draft for v2.1 review |
 | Owner | Software |
 | Parent Plan | QP-001 |
 
