@@ -139,7 +139,14 @@ if [[ "$ALLOW_JD" -eq 0 ]]; then
   exclude_pathspecs+=(':!JD.mhtml')
 fi
 
-run git add -A -- . "${exclude_pathspecs[@]}"
+source_status="$(git status --porcelain --untracked-files=all -- . "${exclude_pathspecs[@]}")"
+if [[ -n "$source_status" ]]; then
+  run git add -A -- . "${exclude_pathspecs[@]}"
+elif [[ "$DRY_RUN" -eq 1 ]]; then
+  echo "Dry run: no source changes to stage; would use existing HEAD for ${CHECKPOINT_VERSION}."
+else
+  echo "No source changes to stage; using existing HEAD for ${CHECKPOINT_VERSION}."
+fi
 
 commit_args=(git commit -m "$CHECKPOINT_MESSAGE")
 tag_args=(git tag -a "$CHECKPOINT_VERSION" -m "$CHECKPOINT_MESSAGE")
