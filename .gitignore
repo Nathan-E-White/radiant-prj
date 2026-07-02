@@ -2,6 +2,7 @@
 node_modules/
 dist/
 coverage/
+scripts/archive
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
