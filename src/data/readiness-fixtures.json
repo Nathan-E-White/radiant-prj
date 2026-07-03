@@ -237,6 +237,54 @@
       "linkedArtifacts": ["REL-TOOL-001"],
       "owner": "Software",
       "status": "verified"
+    },
+    {
+      "id": "SR-007",
+      "kind": "system",
+      "text": "The backend gateway shall preserve public-safe default behavior while providing an opt-in integration path for real Slurm submission.",
+      "rationale": "The v3.0 backend needs real handler structure without implying access to Radiant infrastructure.",
+      "source": "Backend handler objective",
+      "verificationMethod": "configuration-audit",
+      "linkedJobs": [],
+      "linkedArtifacts": ["SLURM-GATEWAY-001"],
+      "owner": "Systems",
+      "status": "verified"
+    },
+    {
+      "id": "SW-007",
+      "kind": "software",
+      "text": "The Slurm gateway shall require authorized mTLS client identity for submit and status handlers.",
+      "rationale": "Backend calls should have a clear trust boundary and no browser-held private keys.",
+      "source": "Backend security objective",
+      "verificationMethod": "test",
+      "linkedJobs": [],
+      "linkedArtifacts": ["SLURM-GATEWAY-001"],
+      "owner": "Software",
+      "status": "verified"
+    },
+    {
+      "id": "SW-008",
+      "kind": "software",
+      "text": "The Slurm gateway shall expose health, readiness, submit, job-status, and Prometheus-format metrics handlers.",
+      "rationale": "Operations need a minimal handler surface before other backend processes are added.",
+      "source": "Backend handler objective",
+      "verificationMethod": "test",
+      "linkedJobs": [],
+      "linkedArtifacts": ["SLURM-GATEWAY-001"],
+      "owner": "Software",
+      "status": "verified"
+    },
+    {
+      "id": "SW-009",
+      "kind": "software",
+      "text": "The Slurm gateway shall support mock mode by default and opt-in sbatch mode through validated configuration.",
+      "rationale": "The demo must remain deterministic while preserving a real integration seam.",
+      "source": "Backend integration objective",
+      "verificationMethod": "test",
+      "linkedJobs": [],
+      "linkedArtifacts": ["SLURM-GATEWAY-001"],
+      "owner": "Software",
+      "status": "verified"
     }
   ],
   "computeJobs": [
@@ -489,6 +537,25 @@
       "limitations": "Controlled local release tooling only; dry-run checks do not create remote refs or mutate GitHub state.",
       "approver": "Release reviewer",
       "generatedAt": "2026-07-02T17:30:00-05:00"
+    },
+    {
+      "id": "SLURM-GATEWAY-001",
+      "title": "Mock-first Slurm gateway backend baseline",
+      "category": "backend-gateway",
+      "requirementIds": ["SR-007", "SW-007", "SW-008", "SW-009"],
+      "artifacts": [
+        "backend/slurm-gateway/",
+        "deploy/slurm-gateway.Dockerfile",
+        "deploy/slurm-gateway.compose.yml",
+        "deploy/prometheus.yml",
+        "scripts/create-local-gateway-certs.sh",
+        "scripts/check-infra.mjs",
+        "scripts/check-quality-docs.mjs"
+      ],
+      "summary": "The v3.0 Go gateway provides core backend handlers, mTLS identity enforcement, request validation, deterministic mock spooling, opt-in sbatch spooling, and Prometheus-format counters.",
+      "limitations": "Controlled mock-first gateway only; default mode is synthetic and does not prove access to Radiant or production Slurm infrastructure.",
+      "approver": "Software reviewer",
+      "generatedAt": "2026-07-03T12:00:00-05:00"
     }
   ],
   "deploymentChecks": [

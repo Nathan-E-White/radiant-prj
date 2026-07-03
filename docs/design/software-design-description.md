@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Document ID | SDD-001 |
-| Revision | 2.1 |
-| Status | Draft for v2.1 review |
+| Revision | 3.0 |
+| Status | Draft for v3.0 review |
 | Owner | Software |
-| Baseline | v2.1 candidate |
+| Baseline | v3.0 candidate |
 
 ## Purpose
 
@@ -14,7 +14,7 @@ This document describes the design of the Kaleidos Compute Readiness Console and
 
 ## System Overview
 
-The console is a local React and TypeScript application that presents source-linked public facts, synthetic compute jobs, deterministic toy calculations, infrastructure-readiness artifacts, and objective evidence records. The design emphasizes traceability and reproducibility over runtime complexity.
+The console is a local React and TypeScript application with an optional Go backend gateway. It presents source-linked public facts, synthetic compute jobs, deterministic toy calculations, infrastructure-readiness artifacts, and objective evidence records. The v3.0 backend gateway adds a controlled handler boundary for Slurm-style submission while keeping mock mode as the default public-safe path.
 
 ## Major Components
 
@@ -27,6 +27,7 @@ The console is a local React and TypeScript application that presents source-lin
 | Evidence generation | `scripts/generate-evidence.mjs` | Generates reproducible local evidence index |
 | Fixture validation | `scripts/validate-fixtures.mjs` | Enforces fixture integrity and traceability |
 | Infrastructure checks | `scripts/check-infra.mjs` | Verifies local-safe infrastructure artifact completeness |
+| Slurm gateway | `backend/slurm-gateway/` | Provides health, readiness, metrics, submit, and status handlers with mTLS identity checks and mock/`sbatch` spooler modes |
 
 ## Design Constraints
 
@@ -34,7 +35,8 @@ The console is a local React and TypeScript application that presents source-lin
 - Synthetic outputs shall remain clearly separated from public facts.
 - Evidence indexes shall be reproducible from controlled fixtures.
 - Release scripts shall default to excluding generated output, build output, local environment files, and `JD.mhtml`.
-- The application shall run locally without a production backend.
+- The application shall run locally with controlled fixtures and may run an optional backend gateway; mock mode remains the default and real `sbatch` mode is opt-in only.
+- The frontend shall not hold client private keys for backend gateway authentication.
 
 ## Data Flow
 
@@ -43,6 +45,7 @@ The console is a local React and TypeScript application that presents source-lin
 3. The UI renders controlled fixture records and derived outputs.
 4. Validation scripts check fixture consistency and infrastructure artifact presence.
 5. Evidence generation writes a reproducible derived index under `generated/`.
+6. The optional Slurm gateway validates authorized client identity and request bounds before recording a synthetic mock job or delegating to configured `sbatch`.
 
 ## Design Outputs
 

@@ -1,29 +1,64 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
+usage() {
+  cat <<'USAGE'
+Configure a local Vault PKI role for Slurm gateway client certificates.
 
-# Enable the PKI secrets engine
-vault secrets enable pki
+Required environment:
+  VAULT_ADDR
+  VAULT_TOKEN
 
-# TODO Integrate parameters
-# Tune the engine to allow certificates with up to 1 year max lifetime
-vault secrets tune -max-lease-ttl=8760h pki
+Optional environment:
+  VAULT_PKI_PATH        default: pki
+  VAULT_ROLE           default: slurm-gateway-client
+  VAULT_ALLOWED_DOMAIN default: cluster.local
+  VAULT_MAX_TTL        default: 24h
+  VAULT_OUTPUT_DIR     default: .local/vault
 
-# TODO Integrate parameters
-# Generate the self-signed Root CA inside Vault
-vault write -field=certificate pki/root/generate/internal \
-    common_name="My Compute Cluster Root CA" \
-    ttl=8760h > vault_ca.crt
+This helper is for local development only. It does not write Vault tokens or
+private keys into source-controlled paths.
+USAGE
+}
 
-# TODO Integrate parameters
-# Configure the distribution URLs that go inside issued certificates
-vault write pki/config/urls \
-    issuing_certificates="http://127.0.0" \
-    crl_distribution_points="http://127.0.0"
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
 
-# TODO Integrate parameters
-# Create a strict validation Role that apps can use to request certificates
-vault write pki/roles/slurm-cluster-nodes \
-    allowed_domains="localhost", "cluster.local" \
-    allow_subdomains=true \
-    max_ttl=24h \
-    allow_any_name=true
+: "${VAULT_ADDR:?VAULT_ADDR is required}"
+: "${VAULT_TOKEN:?VAULT_TOKEN is required}"
+
+repo_root="$(git rev-parse --show-toplevel)"
+pki_path="${VAULT_PKI_PATH:-pki}"
+role="${VAULT_ROLE:-slurm-gateway-client}"
+allowed_domain="${VAULT_ALLOWED_DOMAIN:-cluster.local}"
+max_ttl="${VAULT_MAX_TTL:-24h}"
+output_dir="${VAULT_OUTPUT_DIR:-${repo_root}/.local/vault}"
+
+mkdir -p "$output_dir"
+
+if ! vault secrets list -format=json | grep -q "\"${pki_path}/\""; then
+  vault secrets enable -path="$pki_path" pki
+fi
+
+vault secrets tune -max-lease-ttl=8760h "$pki_path"
+
+vault write -field=certificate "${pki_path}/root/generate/internal" \
+  common_name="Radiant local Slurm gateway CA" \
+  ttl=8760h > "${output_dir}/vault_ca.crt"
+
+vault write "${pki_path}/config/urls" \
+  issuing_certificates="${VAULT_ADDR}/v1/${pki_path}/ca" \
+  crl_distribution_points="${VAULT_ADDR}/v1/${pki_path}/crl"
+
+vault write "${pki_path}/roles/${role}" \
+  allowed_domains="$allowed_domain" \
+  allow_subdomains=false \
+  allow_any_name=false \
+  enforce_hostnames=false \
+  client_flag=true \
+  server_flag=false \
+  max_ttl="$max_ttl"
+
+echo "Vault PKI role '${role}' configured at '${pki_path}'. CA written to ${output_dir}/vault_ca.crt."

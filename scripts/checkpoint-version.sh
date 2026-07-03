@@ -23,8 +23,9 @@ Environment:
   CHECKPOINT_MESSAGE   Commit/tag message. Default: Version <version> checkpoint.
   REMOTE               Git remote to push to. Default: origin.
 
-The script excludes JD.mhtml, node_modules, dist, generated, local environment
-files, and tool caches unless --allow-jd is supplied.
+The script excludes JD.mhtml, node_modules, dist, generated, local certificates,
+Vault development material, local environment files, and tool caches unless
+--allow-jd is supplied.
 USAGE
 }
 
@@ -133,6 +134,14 @@ exclude_pathspecs=(
   ':!terraform.tfstate*'
   ':!.env'
   ':!.env.*'
+  ':!.local'
+  ':!.local/**'
+  ':!*.key'
+  ':!*.crt'
+  ':!*.csr'
+  ':!*.srl'
+  ':!vault_ca.crt'
+  ':!vault-token*'
 )
 
 if [[ "$ALLOW_JD" -eq 0 ]]; then

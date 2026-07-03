@@ -3,14 +3,14 @@
 | Field | Value |
 | --- | --- |
 | Document ID | ICD-001 |
-| Revision | 2.1 |
-| Status | Draft for v2.1 review |
+| Revision | 3.0 |
+| Status | Draft for v3.0 review |
 | Owner | Software |
-| Baseline | v2.1 candidate |
+| Baseline | v3.0 candidate |
 
 ## Purpose
 
-This document identifies internal and operational interfaces that are controlled for the v2.1 baseline.
+This document identifies internal and operational interfaces that are controlled for the v3.0 baseline.
 
 ## User Interface
 
@@ -37,10 +37,23 @@ This document identifies internal and operational interfaces that are controlled
 | `scripts/checkpoint-version.sh` | Release candidate branch and version tag | Version checkpoint commit/tag and optional push |
 | `scripts/cleanup-version-hygiene.sh` | Target branch, version tag, optional merged branch/worktree | Push/tag hygiene and optional local cleanup |
 | v2 wrapper scripts | Historical v2 commands | Compatibility calls into generic release scripts |
+| `scripts/create-local-gateway-certs.sh` | Local dev certificate request | Ignored `.local/certs/` CA, server, authorized client, and unauthorized client certificates |
+
+## Backend Gateway Interface
+
+| Handler | Method | Input | Output | Control |
+| --- | --- | --- | --- | --- |
+| `/healthz` | GET | None | `{"status":"ok"}` | Handler test |
+| `/readyz` | GET | Runtime config | Ready status and mode | Handler test |
+| `/metrics` | GET | In-memory counters | Prometheus text metrics | Handler test and infra check |
+| `/api/jobs/submit` | POST | `script_name`, `partition`, `node_count`, optional `rank_count` | Queued job id, state, and mode | mTLS identity check, allowlists, Go tests |
+| `/api/jobs/{job_id}` | GET | Job id path segment | Recorded job status | mTLS identity check and Go tests |
+
+Submit and status handlers require an authorized client certificate common name unless `SLURM_GATEWAY_REQUIRE_CLIENT_CERT=false` is explicitly set for local development. Default mode is `mock`; `sbatch` mode is enabled only through `SLURM_GATEWAY_MODE=sbatch`, `SLURM_GATEWAY_SCRIPT_ROOT`, and allowlist configuration.
 
 ## Infrastructure Interface
 
-Docker, Terraform, and Ansible files describe local-safe infrastructure intent. They are validated by static checks and optional tool-native checks when the relevant tools are installed.
+Docker, Terraform, Ansible, Slurm gateway compose, Prometheus, and local certificate helper files describe local-safe infrastructure intent. They are validated by static checks and optional tool-native checks when the relevant tools are installed.
 
 ## External Source Interface
 

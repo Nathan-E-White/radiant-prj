@@ -59,7 +59,10 @@ requireContent("docs/quality/document-index.md", [
 requireContent("docs/requirements/verification-matrix.md", [
   "SR-005",
   "SW-006",
+  "SLURM-GATEWAY-001",
+  "SW-009",
   "bun run quality:check",
+  "bun run backend:test",
   "REL-TOOL-001"
 ]);
 requireContent("docs/release/release-checklist.md", [
@@ -68,11 +71,15 @@ requireContent("docs/release/release-checklist.md", [
   "checkpoint-version.sh"
 ]);
 requireContent("README.md", [
-  "Version 2.1",
+  "Version 3.0",
   "quality:check",
+  "backend:test",
+  "slurm-gateway",
   "checkpoint-version.sh"
 ]);
 requireContent("package.json", [
+  "\"backend:test\"",
+  "\"certs:local\"",
   "\"checkpoint:version\"",
   "\"fold:branch\"",
   "\"cleanup:version\"",

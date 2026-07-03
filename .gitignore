@@ -10,6 +10,7 @@ vite.config.d.ts
 # Generated evidence and local runtime state
 generated/
 .vite/
+.local/
 
 # Infrastructure tooling caches
 .terraform/
@@ -21,3 +22,11 @@ terraform.tfstate*
 .env.*
 !.env.example
 /bun.lock
+
+# Local certificate and Vault development material
+*.key
+*.crt
+*.csr
+*.srl
+vault_ca.crt
+vault-token*

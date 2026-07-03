@@ -10,7 +10,8 @@ This is public-safe demo material. It is not reactor design, safety analysis, li
 - **Compute Workbench:** deterministic toy transport, thermal, fleet, and infrastructure jobs with scheduler states, logs, artifacts, and diagnosis.
 - **Evidence Matrix:** requirements, verification methods, evidence packs, artifact hashes, deployment checks, and controlled change notes.
 - **DevOps Layer:** Docker Compose, dry-run Terraform, Ansible baseline templates, and CI checks for the synthetic hybrid compute environment.
-- **Version 2.1 Quality Package:** controlled quality, design, verification, release, records documentation, and fixture-backed process evidence suitable for serious engineering review.
+- **Version 3.0 Backend Gateway:** mock-first Go Slurm gateway handlers with mTLS identity checks, request validation, job status lookup, and Prometheus-format metrics.
+- **Controlled Quality Package:** controlled quality, design, verification, release, records documentation, and fixture-backed process evidence suitable for serious engineering review.
 
 ## Run Locally
 
@@ -30,9 +31,25 @@ bun run validate:fixtures
 bun run evidence:generate
 bun run infra:check
 bun run quality:check
+bun run backend:test
 ```
 
 `bun run ci` runs the full local verification chain.
+
+## Version 3.0 Backend Gateway
+
+The v3.0 backend lives under `backend/slurm-gateway`. It exposes `GET /healthz`, `GET /readyz`, `GET /metrics`, `POST /api/jobs/submit`, and `GET /api/jobs/{job_id}`.
+
+Default mode is `mock`, which returns deterministic synthetic Slurm job IDs and keeps the demo public-safe. Real `sbatch` submission is opt-in through `SLURM_GATEWAY_MODE=sbatch`, an allowed script list, an allowed partition list, and a configured script root. The frontend does not hold private keys; mTLS is a gateway boundary.
+
+```bash
+bun run backend:test
+bun run certs:local
+SLURM_GATEWAY_TLS_CERT_FILE=.local/certs/server.crt \
+SLURM_GATEWAY_TLS_KEY_FILE=.local/certs/server.key \
+SLURM_GATEWAY_CLIENT_CA_FILE=.local/certs/ca.crt \
+bun run backend:run
+```
 
 ## Version 2 Worktree
 
@@ -63,6 +80,7 @@ The existing `scripts/checkpoint-v1.sh` remains available for the historical v1 
 
 - `src/data/readiness-fixtures.json` is the controlled fixture source for public facts, jobs, requirements, compute evidence, controlled process evidence, milestones, and deployment checks.
 - `src/domain/readiness.ts` contains deterministic toy calculations, diagnosis rules, evidence hashing, and traceability checks.
+- `backend/slurm-gateway/` contains the v3.0 mock-first Slurm gateway handlers and tests.
 - `docs/requirements/` contains the requirements, verification matrix, change log, and objective evidence index.
 - `docs/quality/` contains quality program, document control, configuration management, lifecycle, V&V, corrective action, records, tool, supplier, release readiness, and document-index procedures.
 - `docs/design/` contains software design and interface-control records.

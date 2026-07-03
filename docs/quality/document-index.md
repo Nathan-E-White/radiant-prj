@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Document ID | QP-011 |
-| Revision | 2.1 |
-| Status | Draft for v2.1 review |
+| Revision | 3.0 |
+| Status | Draft for v3.0 review |
 | Owner | Quality |
-| Effective Baseline | v2.1 candidate |
+| Effective Baseline | v3.0 candidate |
 
 ## Quality Procedures
 
@@ -27,14 +27,14 @@
 
 | Document | Owner | Status |
 | --- | --- | --- |
-| System Requirements | Systems | Draft for v2.1 review |
-| Software Requirements | Software | Draft for v2.1 review |
-| Verification Matrix | Quality | Draft for v2.1 review |
-| Objective Evidence Index | Quality | Draft for v2.1 review |
-| Change Log | Quality | Draft for v2.1 review |
-| Software Design Description | Software | Draft for v2.1 review |
-| Interface Control Document | Software | Draft for v2.1 review |
-| Verification Plan | Quality | Draft for v2.1 review |
+| System Requirements | Systems | Draft for v3.0 review |
+| Software Requirements | Software | Draft for v3.0 review |
+| Verification Matrix | Quality | Draft for v3.0 review |
+| Objective Evidence Index | Quality | Draft for v3.0 review |
+| Change Log | Quality | Draft for v3.0 review |
+| Software Design Description | Software | Draft for v3.0 review |
+| Interface Control Document | Software | Draft for v3.0 review |
+| Verification Plan | Quality | Draft for v3.0 review |
 | Test Report Template | Quality | Template |
 | Release Checklist | Quality | Template |
 | Baseline Record | Quality | Recorded v2 baseline |

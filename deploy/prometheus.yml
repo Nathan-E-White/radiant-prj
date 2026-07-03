@@ -1,7 +1,7 @@
 global:
-  scrape_interval: 15s # Collect telemetry every 15 seconds
+  scrape_interval: 15s
 
 scrape_configs:
-  - job_name: 'slurm-security-gateway'
+  - job_name: "slurm-gateway"
     static_configs:
-      - targets: ['api-gateway:8080'] # Points to the Go container within Docker bridge network
+      - targets: ["slurm-gateway:8080"]

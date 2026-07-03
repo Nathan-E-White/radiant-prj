@@ -3,18 +3,18 @@
 | Field | Value |
 | --- | --- |
 | Document ID | VVP-001 |
-| Revision | 2.0 |
-| Status | Draft for v2.1 review |
+| Revision | 3.0 |
+| Status | Draft for v3.0 review |
 | Owner | Quality |
-| Baseline | v2.1 candidate |
+| Baseline | v3.0 candidate |
 
 ## Purpose
 
-This plan defines verification activities for the v2 baseline.
+This plan defines verification activities for the v3.0 baseline.
 
 ## Verification Scope
 
-The scope includes application type checking, unit tests, fixture validation, generated evidence, infrastructure artifact checks, quality documentation checks, and production build.
+The scope includes application type checking, frontend/domain unit tests, Go backend gateway tests, fixture validation, generated evidence, infrastructure artifact checks, quality documentation checks, and production build.
 
 ## Verification Activities
 
@@ -22,6 +22,7 @@ The scope includes application type checking, unit tests, fixture validation, ge
 | --- | --- | --- |
 | Type checking | `bun run typecheck` | Command output |
 | Unit tests | `bun run test` | Vitest output |
+| Backend gateway tests | `bun run backend:test` | Go test output |
 | Fixture validation | `bun run validate:fixtures` | Validation output |
 | Evidence generation | `bun run evidence:generate` | Generated index under `generated/` |
 | Infrastructure checks | `bun run infra:check` | Static and optional native check output |
@@ -34,6 +35,6 @@ The scope includes application type checking, unit tests, fixture validation, ge
 - Required commands complete successfully.
 - Requirements and evidence references remain traceable.
 - Generated evidence can be recreated from controlled fixtures.
+- Slurm gateway handlers reject missing or unauthorized certificates and validate job requests before spooling.
 - Release scripts pass dry-run checks.
 - No blocking findings remain open in release records.
-
