@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  # 1. Secure Go API Infrastructure
+  # TODO Integrate
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: slurm_api_gateway
+    ports:
+      - "8080:8080" # Metrics / standard API access
+      - "8443:8443" # Strict Secure mTLS Network Port
+    environment:
+      - VAULT_ADDR=http://vault-server:8200
+      - VAULT_TOKEN=root_dev_token_secure_123
+    volumes:
+      # Optional: mount local host cluster files if needed inside container
+      - /etc/slurm/slurm.conf:/etc/slurm/slurm.conf:ro
+    depends_on:
+      - vault-server
+    networks:
+      - cluster-net
+    restart: unless-stopped
+
+  # 2. Automated PKI Engine (HashiCorp Vault)
+  # TODO INTEGRATE
+  vault-server:
+    image: hashicorp/vault:1.15 # Using stable verified enterprise layer
+    container_name: vault_pki_server
+    ports:
+      - "8200:8200"
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=root_dev_token_secure_123
+      - VAULT_ADDR=http://127.0.0.1:8200
+    cap_add:
+      - IPC_LOCK # Prevents Vault memory layout from being swapped to host disk
+    networks:
+      - cluster-net
+    restart: unless-stopped
+
+  # 3. Operations Telemetry & Metric Scraping (Prometheus)
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: cluster_monitoring
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api-gateway
+    networks:
+      - cluster-net
+    restart: unless-stopped
+
+networks:
+  cluster-net:
+    driver: bridge

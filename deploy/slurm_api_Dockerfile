@@ -1,0 +1,52 @@
+# ==========================================
+# STAGE 1: Build the secure Go executable
+# ==========================================
+FROM golang:1.24-alpine AS builder
+
+# Install system dependencies needed for compilation (if any)
+RUN apk add --no-cache git
+
+# Set working directory inside the build container
+WORKDIR /app
+
+# Copy dependency files first (maximizes Docker layer caching)
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the rest of the source code files
+COPY main.go handlers.go types.go ./
+
+# Compile a static binary optimized for production
+# CGO_ENABLED=0 removes dependencies on host system C libraries
+# -ldflags="-s -w" strips debug information to minimize file size
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o slurm-api-server .
+
+# ==========================================
+# STAGE 2: Secure, minimal runtime environment
+# ==========================================
+FROM alpine:3.21
+
+# Install Slurm client components inside the container
+# This ensures the 'sbatch' CLI binary is physically present for Go to trigger
+RUN apk add --no-cache slurm-client
+
+# Create a non-root system user for strict security isolation
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+
+# Set the working environment
+WORKDIR /home/appuser
+
+# Copy only the compiled binary from the builder stage
+COPY --from=builder /app/slurm-api-server .
+
+# Ensure our local directory structure for safe scripts matches our code logic
+RUN mkdir -p /opt/slurm/scripts && chown -R appuser:appgroup /opt/slurm /home/appuser
+
+# Switch to the non-root user (container will refuse to run as root)
+USER appuser
+
+# Expose the API daemon port
+EXPOSE 8080
+
+# Launch the secure API
+ENTRYPOINT ["./slurm-api-server"]
