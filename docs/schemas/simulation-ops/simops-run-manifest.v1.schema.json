@@ -43,7 +43,7 @@
     "runtimeLimitSec": { "type": "integer", "minimum": 10, "maximum": 600 },
     "transportBinding": {
       "type": "string",
-      "enum": ["ndjson", "sse", "websocket", "http-batch", "local-tcp", "quic-webtransport"]
+      "enum": ["ndjson", "moq-webtransport", "websocket", "http-batch", "local-tcp", "quic-webtransport"]
     },
     "randomization": {
       "type": "object",
@@ -52,6 +52,102 @@
       "properties": {
         "mode": { "type": "string", "enum": ["correlated-pressure"] },
         "randomSeed": { "type": "integer", "minimum": 1 },
+        "distributionProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "emission": {
+              "type": "object",
+              "required": ["probability"],
+              "additionalProperties": false,
+              "properties": {
+                "probability": {
+                  "type": "object",
+                  "required": ["base", "min", "max"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "base": { "type": "number" },
+                    "pressureSlope": { "type": "number" },
+                    "min": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "max": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                }
+              }
+            },
+            "delay": {
+              "type": "object",
+              "required": ["distribution", "sourceLagMs", "collectorLagMs"],
+              "additionalProperties": false,
+              "properties": {
+                "distribution": { "type": "string", "enum": ["lognormal", "gamma"] },
+                "sourceLagMs": {
+                  "type": "object",
+                  "required": ["base", "min", "max"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "base": { "type": "number" },
+                    "pressureSlope": { "type": "number" },
+                    "min": { "type": "number", "minimum": 0 },
+                    "max": { "type": "number", "minimum": 0 }
+                  }
+                },
+                "collectorLagMs": {
+                  "type": "object",
+                  "required": ["base", "min", "max"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "base": { "type": "number" },
+                    "pressureSlope": { "type": "number" },
+                    "min": { "type": "number", "minimum": 0 },
+                    "max": { "type": "number", "minimum": 0 }
+                  }
+                },
+                "sigma": { "type": "number", "minimum": 0 },
+                "shape": { "type": "number", "minimum": 0 }
+              }
+            },
+            "burstLoss": {
+              "type": "object",
+              "required": ["goodToBad", "badToGood", "badEmitProbability"],
+              "additionalProperties": false,
+              "properties": {
+                "goodToBad": {
+                  "type": "object",
+                  "required": ["base", "min", "max"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "base": { "type": "number" },
+                    "pressureSlope": { "type": "number" },
+                    "min": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "max": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                },
+                "badToGood": {
+                  "type": "object",
+                  "required": ["base", "min", "max"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "base": { "type": "number" },
+                    "pressureSlope": { "type": "number" },
+                    "min": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "max": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                },
+                "badEmitProbability": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            },
+            "workerSensitivity": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "scheduler": { "type": "number", "minimum": 0, "maximum": 10 },
+                "storage": { "type": "number", "minimum": 0, "maximum": 10 },
+                "burst": { "type": "number", "minimum": 0, "maximum": 10 },
+                "fabric": { "type": "number", "minimum": 0, "maximum": 10 }
+              }
+            }
+          }
+        },
         "pressureCurve": {
           "type": "array",
           "minItems": 2,

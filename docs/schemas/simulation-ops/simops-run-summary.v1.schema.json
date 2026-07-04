@@ -31,6 +31,8 @@
       "enum": ["complete", "failed", "stopped"]
     },
     "frameCount": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+    "requestedFrameCount": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+    "droppedFrameCount": { "type": "integer", "minimum": 0, "maximum": 1000000 },
     "workers": {
       "type": "array",
       "minItems": 1,
@@ -116,7 +118,7 @@
         "storageFormat": { "type": "string", "enum": ["json"] },
         "transportBinding": {
           "type": "string",
-          "enum": ["ndjson", "sse", "websocket", "http-batch", "local-tcp", "quic-webtransport"]
+          "enum": ["ndjson", "moq-webtransport", "websocket", "http-batch", "local-tcp", "quic-webtransport"]
         }
       }
     }

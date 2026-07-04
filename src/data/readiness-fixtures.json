@@ -285,6 +285,54 @@
       "linkedArtifacts": ["SLURM-GATEWAY-001"],
       "owner": "Software",
       "status": "verified"
+    },
+    {
+      "id": "SR-008",
+      "kind": "system",
+      "text": "The backend shall orchestrate bounded Simulation Ops runs from approved work scripts or frontend actions while keeping control state and stream credentials behind backend trust boundaries.",
+      "rationale": "Simulation buckets need a real control-plane slice without giving the browser direct infrastructure authority.",
+      "source": "Simulation Ops backend objective",
+      "verificationMethod": "configuration-audit",
+      "linkedJobs": [],
+      "linkedArtifacts": ["SIMOPS-BACKEND-001"],
+      "owner": "Systems",
+      "status": "verified"
+    },
+    {
+      "id": "SW-010",
+      "kind": "software",
+      "text": "The Simulation Ops API shall create, inspect, stop, and ingest bounded runs with idempotency, authorization, worker-count limits, and spool-command records.",
+      "rationale": "Button mashing and scripted launch flows need one backend authority for run state and worker dispatch.",
+      "source": "Simulation Ops control-plane objective",
+      "verificationMethod": "test",
+      "linkedJobs": [],
+      "linkedArtifacts": ["SIMOPS-BACKEND-001"],
+      "owner": "Software",
+      "status": "verified"
+    },
+    {
+      "id": "SW-011",
+      "kind": "software",
+      "text": "The Simulation Ops live telemetry interface shall return MoQ/WebTransport subscription metadata and controlled track names instead of exposing an SSE endpoint or broker credentials.",
+      "rationale": "Browser-facing telemetry should match the selected MoQ v1 direction while preserving backend-only Redpanda access.",
+      "source": "Simulation Ops telemetry transport objective",
+      "verificationMethod": "test",
+      "linkedJobs": [],
+      "linkedArtifacts": ["SIMOPS-BACKEND-001"],
+      "owner": "Software",
+      "status": "verified"
+    },
+    {
+      "id": "SW-012",
+      "kind": "deployment",
+      "text": "The Simulation Ops persistence model shall separate Postgres control/catalog state, Redpanda hot telemetry logging, MinIO object storage, and Iceberg artifact-writer boundaries.",
+      "rationale": "Control-plane state, live replay, object storage, and analytic artifacts have different durability and query needs.",
+      "source": "Simulation Ops persistence objective",
+      "verificationMethod": "configuration-audit",
+      "linkedJobs": [],
+      "linkedArtifacts": ["SIMOPS-BACKEND-001"],
+      "owner": "Infrastructure",
+      "status": "verified"
     }
   ],
   "computeJobs": [
@@ -556,6 +604,26 @@
       "limitations": "Controlled mock-first gateway only; default mode is synthetic and does not prove access to Radiant or production Slurm infrastructure.",
       "approver": "Software reviewer",
       "generatedAt": "2026-07-03T12:00:00-05:00"
+    },
+    {
+      "id": "SIMOPS-BACKEND-001",
+      "title": "Simulation Ops backend slice",
+      "category": "simops-backend",
+      "requirementIds": ["SR-008", "SW-010", "SW-011", "SW-012"],
+      "artifacts": [
+        "backend/slurm-gateway/internal/gateway/simops_*.go",
+        "backend/slurm-gateway/cmd/simops-stream-gateway/",
+        "backend/slurm-gateway/cmd/simops-iceberg-writer/",
+        "deploy/postgres-init/001_simops.sql",
+        "deploy/slurm-gateway.compose.yml",
+        "workers/simops-generator/",
+        "scripts/check-infra.mjs",
+        "scripts/check-simops-contract.mjs"
+      ],
+      "summary": "The Simulation Ops backend slice provides bounded run control, idempotent launch records, token-gated telemetry ingest, MoQ/WebTransport subscription metadata, and local deployment seams for Redpanda, Postgres, MinIO, Iceberg, stream publication, and Rust bucket containers.",
+      "limitations": "Controlled local backend slice only; production MoQ, Redpanda, Docker launcher, and Iceberg client modules remain explicit integration seams.",
+      "approver": "Software reviewer",
+      "generatedAt": "2026-07-04T12:00:00-05:00"
     }
   ],
   "deploymentChecks": [

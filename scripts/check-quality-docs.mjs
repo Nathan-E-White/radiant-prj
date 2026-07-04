@@ -61,8 +61,12 @@ requireContent("docs/requirements/verification-matrix.md", [
   "SW-006",
   "SLURM-GATEWAY-001",
   "SW-009",
+  "SR-008",
+  "SW-012",
+  "SIMOPS-BACKEND-001",
   "bun run quality:check",
   "bun run backend:test",
+  "bun run simops:contract:check",
   "REL-TOOL-001"
 ]);
 requireContent("docs/release/release-checklist.md", [
@@ -74,7 +78,9 @@ requireContent("README.md", [
   "Version 3.0",
   "quality:check",
   "backend:test",
+  "simops:contract:check",
   "slurm-gateway",
+  "simops-stream-gateway",
   "checkpoint-version.sh"
 ]);
 requireContent("package.json", [

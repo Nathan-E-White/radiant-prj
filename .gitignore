@@ -22,6 +22,10 @@ terraform.tfstate*
 .env.*
 !.env.example
 /bun.lock
+.DS_Store
+.idea/
+target/
+**/target/
 
 # Local certificate and Vault development material
 *.key

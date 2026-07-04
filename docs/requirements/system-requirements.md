@@ -19,6 +19,7 @@ This document defines controlled system-level objectives for the Kaleidos Comput
 | DI-003 | Interview-facing compute-readiness objective | Drives synthetic workbench and evidence views |
 | DI-004 | Quality documentation objective | Drives controlled documentation and version-aware release process |
 | DI-005 | Backend handler objective | Drives mock-first Slurm gateway handlers, identity controls, and metrics |
+| DI-006 | Simulation Ops backend objective | Drives bounded run orchestration, live telemetry transport, and durable telemetry persistence seams |
 
 | ID | Requirement | Rationale | Verification | Status |
 | --- | --- | --- | --- | --- |
@@ -29,6 +30,7 @@ This document defines controlled system-level objectives for the Kaleidos Comput
 | SR-005 | The project shall maintain controlled quality, design, verification, and release documentation for the v2 and v2.1 baselines. | Reviewers should be able to inspect the engineering-control story without relying on oral explanation. | Configuration audit | Verified |
 | SR-006 | The release process shall provide version-aware checkpoint, branch-fold, and release-hygiene scripts with dry-run capability. | Baseline transitions should be reproducible and recoverable without cloning release logic for every version. | Configuration audit | Verified |
 | SR-007 | The backend gateway shall preserve public-safe default behavior while providing an opt-in integration path for real Slurm submission. | The v3.0 backend needs real handler structure without implying access to Radiant infrastructure. | Configuration audit | Verified |
+| SR-008 | The backend shall orchestrate bounded Simulation Ops runs from approved work scripts or frontend actions while keeping control state and stream credentials behind backend trust boundaries. | Simulation buckets need a real control-plane slice without giving the browser direct infrastructure authority. | Configuration audit | Verified |
 
 ## Public-Claim Boundary
 
@@ -36,7 +38,7 @@ The application may present only source-linked public facts about Kaleidos and R
 
 ## Traceability Notes
 
-SR-001 through SR-007 are represented in the controlled fixture set. SR-005, SR-006, and SR-007 link to controlled evidence records for documentation, release-process, and backend-gateway artifacts.
+SR-001 through SR-008 are represented in the controlled fixture set. SR-005, SR-006, SR-007, and SR-008 link to controlled evidence records for documentation, release-process, backend-gateway, and Simulation Ops backend artifacts.
 
 ## External Sources
 

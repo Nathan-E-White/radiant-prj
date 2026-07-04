@@ -22,6 +22,7 @@ type Gateway struct {
 	spooler SlurmSpooler
 	store   JobStore
 	metrics *Metrics
+	simops  *SimopsController
 	now     func() time.Time
 }
 
@@ -39,7 +40,13 @@ func NewDefaultGateway(cfg Config) (*Gateway, error) {
 		}
 	}
 
-	return NewGateway(cfg, spooler, NewInMemoryJobStore(), NewMetrics()), nil
+	app := NewGateway(cfg, spooler, NewInMemoryJobStore(), NewMetrics())
+	simops, err := NewDefaultSimopsController(cfg.Simops)
+	if err != nil {
+		return nil, err
+	}
+	app.simops = simops
+	return app, nil
 }
 
 func NewGateway(cfg Config, spooler SlurmSpooler, store JobStore, metrics *Metrics) *Gateway {
@@ -66,6 +73,11 @@ func (g *Gateway) Handler() http.Handler {
 	mux.HandleFunc("/healthz", g.handleHealth)
 	mux.HandleFunc("/readyz", g.handleReady)
 	mux.HandleFunc("/metrics", g.handleMetrics)
+	if g.simops != nil {
+		mux.HandleFunc("/api/simops/runs", g.handleSimopsRuns)
+		mux.HandleFunc("/api/simops/runs/", g.handleSimopsRun)
+		mux.HandleFunc("/internal/simops/runs/", g.handleInternalSimopsRun)
+	}
 	mux.HandleFunc("/api/jobs/submit", g.handleSubmitJob)
 	mux.HandleFunc("/api/jobs/", g.handleJobStatus)
 	return mux
@@ -88,7 +100,20 @@ func (g *Gateway) handleReady(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "Gateway is not ready", Code: "not_ready"})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ready", "mode": string(g.cfg.Mode)})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status": "ready",
+		"mode":   string(g.cfg.Mode),
+		"simops": map[string]any{
+			"enabled":              g.cfg.Simops.Enabled,
+			"control_store":        g.cfg.Simops.ControlStore,
+			"telemetry_log":        g.cfg.Simops.TelemetryLog,
+			"stream_protocol":      "moq-webtransport",
+			"stream_gateway":       g.cfg.Simops.MoQWebTransportURL,
+			"iceberg_catalog":      g.cfg.Simops.IcebergCatalog,
+			"iceberg_writer_mode":  g.cfg.Simops.IcebergWriterMode,
+			"adapter_contracts_v1": true,
+		},
+	})
 }
 
 func (g *Gateway) handleMetrics(w http.ResponseWriter, r *http.Request) {

@@ -5,3 +5,12 @@ scrape_configs:
   - job_name: "slurm-gateway"
     static_configs:
       - targets: ["slurm-gateway:8080"]
+  - job_name: "simops-stream-gateway"
+    static_configs:
+      - targets: ["simops-stream-gateway:9443"]
+  - job_name: "simops-iceberg-writer"
+    static_configs:
+      - targets: ["simops-iceberg-writer:9460"]
+  - job_name: "redpanda"
+    static_configs:
+      - targets: ["redpanda:9644"]

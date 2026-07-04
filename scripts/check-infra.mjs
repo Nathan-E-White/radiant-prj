@@ -10,6 +10,8 @@ const requiredFiles = [
   "backend/slurm-gateway/internal/gateway/handlers.go",
   "deploy/slurm-gateway.Dockerfile",
   "deploy/slurm-gateway.compose.yml",
+  "deploy/simops-generator.Dockerfile",
+  "deploy/postgres-init/001_simops.sql",
   "deploy/prometheus.yml",
   "scripts/create-local-gateway-certs.sh",
   "infra/terraform/main.tf",
@@ -50,7 +52,14 @@ if (existsSync("infra/ansible/site.yml")) {
 
 if (existsSync("deploy/slurm-gateway.Dockerfile")) {
   const dockerfile = readFileSync("deploy/slurm-gateway.Dockerfile", "utf8");
-  for (const token of ["backend/slurm-gateway", "go test ./...", "USER appuser", "SLURM_GATEWAY_MODE=mock"]) {
+  for (const token of [
+    "backend/slurm-gateway",
+    "go test ./...",
+    "simops-stream-gateway",
+    "simops-iceberg-writer",
+    "USER appuser",
+    "SLURM_GATEWAY_MODE=mock"
+  ]) {
     if (!dockerfile.includes(token)) {
       problems.push(`Slurm gateway Dockerfile missing ${token}`);
     }
@@ -59,9 +68,38 @@ if (existsSync("deploy/slurm-gateway.Dockerfile")) {
 
 if (existsSync("deploy/slurm-gateway.compose.yml")) {
   const compose = readFileSync("deploy/slurm-gateway.compose.yml", "utf8");
-  for (const token of ["slurm-gateway", "SLURM_GATEWAY_ALLOWED_CLIENTS", "no-new-privileges:true", "prometheus"]) {
+  for (const token of [
+    "slurm-gateway",
+    "SIMOPS_CONTROL_STORE",
+    "SIMOPS_TELEMETRY_LOG",
+    "SIMOPS_MOQ_WEBTRANSPORT_URL",
+    "simops-stream-gateway",
+    "simops-iceberg-writer",
+    "redpanda",
+    "postgres",
+    "minio",
+    "simops-bucket-scheduler",
+    "SLURM_GATEWAY_ALLOWED_CLIENTS",
+    "no-new-privileges:true",
+    "prometheus"
+  ]) {
     if (!compose.includes(token)) {
       problems.push(`Slurm gateway compose missing ${token}`);
+    }
+  }
+}
+
+if (existsSync("deploy/simops-generator.Dockerfile")) {
+  const dockerfile = readFileSync("deploy/simops-generator.Dockerfile", "utf8");
+  for (const token of [
+    "workers/simops-generator",
+    "cargo test --locked",
+    "gcr.io/distroless/static-debian13:nonroot",
+    "/examples/simulation-ops",
+    "ENTRYPOINT [\"/simops-generator\"]"
+  ]) {
+    if (!dockerfile.includes(token)) {
+      problems.push(`Simulation Ops generator Dockerfile missing ${token}`);
     }
   }
 }
@@ -70,6 +108,20 @@ if (existsSync("deploy/prometheus.yml")) {
   const prometheus = readFileSync("deploy/prometheus.yml", "utf8");
   if (!prometheus.includes("slurm-gateway:8080")) {
     problems.push("Prometheus config must scrape slurm-gateway:8080");
+  }
+  for (const token of ["simops-stream-gateway:9443", "simops-iceberg-writer:9460", "redpanda:9644"]) {
+    if (!prometheus.includes(token)) {
+      problems.push(`Prometheus config missing ${token}`);
+    }
+  }
+}
+
+if (existsSync("deploy/postgres-init/001_simops.sql")) {
+  const sql = readFileSync("deploy/postgres-init/001_simops.sql", "utf8");
+  for (const token of ["simops_runs", "simops_workers", "simops_events", "simops_artifacts", "iceberg_catalog"]) {
+    if (!sql.includes(token)) {
+      problems.push(`SimOps Postgres init SQL missing ${token}`);
+    }
   }
 }
 

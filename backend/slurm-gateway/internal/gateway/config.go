@@ -30,6 +30,26 @@ type Config struct {
 	TLSKeyFile        string
 	ClientCAFile      string
 	RequireClientCert bool
+	Simops            SimopsConfig
+}
+
+type SimopsConfig struct {
+	Enabled            bool
+	ControlStore       string
+	PostgresDSN        string
+	TelemetryLog       string
+	RedpandaBrokers    string
+	RedpandaTopic      string
+	LaunchMode         string
+	MoQWebTransportURL string
+	StreamTokenTTL     time.Duration
+	MaxActiveRuns      int
+	IcebergCatalog     string
+	IcebergCatalogDSN  string
+	IcebergWarehouse   string
+	IcebergS3Endpoint  string
+	IcebergS3Bucket    string
+	IcebergWriterMode  string
 }
 
 func DefaultConfig() Config {
@@ -45,6 +65,22 @@ func DefaultConfig() Config {
 		RequestTimeout:    10 * time.Second,
 		SbatchBin:         "sbatch",
 		RequireClientCert: true,
+		Simops: SimopsConfig{
+			Enabled:            true,
+			ControlStore:       "memory",
+			TelemetryLog:       "memory",
+			RedpandaBrokers:    "redpanda:9092",
+			RedpandaTopic:      "simops.telemetry.v1",
+			LaunchMode:         "resident",
+			MoQWebTransportURL: "https://127.0.0.1:9443/moq/simops",
+			StreamTokenTTL:     15 * time.Minute,
+			MaxActiveRuns:      8,
+			IcebergCatalog:     "postgres-sql",
+			IcebergWarehouse:   "s3://radiant-simops/warehouse",
+			IcebergS3Endpoint:  "http://minio:9000",
+			IcebergS3Bucket:    "radiant-simops",
+			IcebergWriterMode:  "external",
+		},
 	}
 }
 
@@ -58,6 +94,19 @@ func LoadConfigFromEnv() (Config, error) {
 	cfg.TLSCertFile = os.Getenv("SLURM_GATEWAY_TLS_CERT_FILE")
 	cfg.TLSKeyFile = os.Getenv("SLURM_GATEWAY_TLS_KEY_FILE")
 	cfg.ClientCAFile = os.Getenv("SLURM_GATEWAY_CLIENT_CA_FILE")
+	cfg.Simops.ControlStore = getenv("SIMOPS_CONTROL_STORE", cfg.Simops.ControlStore)
+	cfg.Simops.PostgresDSN = getenv("SIMOPS_POSTGRES_DSN", cfg.Simops.PostgresDSN)
+	cfg.Simops.TelemetryLog = getenv("SIMOPS_TELEMETRY_LOG", cfg.Simops.TelemetryLog)
+	cfg.Simops.RedpandaBrokers = getenv("SIMOPS_REDPANDA_BROKERS", cfg.Simops.RedpandaBrokers)
+	cfg.Simops.RedpandaTopic = getenv("SIMOPS_REDPANDA_TOPIC", cfg.Simops.RedpandaTopic)
+	cfg.Simops.LaunchMode = getenv("SIMOPS_LAUNCH_MODE", cfg.Simops.LaunchMode)
+	cfg.Simops.MoQWebTransportURL = getenv("SIMOPS_MOQ_WEBTRANSPORT_URL", cfg.Simops.MoQWebTransportURL)
+	cfg.Simops.IcebergCatalog = getenv("SIMOPS_ICEBERG_CATALOG", cfg.Simops.IcebergCatalog)
+	cfg.Simops.IcebergCatalogDSN = getenv("SIMOPS_ICEBERG_CATALOG_DSN", cfg.Simops.IcebergCatalogDSN)
+	cfg.Simops.IcebergWarehouse = getenv("SIMOPS_ICEBERG_WAREHOUSE", cfg.Simops.IcebergWarehouse)
+	cfg.Simops.IcebergS3Endpoint = getenv("SIMOPS_ICEBERG_S3_ENDPOINT", cfg.Simops.IcebergS3Endpoint)
+	cfg.Simops.IcebergS3Bucket = getenv("SIMOPS_ICEBERG_S3_BUCKET", cfg.Simops.IcebergS3Bucket)
+	cfg.Simops.IcebergWriterMode = getenv("SIMOPS_ICEBERG_WRITER_MODE", cfg.Simops.IcebergWriterMode)
 
 	if raw := strings.TrimSpace(os.Getenv("SLURM_GATEWAY_ALLOWED_CLIENTS")); raw != "" {
 		cfg.AllowedClients = csvSet(raw)
@@ -95,6 +144,27 @@ func LoadConfigFromEnv() (Config, error) {
 			return cfg, fmt.Errorf("SLURM_GATEWAY_REQUIRE_CLIENT_CERT must be boolean: %w", err)
 		}
 		cfg.RequireClientCert = value
+	}
+	if raw := strings.TrimSpace(os.Getenv("SIMOPS_ENABLED")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return cfg, fmt.Errorf("SIMOPS_ENABLED must be boolean: %w", err)
+		}
+		cfg.Simops.Enabled = value
+	}
+	if raw := strings.TrimSpace(os.Getenv("SIMOPS_STREAM_TOKEN_TTL")); raw != "" {
+		value, err := time.ParseDuration(raw)
+		if err != nil {
+			return cfg, fmt.Errorf("SIMOPS_STREAM_TOKEN_TTL must be a duration: %w", err)
+		}
+		cfg.Simops.StreamTokenTTL = value
+	}
+	if raw := strings.TrimSpace(os.Getenv("SIMOPS_MAX_ACTIVE_RUNS")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil {
+			return cfg, fmt.Errorf("SIMOPS_MAX_ACTIVE_RUNS must be an integer: %w", err)
+		}
+		cfg.Simops.MaxActiveRuns = value
 	}
 
 	return cfg, cfg.Validate()
@@ -137,6 +207,70 @@ func (c Config) Validate() error {
 		if c.TLSCertFile == "" || c.TLSKeyFile == "" || c.ClientCAFile == "" {
 			return fmt.Errorf("TLS cert, TLS key, and client CA files must be supplied together")
 		}
+	}
+	if err := c.Simops.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c SimopsConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	switch c.ControlStore {
+	case "memory", "postgres":
+	default:
+		return fmt.Errorf("unsupported SIMOPS_CONTROL_STORE %q", c.ControlStore)
+	}
+	if c.ControlStore == "postgres" && strings.TrimSpace(c.PostgresDSN) == "" {
+		return fmt.Errorf("SIMOPS_POSTGRES_DSN is required when SIMOPS_CONTROL_STORE=postgres")
+	}
+	switch c.TelemetryLog {
+	case "memory", "redpanda":
+	default:
+		return fmt.Errorf("unsupported SIMOPS_TELEMETRY_LOG %q", c.TelemetryLog)
+	}
+	if c.TelemetryLog == "redpanda" {
+		if strings.TrimSpace(c.RedpandaBrokers) == "" {
+			return fmt.Errorf("SIMOPS_REDPANDA_BROKERS is required when SIMOPS_TELEMETRY_LOG=redpanda")
+		}
+		if strings.TrimSpace(c.RedpandaTopic) == "" {
+			return fmt.Errorf("SIMOPS_REDPANDA_TOPIC is required when SIMOPS_TELEMETRY_LOG=redpanda")
+		}
+	}
+	switch c.LaunchMode {
+	case "resident", "spawn", "auto":
+	default:
+		return fmt.Errorf("unsupported SIMOPS_LAUNCH_MODE %q", c.LaunchMode)
+	}
+	if strings.TrimSpace(c.MoQWebTransportURL) == "" {
+		return fmt.Errorf("SIMOPS_MOQ_WEBTRANSPORT_URL is required")
+	}
+	if c.StreamTokenTTL <= 0 {
+		return fmt.Errorf("SIMOPS_STREAM_TOKEN_TTL must be positive")
+	}
+	if c.MaxActiveRuns < 1 {
+		return fmt.Errorf("SIMOPS_MAX_ACTIVE_RUNS must be at least 1")
+	}
+	switch c.IcebergCatalog {
+	case "postgres-sql", "rest", "filesystem":
+	default:
+		return fmt.Errorf("unsupported SIMOPS_ICEBERG_CATALOG %q", c.IcebergCatalog)
+	}
+	if c.IcebergCatalog == "postgres-sql" && c.ControlStore == "postgres" && strings.TrimSpace(c.IcebergCatalogDSN) == "" {
+		return fmt.Errorf("SIMOPS_ICEBERG_CATALOG_DSN is required when using the Postgres Iceberg SQL catalog")
+	}
+	if strings.TrimSpace(c.IcebergWarehouse) == "" {
+		return fmt.Errorf("SIMOPS_ICEBERG_WAREHOUSE is required")
+	}
+	if strings.TrimSpace(c.IcebergS3Bucket) == "" {
+		return fmt.Errorf("SIMOPS_ICEBERG_S3_BUCKET is required")
+	}
+	switch c.IcebergWriterMode {
+	case "external", "disabled":
+	default:
+		return fmt.Errorf("unsupported SIMOPS_ICEBERG_WRITER_MODE %q", c.IcebergWriterMode)
 	}
 	return nil
 }

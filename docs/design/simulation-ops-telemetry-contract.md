@@ -10,9 +10,9 @@
 
 ## Purpose
 
-This document defines the first Simulation Ops telemetry contract for the Kaleidos Compute Readiness Console. It gives future local workers, backend collectors, chart panels, and evidence artifacts a shared event shape before any container orchestration, UI streaming, or transport binding is implemented.
+This document defines the first Simulation Ops telemetry contract for the Kaleidos Compute Readiness Console. It gives local workers, backend collectors, chart panels, and evidence artifacts a shared event shape while the backend adds bounded run orchestration, MoQ/WebTransport subscription metadata, and durable telemetry handoff seams.
 
-The contract is transport-agnostic. A frame that appears in the canonical NDJSON examples must also be usable over SSE, WebSocket, backend-local TCP, QUIC/WebTransport, HTTP batching, or a future Kubernetes collector without changing the payload shape.
+The telemetry envelope remains transport-stable. A frame that appears in the canonical NDJSON examples must also be usable over MoQ/WebTransport, WebSocket, backend-local TCP, HTTP batching, or a future container collector without changing the payload shape. The v1 live browser path is MoQ over WebTransport; RoQ is deferred.
 
 ## Run Lifecycle
 
@@ -67,7 +67,7 @@ A run starts from a manifest with:
 - `lifecycle`: initial lifecycle state.
 - `workbenchAnchor`: current app context, usually `JOB-HPC-404`, `EP-HPC-404`, and `SLURM-GATEWAY-001`.
 - `runtimeLimitSec`: maximum local run duration.
-- `transportBinding`: example or runtime transport name. The first examples use `ndjson`.
+- `transportBinding`: example or runtime transport name. Canonical examples use `ndjson`; live browser delivery uses `moq-webtransport`.
 - `randomization`: scenario-level pressure curve, baseline ranges, couplings, events, and bounds.
 - `workers`: worker definitions, payload type, emission rate, and panel target.
 - `artifacts`: expected output artifacts.
@@ -96,15 +96,32 @@ Each scenario defines:
 - `events`: discrete transitions such as queue hold, checkpoint slowdown, burst activation, or fabric warning.
 - `bounds`: hard min/max clamps for plausible chart values.
 
+Manifests may include an optional `randomization.distributionProfile` for seeded stochastic augmentation. The profile samples emission, delay, burst-loss, and worker-sensitivity behavior conditionally on the shared pressure curve; it is not a general nested distribution language.
+
 Repeatability is optional in this revision. `randomSeed` may appear in a manifest, but it is not required. Completed runs must record enough summary values to inspect what happened after the fact.
 
 ## Transport Binding
 
 NDJSON is the canonical storage and example format for this slice. Each line is one telemetry envelope.
 
-This contract intentionally does not choose TCP, QUIC, WebRTC, SSE, or WebSocket for live operation. The envelope fields `sequence`, `emittedAt`, optional `receivedAt`, and optional `streamQuality` are the required seam for future transport work.
+Live frontend delivery uses MoQ over WebTransport. The Go control plane returns short-lived subscription metadata for a run; the browser does not receive Redpanda credentials or bucket container authority.
 
-WebRTC is not assumed by this contract because the expected topology is worker-to-backend-to-browser, not peer-to-peer browser networking. QUIC/WebTransport can be considered later as a transport binding if head-of-line blocking becomes a meaningful demo or implementation concern.
+The controlled track layout is:
+
+| Track | Purpose |
+| --- | --- |
+| `lifecycle` | Run-level lifecycle transitions such as `starting`, `streaming`, `failed`, and `stopped`. |
+| `workers/{worker_id}/telemetry` | Validated telemetry frames for one worker. |
+| `workers/{worker_id}/quality` | Stream-quality observations, lag, replay gaps, and dropped-frame counts. |
+| `artifacts` | Artifact and Iceberg commit references for completed or partially persisted runs. |
+
+RoQ is not selected for v1 because the current plan needs browser-facing publish/subscribe telemetry tracks, not RTP media-session semantics. WebRTC is not assumed because the expected topology is worker-to-backend-to-browser, not peer-to-peer browser networking.
+
+## Persistence and Artifact Handoff
+
+The v1 deployment contract assigns Postgres to control-plane records for runs, workers, idempotency keys, spool commands, lifecycle state, artifact references, and local Iceberg SQL-catalog metadata. It assigns Redpanda to the hot durable telemetry log keyed by run and worker, MinIO to S3-compatible object storage, and Iceberg Rust to validated Parquet-backed table commits. The current checked-in Go slice keeps these as explicit adapter contracts while retaining a memory-backed local runtime for tests.
+
+Iceberg manages analytic telemetry artifacts and table metadata. It does not replace Postgres for command, run, or authorization state.
 
 ## Contract Artifacts
 
@@ -124,4 +141,3 @@ WebRTC is not assumed by this contract because the expected topology is worker-t
 ## Verification
 
 `bun run simops:contract:check` validates the example manifest, NDJSON telemetry frames, payload selection, per-worker sequence monotonicity, timestamp parsing, and summary references.
-

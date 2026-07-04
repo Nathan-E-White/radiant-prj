@@ -18,6 +18,7 @@
 | CHG-006 | 2026-07-01 | Added WIP checkpoint, fold-back, and v2 version checkpoint script plan and implementation. | SR-006, SW-006, REL-001, REL-002 | Script dry-runs |
 | CHG-007 | 2026-07-02 | Closed the existing v2.0.0 tag record, added fixture-backed controlled evidence for SR-005/SR-006 and SW-005/SW-006, and generalized release tooling with v2 compatibility wrappers. | DOC-V2-001, REL-TOOL-001, SR-005, SR-006, SW-005, SW-006 | `bun run ci`, script dry-runs |
 | CHG-008 | 2026-07-03 | Rebuilt the v3.0 backend handler skeleton as a mock-first Go Slurm gateway with mTLS identity controls, status lookup, metrics, deploy artifacts, and secret hygiene. | SR-007, SW-007, SW-008, SW-009, SLURM-GATEWAY-001 | `bun run backend:test`, `bun run infra:check`, `bun run quality:check` |
+| CHG-009 | 2026-07-04 | Added the Simulation Ops backend slice with bounded run control, MoQ/WebTransport subscription metadata, token-gated ingest, Redpanda/Postgres/MinIO/Iceberg deployment seams, stream-gateway and Iceberg-writer service boundaries, and Rust bucket container topology. | SR-008, SW-010, SW-011, SW-012, SIMOPS-BACKEND-001 | `bun run backend:test`, `bun run infra:check`, `bun run simops:contract:check`, `bun run simops:generator:test` |
 
 ## Control Note
 

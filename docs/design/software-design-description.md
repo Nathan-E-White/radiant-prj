@@ -14,7 +14,7 @@ This document describes the design of the Kaleidos Compute Readiness Console and
 
 ## System Overview
 
-The console is a local React and TypeScript application with an optional Go backend gateway. It presents source-linked public facts, synthetic compute jobs, deterministic toy calculations, infrastructure-readiness artifacts, and objective evidence records. The v3.0 backend gateway adds a controlled handler boundary for Slurm-style submission while keeping mock mode as the default public-safe path.
+The console is a local React and TypeScript application with an optional Go backend gateway. It presents source-linked public facts, synthetic compute jobs, deterministic toy calculations, infrastructure-readiness artifacts, and objective evidence records. The v3.0 backend gateway adds a controlled handler boundary for Slurm-style submission while keeping mock mode as the default public-safe path. The Simulation Ops backend slice adds bounded run orchestration, token-gated telemetry ingest, MoQ/WebTransport subscription metadata, memory-backed local tests, and local deployment seams for Redpanda, Postgres, MinIO, and Iceberg Rust artifact management.
 
 ## Major Components
 
@@ -29,6 +29,8 @@ The console is a local React and TypeScript application with an optional Go back
 | Infrastructure checks | `scripts/check-infra.mjs` | Verifies local-safe infrastructure artifact completeness |
 | Simulation Ops contract | `docs/design/simulation-ops-telemetry-contract.md`, `docs/schemas/simulation-ops/`, `examples/simulation-ops/` | Defines transport-agnostic scenario telemetry frames, payload schemas, and example run artifacts |
 | Slurm gateway | `backend/slurm-gateway/` | Provides health, readiness, metrics, submit, and status handlers with mTLS identity checks and mock/`sbatch` spooler modes |
+| SimOps control plane | `backend/slurm-gateway/internal/gateway/simops_*.go` | Provides run creation, status, stop, token-gated ingest, idempotency, MoQ subscription metadata, and adapter seams |
+| SimOps deployment | `deploy/slurm-gateway.compose.yml`, `deploy/postgres-init/001_simops.sql` | Defines local Redpanda, Postgres, MinIO, stream-gateway, Iceberg-writer, and Rust bucket services |
 
 ## Design Constraints
 
@@ -38,6 +40,8 @@ The console is a local React and TypeScript application with an optional Go back
 - Release scripts shall default to excluding generated output, build output, local environment files, and `JD.mhtml`.
 - The application shall run locally with controlled fixtures and may run an optional backend gateway; mock mode remains the default and real `sbatch` mode is opt-in only.
 - The frontend shall not hold client private keys for backend gateway authentication.
+- The frontend shall not hold Redpanda, Postgres, MinIO, Docker, or Iceberg catalog credentials; it receives short-lived MoQ/WebTransport subscription metadata from the control plane.
+- Iceberg artifact management shall not replace Postgres control-plane state; the deployment contract keeps Postgres as the run, spooler, idempotency, and artifact-reference source of truth while the checked-in Go adapter remains memory-backed for deterministic local tests.
 
 ## Data Flow
 
@@ -47,7 +51,9 @@ The console is a local React and TypeScript application with an optional Go back
 4. Validation scripts check fixture consistency and infrastructure artifact presence.
 5. Evidence generation writes a reproducible derived index under `generated/`.
 6. The optional Slurm gateway validates authorized client identity and request bounds before recording a synthetic mock job or delegating to configured `sbatch`.
-7. Simulation Ops contract examples define future telemetry and run-summary artifacts without implementing live transport, worker orchestration, or UI streaming.
+7. Simulation Ops run requests enter the Go control plane through `POST /api/simops/runs`, which validates scenario, work-script, worker-kind, runtime, and idempotency bounds.
+8. The control plane records run state, plans worker spool commands, returns MoQ/WebTransport subscription metadata, and accepts token-gated telemetry at `/internal/simops/runs/{run_id}/ingest`.
+9. Redpanda is the hot telemetry log boundary, Postgres is the control-plane and Iceberg SQL-catalog boundary, MinIO is the local S3-compatible warehouse, and Iceberg Rust is the artifact-management target for validated telemetry batches. The checked-in services expose those adapter boundaries without embedding production client implementations.
 
 ## Design Outputs
 
