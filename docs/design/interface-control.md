@@ -32,6 +32,7 @@ This document identifies internal and operational interfaces that are controlled
 | `scripts/generate-evidence.mjs` | Controlled fixtures | `generated/evidence-index.json` |
 | `scripts/check-infra.mjs` | Infrastructure files | Pass/fail static and optional native checks |
 | `scripts/check-quality-docs.mjs` | Controlled markdown docs | Pass/fail documentation structure check |
+| `scripts/check-simops-contract.mjs` | Simulation Ops schemas and examples | Pass/fail contract example validation |
 | `scripts/checkpoint-wip.sh` | Git worktree state | WIP checkpoint commit and optional push |
 | `scripts/fold-branch.sh` | Source and target branches | No-fast-forward merge into target branch |
 | `scripts/checkpoint-version.sh` | Release candidate branch and version tag | Version checkpoint commit/tag and optional push |
@@ -50,6 +51,17 @@ This document identifies internal and operational interfaces that are controlled
 | `/api/jobs/{job_id}` | GET | Job id path segment | Recorded job status | mTLS identity check and Go tests |
 
 Submit and status handlers require an authorized client certificate common name unless `SLURM_GATEWAY_REQUIRE_CLIENT_CERT=false` is explicitly set for local development. Default mode is `mock`; `sbatch` mode is enabled only through `SLURM_GATEWAY_MODE=sbatch`, `SLURM_GATEWAY_SCRIPT_ROOT`, and allowlist configuration.
+
+## Simulation Ops Contract Interface
+
+| Interface | Input | Output | Control |
+| --- | --- | --- | --- |
+| Run manifest | Scenario selection, workbench anchor, worker declarations, randomization blueprint | Bounded run setup record | `simops-run-manifest.v1` schema |
+| Telemetry envelope | Worker frame with sequence, timestamps, payload type, and payload | Transport-agnostic telemetry frame | `simops-telemetry-envelope.v1` schema |
+| Payload schemas | Scheduler, storage, elastic bursting, and fabric profiler metrics | Panel-ready metric structures | Payload schemas and example NDJSON |
+| Run summary | Completed telemetry stream and scenario events | Reviewable run artifact for future evidence handoff | `simops-run-summary.v1` schema |
+
+The contract uses NDJSON as the canonical example and storage format. Live transport selection is intentionally deferred; the same envelope shall be usable over SSE, WebSocket, backend-local TCP, QUIC/WebTransport, HTTP batching, or future container orchestration.
 
 ## Infrastructure Interface
 

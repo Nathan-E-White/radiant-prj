@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "payload.fabric-profiler.v1",
+  "title": "Fabric Profiler Payload v1",
+  "type": "object",
+  "required": ["nodes", "links", "ibCounters", "messageSizes", "nonblockingComm"],
+  "additionalProperties": false,
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["nodeId", "rack", "role", "loadPct"],
+        "additionalProperties": false,
+        "properties": {
+          "nodeId": { "type": "string" },
+          "rack": { "type": "string" },
+          "role": { "type": "string", "enum": ["rank-host", "io", "gateway"] },
+          "loadPct": { "type": "number", "minimum": 0, "maximum": 100 }
+        }
+      }
+    },
+    "links": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["source", "target", "utilizationPct", "latencyUs", "errorRate", "temperatureClass"],
+        "additionalProperties": false,
+        "properties": {
+          "source": { "type": "string" },
+          "target": { "type": "string" },
+          "utilizationPct": { "type": "number", "minimum": 0, "maximum": 100 },
+          "latencyUs": { "type": "number", "minimum": 0, "maximum": 10000 },
+          "errorRate": { "type": "number", "minimum": 0, "maximum": 1 },
+          "temperatureClass": { "type": "string", "enum": ["cool", "warm", "hot"] }
+        }
+      }
+    },
+    "ibCounters": {
+      "type": "object",
+      "required": ["portXmitWait", "symbolErrors", "linkDowned", "vl15Dropped"],
+      "additionalProperties": false,
+      "properties": {
+        "portXmitWait": { "type": "integer", "minimum": 0, "maximum": 100000000 },
+        "symbolErrors": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+        "linkDowned": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "vl15Dropped": { "type": "integer", "minimum": 0, "maximum": 1000000 }
+      }
+    },
+    "messageSizes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["bucketBytes", "count"],
+        "additionalProperties": false,
+        "properties": {
+          "bucketBytes": { "type": "integer", "minimum": 1, "maximum": 1073741824 },
+          "count": { "type": "integer", "minimum": 0, "maximum": 10000000 }
+        }
+      }
+    },
+    "nonblockingComm": {
+      "type": "object",
+      "required": ["postedReceives", "pendingSends", "completionOverheadPct", "progressStallMsP95"],
+      "additionalProperties": false,
+      "properties": {
+        "postedReceives": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+        "pendingSends": { "type": "integer", "minimum": 0, "maximum": 10000000 },
+        "completionOverheadPct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "progressStallMsP95": { "type": "number", "minimum": 0, "maximum": 10000 }
+      }
+    }
+  }
+}

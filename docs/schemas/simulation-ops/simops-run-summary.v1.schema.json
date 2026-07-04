@@ -1,0 +1,124 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "simops-run-summary.v1",
+  "title": "Simulation Ops Run Summary v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "scenarioId",
+    "completedAt",
+    "lifecycle",
+    "frameCount",
+    "workers",
+    "aggregateMetrics",
+    "events",
+    "degradedIntervals",
+    "artifacts",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "string", "enum": ["simops.run-summary.v1"] },
+    "runId": { "type": "string", "pattern": "^RUN-[A-Z0-9-]+$" },
+    "scenarioId": {
+      "type": "string",
+      "enum": ["nominal", "scheduler-drift", "checkpoint-pressure", "cloud-burst", "fabric-warning"]
+    },
+    "completedAt": { "type": "string", "format": "date-time" },
+    "lifecycle": {
+      "type": "string",
+      "enum": ["complete", "failed", "stopped"]
+    },
+    "frameCount": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+    "workers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["workerId", "workerKind", "payloadType", "frames", "droppedFrameCount"],
+        "additionalProperties": false,
+        "properties": {
+          "workerId": { "type": "string" },
+          "workerKind": { "type": "string", "enum": ["scheduler", "storage", "burst", "fabric"] },
+          "payloadType": {
+            "type": "string",
+            "enum": ["schedulerCoScheduling", "checkpointStorage", "elasticBursting", "fabricProfiler"]
+          },
+          "frames": { "type": "integer", "minimum": 0, "maximum": 1000000 },
+          "droppedFrameCount": { "type": "integer", "minimum": 0, "maximum": 1000000 }
+        }
+      }
+    },
+    "aggregateMetrics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["metricPath", "min", "avg", "max", "unit"],
+        "additionalProperties": false,
+        "properties": {
+          "metricPath": { "type": "string" },
+          "min": { "type": "number" },
+          "avg": { "type": "number" },
+          "max": { "type": "number" },
+          "unit": { "type": "string" }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["offsetSec", "eventType", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "offsetSec": { "type": "integer", "minimum": 0, "maximum": 600 },
+          "eventType": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "degradedIntervals": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["startOffsetSec", "endOffsetSec", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "startOffsetSec": { "type": "integer", "minimum": 0, "maximum": 600 },
+          "endOffsetSec": { "type": "integer", "minimum": 0, "maximum": 600 },
+          "reason": { "type": "string" }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["artifactId", "path", "mediaType", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": { "type": "string" },
+          "path": { "type": "string" },
+          "mediaType": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["generatedBy", "dataClass", "storageFormat", "transportBinding"],
+      "additionalProperties": false,
+      "properties": {
+        "generatedBy": { "type": "string" },
+        "dataClass": { "type": "string", "enum": ["synthetic-simulation-ops"] },
+        "storageFormat": { "type": "string", "enum": ["json"] },
+        "transportBinding": {
+          "type": "string",
+          "enum": ["ndjson", "sse", "websocket", "http-batch", "local-tcp", "quic-webtransport"]
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="700" viewBox="0 0 1120 700" role="img" aria-labelledby="title desc">
+  <title id="title">Panel 2 IO and Checkpoint Burst Buffer Monitor Mockup</title>
+  <desc id="desc">HPC storage monitor with parallel file system IOPS, burst buffer throughput, NVMe-over-fabrics saturation, storage target degradation heat map, and checkpoint countdown.</desc>
+  <defs>
+    <linearGradient id="header" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#2c251b"/>
+      <stop offset="100%" stop-color="#563a20"/>
+    </linearGradient>
+    <style>
+      text { font-family: Inter, Arial, sans-serif; }
+      .title { fill: #fff8ed; font-size: 22px; font-weight: 800; }
+      .sub { fill: #ecd8bd; font-size: 13px; }
+      .label { fill: #5c5143; font-size: 13px; }
+      .h2 { fill: #201a14; font-size: 15px; font-weight: 800; }
+      .metric { fill: #17130f; font-size: 32px; font-weight: 800; }
+    </style>
+  </defs>
+  <rect width="1120" height="700" fill="#f7f3ec"/>
+  <rect x="28" y="24" width="1064" height="652" rx="8" fill="#ffffff" stroke="#33291e" stroke-width="2"/>
+  <rect x="28" y="24" width="1064" height="82" rx="8" fill="url(#header)"/>
+  <text x="56" y="58" class="title">Panel 2: IO and Checkpoint Burst Buffer Monitor</text>
+  <text x="56" y="84" class="sub">Parallel file system IOPS, burst-buffer throughput, NVMe-oF saturation, checkpoint countdown</text>
+  <rect x="842" y="48" width="198" height="30" rx="15" fill="#fff1d0" stroke="#d9a944"/>
+  <text x="884" y="68" fill="#6b4a04" font-size="12" font-weight="800">CHECKPOINT ACTIVE</text>
+
+  <rect x="56" y="132" width="230" height="116" rx="8" fill="#fff8ea" stroke="#d7b777"/>
+  <text x="78" y="158" class="label" font-weight="800">Parallel FS IOPS</text>
+  <text x="78" y="198" class="metric">1.8M</text>
+  <text x="78" y="226" class="label">synthetic aggregate</text>
+  <rect x="314" y="132" width="230" height="116" rx="8" fill="#eef4f7" stroke="#bbcad4"/>
+  <text x="336" y="158" class="label" font-weight="800">Burst throughput</text>
+  <text x="336" y="198" class="metric">12.4 GB/s</text>
+  <text x="336" y="226" class="label">64KB block writer path</text>
+  <rect x="572" y="132" width="230" height="116" rx="8" fill="#f5eef1" stroke="#d5b4bf"/>
+  <text x="594" y="158" class="label" font-weight="800">NVMe-oF cache saturation</text>
+  <text x="594" y="198" class="metric">82%</text>
+  <text x="594" y="226" class="label">warn threshold crossed</text>
+  <rect x="830" y="132" width="210" height="116" rx="8" fill="#edf5f0" stroke="#b9cabf"/>
+  <text x="852" y="158" class="label" font-weight="800">Checkpoint ETA</text>
+  <text x="852" y="198" class="metric">02:47</text>
+  <text x="852" y="226" class="label">remaining to artifact seal</text>
+
+  <rect x="56" y="282" width="486" height="330" rx="8" fill="#fbfaf7" stroke="#d8cec0"/>
+  <text x="80" y="314" class="h2">Storage target degradation heat map</text>
+  <text x="80" y="340" class="label">Synthetic OST / EFS target health by write pressure and latency</text>
+  <g transform="translate(80 368)">
+    <rect width="54" height="42" fill="#4e9b68"/><rect x="62" width="54" height="42" fill="#5cae73"/><rect x="124" width="54" height="42" fill="#d9b23f"/><rect x="186" width="54" height="42" fill="#d9b23f"/><rect x="248" width="54" height="42" fill="#c85c3d"/><rect x="310" width="54" height="42" fill="#4e9b68"/>
+    <rect y="50" width="54" height="42" fill="#5cae73"/><rect x="62" y="50" width="54" height="42" fill="#d9b23f"/><rect x="124" y="50" width="54" height="42" fill="#c85c3d"/><rect x="186" y="50" width="54" height="42" fill="#d9b23f"/><rect x="248" y="50" width="54" height="42" fill="#c85c3d"/><rect x="310" y="50" width="54" height="42" fill="#5cae73"/>
+    <rect y="100" width="54" height="42" fill="#4e9b68"/><rect x="62" y="100" width="54" height="42" fill="#5cae73"/><rect x="124" y="100" width="54" height="42" fill="#d9b23f"/><rect x="186" y="100" width="54" height="42" fill="#c85c3d"/><rect x="248" y="100" width="54" height="42" fill="#8b2f25"/><rect x="310" y="100" width="54" height="42" fill="#d9b23f"/>
+    <rect y="150" width="54" height="42" fill="#4e9b68"/><rect x="62" y="150" width="54" height="42" fill="#4e9b68"/><rect x="124" y="150" width="54" height="42" fill="#5cae73"/><rect x="186" y="150" width="54" height="42" fill="#d9b23f"/><rect x="248" y="150" width="54" height="42" fill="#c85c3d"/><rect x="310" y="150" width="54" height="42" fill="#d9b23f"/>
+    <text x="0" y="224" fill="#546158" font-size="12">green nominal</text>
+    <text x="138" y="224" fill="#6b4b00" font-size="12">amber degraded</text>
+    <text x="286" y="224" fill="#7a2d20" font-size="12">red hot target</text>
+  </g>
+
+  <rect x="574" y="282" width="466" height="330" rx="8" fill="#fbfaf7" stroke="#d8cec0"/>
+  <text x="598" y="314" class="h2">Checkpoint countdown and write pipeline</text>
+  <circle cx="704" cy="424" r="78" fill="#f6efe3" stroke="#d8b46a" stroke-width="14"/>
+  <path d="M704 346 A78 78 0 1 1 638 466" fill="none" stroke="#c75b3c" stroke-width="14" stroke-linecap="round"/>
+  <text x="656" y="418" fill="#17130f" font-size="38" font-weight="800">02:47</text>
+  <text x="660" y="446" fill="#6a5a45" font-size="13">to checkpoint seal</text>
+  <rect x="820" y="352" width="170" height="28" rx="14" fill="#2f7b64"/>
+  <text x="842" y="371" fill="#ffffff" font-size="12" font-weight="800">MEM BUFFER</text>
+  <line x1="790" y1="366" x2="820" y2="366" stroke="#7e8a84" stroke-width="3"/>
+  <rect x="820" y="408" width="170" height="28" rx="14" fill="#d9b23f"/>
+  <text x="846" y="427" fill="#21190a" font-size="12" font-weight="800">NVMe-oF CACHE</text>
+  <line x1="790" y1="422" x2="820" y2="422" stroke="#7e8a84" stroke-width="3"/>
+  <rect x="820" y="464" width="170" height="28" rx="14" fill="#c75b3c"/>
+  <text x="850" y="483" fill="#ffffff" font-size="12" font-weight="800">PARALLEL FS</text>
+  <line x1="790" y1="478" x2="820" y2="478" stroke="#7e8a84" stroke-width="3"/>
+  <text x="598" y="560" fill="#5f4b2b" font-size="13">Audit boundary: dropped display samples are allowed; evidence degradation must be counted and visible.</text>
+  <text x="56" y="650" fill="#5f4b2b" font-size="13">Boundary: storage data is synthetic HPC infrastructure stress data, not production Radiant infrastructure evidence.</text>
+</svg>

@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "simops.run-summary.v1",
+  "runId": "RUN-HPC-404-001",
+  "scenarioId": "scheduler-drift",
+  "completedAt": "2026-07-04T18:02:00.000Z",
+  "lifecycle": "complete",
+  "frameCount": 8,
+  "workers": [
+    {
+      "workerId": "scheduler-01",
+      "workerKind": "scheduler",
+      "payloadType": "schedulerCoScheduling",
+      "frames": 2,
+      "droppedFrameCount": 0
+    },
+    {
+      "workerId": "storage-01",
+      "workerKind": "storage",
+      "payloadType": "checkpointStorage",
+      "frames": 2,
+      "droppedFrameCount": 0
+    },
+    {
+      "workerId": "burst-01",
+      "workerKind": "burst",
+      "payloadType": "elasticBursting",
+      "frames": 2,
+      "droppedFrameCount": 0
+    },
+    {
+      "workerId": "fabric-01",
+      "workerKind": "fabric",
+      "payloadType": "fabricProfiler",
+      "frames": 2,
+      "droppedFrameCount": 0
+    }
+  ],
+  "aggregateMetrics": [
+    { "metricPath": "payload.barrierWaitMs.p95", "min": 42.8, "avg": 115.6, "max": 188.4, "unit": "ms" },
+    { "metricPath": "payload.syncLatencyUs.p95", "min": 540, "avg": 1190, "max": 1840, "unit": "us" },
+    { "metricPath": "payload.nvmeOf.cacheSaturationPct", "min": 38.5, "avg": 55.85, "max": 73.2, "unit": "percent" },
+    { "metricPath": "payload.parallelCluster.cloudReady", "min": 0, "avg": 3, "max": 6, "unit": "nodes" },
+    { "metricPath": "payload.nonblockingComm.completionOverheadPct", "min": 8.4, "avg": 16.5, "max": 24.6, "unit": "percent" }
+  ],
+  "events": [
+    {
+      "offsetSec": 12,
+      "eventType": "queue-hold",
+      "description": "worker-b image drift holds a module-dependent rank group"
+    },
+    {
+      "offsetSec": 22,
+      "eventType": "barrier-wait-spike",
+      "description": "MPI barrier waits widen while coupled ranks wait for the held group"
+    },
+    {
+      "offsetSec": 45,
+      "eventType": "partial-recovery",
+      "description": "scheduler retry clears pending allocation but leaves fabric lag elevated"
+    }
+  ],
+  "degradedIntervals": [
+    {
+      "startOffsetSec": 12,
+      "endOffsetSec": 52,
+      "reason": "scheduler hold propagated into barrier waits and fabric progress stalls"
+    }
+  ],
+  "artifacts": [
+    {
+      "artifactId": "simops-run-manifest.scheduler-drift",
+      "path": "examples/simulation-ops/run-manifest.scheduler-drift.json",
+      "mediaType": "application/json",
+      "description": "Input manifest for the scheduler-drift contract example"
+    },
+    {
+      "artifactId": "simops-telemetry.scheduler-drift",
+      "path": "examples/simulation-ops/telemetry.scheduler-drift.ndjson",
+      "mediaType": "application/x-ndjson",
+      "description": "Canonical NDJSON telemetry stream for all four panel payloads"
+    },
+    {
+      "artifactId": "simops-run-summary.scheduler-drift",
+      "path": "examples/simulation-ops/run-summary.scheduler-drift.json",
+      "mediaType": "application/json",
+      "description": "Completed run summary suitable for future Evidence Matrix handoff"
+    }
+  ],
+  "provenance": {
+    "generatedBy": "simops-contract-example",
+    "dataClass": "synthetic-simulation-ops",
+    "storageFormat": "json",
+    "transportBinding": "ndjson"
+  }
+}

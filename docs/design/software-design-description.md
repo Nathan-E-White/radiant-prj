@@ -27,6 +27,7 @@ The console is a local React and TypeScript application with an optional Go back
 | Evidence generation | `scripts/generate-evidence.mjs` | Generates reproducible local evidence index |
 | Fixture validation | `scripts/validate-fixtures.mjs` | Enforces fixture integrity and traceability |
 | Infrastructure checks | `scripts/check-infra.mjs` | Verifies local-safe infrastructure artifact completeness |
+| Simulation Ops contract | `docs/design/simulation-ops-telemetry-contract.md`, `docs/schemas/simulation-ops/`, `examples/simulation-ops/` | Defines transport-agnostic scenario telemetry frames, payload schemas, and example run artifacts |
 | Slurm gateway | `backend/slurm-gateway/` | Provides health, readiness, metrics, submit, and status handlers with mTLS identity checks and mock/`sbatch` spooler modes |
 
 ## Design Constraints
@@ -46,6 +47,7 @@ The console is a local React and TypeScript application with an optional Go back
 4. Validation scripts check fixture consistency and infrastructure artifact presence.
 5. Evidence generation writes a reproducible derived index under `generated/`.
 6. The optional Slurm gateway validates authorized client identity and request bounds before recording a synthetic mock job or delegating to configured `sbatch`.
+7. Simulation Ops contract examples define future telemetry and run-summary artifacts without implementing live transport, worker orchestration, or UI streaming.
 
 ## Design Outputs
 

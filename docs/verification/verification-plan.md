@@ -14,7 +14,7 @@ This plan defines verification activities for the v3.0 baseline.
 
 ## Verification Scope
 
-The scope includes application type checking, frontend/domain unit tests, Go backend gateway tests, fixture validation, generated evidence, infrastructure artifact checks, quality documentation checks, and production build.
+The scope includes application type checking, frontend/domain unit tests, Go backend gateway tests, fixture validation, generated evidence, infrastructure artifact checks, quality documentation checks, Simulation Ops contract checks, and production build.
 
 ## Verification Activities
 
@@ -27,6 +27,7 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 | Evidence generation | `bun run evidence:generate` | Generated index under `generated/` |
 | Infrastructure checks | `bun run infra:check` | Static and optional native check output |
 | Quality documentation checks | `bun run quality:check` | Documentation check output |
+| Simulation Ops contract checks | `bun run simops:contract:check` | Contract validation output |
 | Production build | `bun run build` | Build output |
 | Full local CI | `bun run ci` | Combined command output |
 
@@ -36,5 +37,6 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 - Requirements and evidence references remain traceable.
 - Generated evidence can be recreated from controlled fixtures.
 - Slurm gateway handlers reject missing or unauthorized certificates and validate job requests before spooling.
+- Simulation Ops contract examples validate against the documented envelope, payload, manifest, and summary schemas.
 - Release scripts pass dry-run checks.
 - No blocking findings remain open in release records.
