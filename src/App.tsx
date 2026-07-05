@@ -10,9 +10,11 @@ import {
   GitBranch,
   HardDrive,
   Network,
+  RefreshCcw,
   Play,
   ServerCog,
   ShieldCheck,
+  Square,
   TerminalSquare
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -37,25 +39,113 @@ import type {
   SchedulerState
 } from "./domain/types";
 
-type TabId = "brief" | "workbench" | "evidence";
+type SimopsLifecycle = "created" | "starting" | "streaming" | "degraded" | "complete" | "failed" | "stopped";
+type SimopsWorkerKind = "scheduler" | "storage" | "burst" | "fabric";
+type StatusPillState = SchedulerState | BundleState | SimopsLifecycle | "complete";
+type TabId = "brief" | "workbench" | "evidence" | "simops";
 type BundleState = "ready" | "running" | "complete";
+type SimopsRunRequest = {
+  scenario_id: string;
+  source: string;
+  work_script: string;
+  launch_mode: "resident" | "spawn" | "auto";
+  worker_kinds: SimopsWorkerKind[];
+  runtime_limit_sec: number;
+  idempotency_key?: string;
+};
+type SimopsRunResponse = {
+  run_id: string;
+  scenario_id: string;
+  lifecycle: SimopsLifecycle;
+  source: string;
+  launch_mode: string;
+  runtime_limit_sec: number;
+  created: boolean;
+  submitted_by: string;
+  created_at: string;
+  updated_at: string;
+  moq_subscription: SimopsMoQSubscription;
+  workers: SimopsWorkerRecord[];
+  spool_commands: SimopsSpoolCommand[];
+  artifacts: SimopsArtifactRecord[];
+};
+type SimopsWorkerRecord = {
+  worker_id: string;
+  worker_kind: SimopsWorkerKind;
+  lifecycle: SimopsLifecycle;
+  launch_mode: string;
+  endpoint?: string;
+  frames: number;
+  updated_at: string;
+};
+type SimopsSpoolCommand = {
+  command_id: string;
+  run_id: string;
+  worker_id: string;
+  mode: string;
+  state: SimopsLifecycle;
+  message: string;
+  created_at: string;
+  updated_at: string;
+};
+type SimopsArtifactRecord = {
+  artifact_id: string;
+  run_id: string;
+  kind: string;
+  media_type: string;
+  location: string;
+  iceberg_table?: string;
+  created_at: string;
+};
+type SimopsMoQSubscription = {
+  protocol: string;
+  endpoint: string;
+  namespace: string;
+  token: string;
+  expires_at: string;
+  tracks: Array<{
+    name: string;
+    role: string;
+    worker_id?: string;
+    worker_kind?: string;
+  }>;
+};
 
 const tabItems: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
   { id: "brief", label: "Kaleidos Brief", icon: Boxes },
   { id: "workbench", label: "Compute Workbench", icon: TerminalSquare },
-  { id: "evidence", label: "Evidence Matrix", icon: ClipboardCheck }
+  { id: "evidence", label: "Evidence Matrix", icon: ClipboardCheck },
+  { id: "simops", label: "SimOps Control", icon: ServerCog }
 ];
 
 const scenarioOptions = [
   "DOME synthetic full-power readiness bundle",
   "Buckley synthetic remote-site readiness"
 ];
+const simopsScenarios = ["nominal", "scheduler-drift", "checkpoint-pressure", "cloud-burst", "fabric-warning"];
+const simopsWorkerOptions: SimopsWorkerKind[] = ["scheduler", "storage", "burst", "fabric"];
+const simopsLaunchModes: Array<SimopsRunRequest["launch_mode"]> = ["resident", "spawn", "auto"];
+const SIMOPS_API_BASE = (import.meta.env.VITE_SIMOPS_API_BASE ?? "").replace(/\/$/, "");
+
+function simopsApiUrl(path: string): string {
+  return `${SIMOPS_API_BASE}${path}`;
+}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>("brief");
   const [scenario, setScenario] = useState(scenarioOptions[0]);
   const [bundleState, setBundleState] = useState<BundleState>("ready");
   const [selectedJobId, setSelectedJobId] = useState("JOB-HPC-404");
+  const [simopsScenario, setSimopsScenario] = useState(simopsScenarios[0]);
+  const [simopsSource, setSimopsSource] = useState("frontend");
+  const [simopsWorkerKinds, setSimopsWorkerKinds] = useState<SimopsWorkerKind[]>(["scheduler", "storage"]);
+  const [simopsLaunchMode, setSimopsLaunchMode] = useState<SimopsRunRequest["launch_mode"]>("auto");
+  const [simopsRuntimeLimit, setSimopsRuntimeLimit] = useState(120);
+  const [simopsIdempotency, setSimopsIdempotency] = useState("");
+  const [simopsRun, setSimopsRun] = useState<SimopsRunResponse | null>(null);
+  const [simopsMessage, setSimopsMessage] = useState("No run selected.");
+  const [simopsError, setSimopsError] = useState("");
+  const [isSubmittingSimops, setIsSubmittingSimops] = useState(false);
 
   useEffect(() => {
     if (bundleState !== "running") {
@@ -98,11 +188,136 @@ export default function App() {
     packetLossPct: 0.7,
     missingPacketLimitPct: 1.5
   });
+  useEffect(() => {
+    if (!simopsRun || !isSimopsRunActive(simopsRun.lifecycle)) {
+      return;
+    }
+    const poll = window.setInterval(() => {
+      void refreshSimopsRun(simopsRun.run_id);
+    }, 2500);
+    return () => {
+      window.clearInterval(poll);
+    };
+  }, [simopsRun]);
 
   function runBundle() {
     setBundleState("running");
     setActiveTab("workbench");
     setSelectedJobId("JOB-HPC-404");
+  }
+
+  async function refreshSimopsRun(runID: string) {
+    if (!runID) {
+      return;
+    }
+    try {
+      const response = await fetch(simopsApiUrl(`/api/simops/runs/${encodeURIComponent(runID)}`), {
+        method: "GET",
+        headers: {
+          Accept: "application/json"
+        }
+      });
+      if (!response.ok) {
+        setSimopsError(`simops refresh failed (${response.status})`);
+        return;
+      }
+      const next = (await response.json()) as SimopsRunResponse;
+      setSimopsRun(next);
+      setSimopsError("");
+    } catch (error) {
+      setSimopsError(`simops refresh failed: ${(error as Error).message}`);
+    }
+  }
+
+  async function createSimopsRun() {
+    setIsSubmittingSimops(true);
+    setSimopsError("");
+    setSimopsMessage("Launching simops run...");
+
+    if (simopsWorkerKinds.length === 0) {
+      setSimopsError("Choose at least one worker kind.");
+      setIsSubmittingSimops(false);
+      return;
+    }
+
+    const payload: SimopsRunRequest = {
+      scenario_id: simopsScenario,
+      source: simopsSource,
+      work_script: simopsScenario,
+      launch_mode: simopsLaunchMode,
+      worker_kinds: simopsWorkerKinds,
+      runtime_limit_sec: simopsRuntimeLimit
+    };
+    const idempotencyKey = simopsIdempotency.trim();
+    if (idempotencyKey) {
+      payload.idempotency_key = idempotencyKey;
+    }
+
+    try {
+      const response = await fetch(simopsApiUrl("/api/simops/runs"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      const raw = await response.text();
+      if (!response.ok) {
+        setSimopsError(`simops create failed (${response.status}): ${raw}`);
+        return;
+      }
+      const run = JSON.parse(raw) as SimopsRunResponse;
+      setSimopsRun(run);
+      setSimopsMessage("Run launched. Polling for worker status...");
+      void refreshSimopsRun(run.run_id);
+    } catch (error) {
+      setSimopsError(`simops create failed: ${(error as Error).message}`);
+    } finally {
+      setIsSubmittingSimops(false);
+    }
+  }
+
+  async function stopSimopsRun() {
+    if (!simopsRun?.run_id) {
+      return;
+    }
+    setIsSubmittingSimops(true);
+    setSimopsError("");
+    setSimopsMessage("Issuing stop command...");
+    try {
+      const response = await fetch(
+        simopsApiUrl(`/api/simops/runs/${encodeURIComponent(simopsRun.run_id)}/stop`),
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json"
+          }
+        }
+      );
+      if (!response.ok) {
+        const raw = await response.text();
+        setSimopsError(`simops stop failed (${response.status}): ${raw}`);
+        return;
+      }
+      const run = (await response.json()) as SimopsRunResponse;
+      setSimopsRun(run);
+      setSimopsMessage("Stop requested for run.");
+    } catch (error) {
+      setSimopsError(`simops stop failed: ${(error as Error).message}`);
+    } finally {
+      setIsSubmittingSimops(false);
+    }
+  }
+
+  function toggleSimopsWorker(kind: SimopsWorkerKind) {
+    setSimopsWorkerKinds((previous) => {
+      const existing = previous.includes(kind);
+      if (existing) {
+        return previous.filter((worker) => worker !== kind);
+      }
+      return [...previous, kind];
+    });
   }
 
   return (
@@ -174,7 +389,262 @@ export default function App() {
           traceabilityProblems={traceabilityProblems}
         />
       )}
+
+      {activeTab === "simops" && (
+        <SimOpsControlPanel
+          message={simopsMessage}
+          error={simopsError}
+          scenario={simopsScenario}
+          source={simopsSource}
+          launchMode={simopsLaunchMode}
+          runtimeLimit={simopsRuntimeLimit}
+          workerKinds={simopsWorkerKinds}
+          idempotencyKey={simopsIdempotency}
+          activeRun={simopsRun}
+          submitting={isSubmittingSimops}
+          onScenarioChange={setSimopsScenario}
+          onSourceChange={setSimopsSource}
+          onLaunchModeChange={setSimopsLaunchMode}
+          onRuntimeLimitChange={setSimopsRuntimeLimit}
+          onIdempotencyChange={setSimopsIdempotency}
+          onWorkerToggle={toggleSimopsWorker}
+          onCreate={createSimopsRun}
+          onStop={stopSimopsRun}
+          onRefresh={() => {
+            if (simopsRun) {
+              void refreshSimopsRun(simopsRun.run_id);
+            } else {
+              setSimopsError("No run selected to refresh.");
+            }
+          }}
+        />
+      )}
     </main>
+  );
+}
+
+function SimOpsControlPanel({
+  message,
+  error,
+  scenario,
+  source,
+  launchMode,
+  runtimeLimit,
+  workerKinds,
+  idempotencyKey,
+  activeRun,
+  submitting,
+  onScenarioChange,
+  onSourceChange,
+  onLaunchModeChange,
+  onRuntimeLimitChange,
+  onIdempotencyChange,
+  onWorkerToggle,
+  onCreate,
+  onStop,
+  onRefresh
+}: {
+  message: string;
+  error: string;
+  scenario: string;
+  source: string;
+  launchMode: SimopsRunRequest["launch_mode"];
+  runtimeLimit: number;
+  workerKinds: SimopsWorkerKind[];
+  idempotencyKey: string;
+  activeRun: SimopsRunResponse | null;
+  submitting: boolean;
+  onScenarioChange: (scenario: string) => void;
+  onSourceChange: (source: string) => void;
+  onLaunchModeChange: (mode: SimopsRunRequest["launch_mode"]) => void;
+  onRuntimeLimitChange: (seconds: number) => void;
+  onIdempotencyChange: (next: string) => void;
+  onWorkerToggle: (kind: SimopsWorkerKind) => void;
+  onCreate: () => Promise<void>;
+  onStop: () => Promise<void>;
+  onRefresh: () => void;
+}) {
+  const isRunActive = activeRun !== null && isSimopsRunActive(activeRun.lifecycle);
+  const isRunComplete = activeRun !== null && isSimopsRunTerminal(activeRun.lifecycle);
+
+  return (
+    <section className="content-grid simops-grid">
+      <div className="panel simops-control">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">SimOps control-plane</p>
+            <h2>Containerized worker orchestration</h2>
+          </div>
+          <button className="icon-command" onClick={onRefresh} type="button" title="Refresh run">
+            <RefreshCcw size={18} />
+          </button>
+        </div>
+        <div className="simops-field">
+          <label htmlFor="simops-scenario">Scenario</label>
+          <select
+            id="simops-scenario"
+            value={scenario}
+            onChange={(event) => onScenarioChange(event.target.value)}
+          >
+            {simopsScenarios.map((option) => (
+              <option value={option} key={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="simops-field">
+          <label htmlFor="simops-source">Source</label>
+          <select id="simops-source" value={source} onChange={(event) => onSourceChange(event.target.value)}>
+            <option value="frontend">frontend</option>
+            <option value="work-script">work-script</option>
+          </select>
+        </div>
+        <div className="simops-field">
+          <label>Workers</label>
+          <div className="simops-checkbox-group">
+            {simopsWorkerOptions.map((worker) => (
+              <label className="simops-checkbox" key={worker}>
+                <input
+                  checked={workerKinds.includes(worker)}
+                  onChange={() => onWorkerToggle(worker)}
+                  type="checkbox"
+                />
+                {worker}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="simops-field">
+          <label>Launch mode</label>
+          <div className="simops-radio-group">
+            {simopsLaunchModes.map((mode) => (
+              <label className="simops-radio" key={mode}>
+                <input
+                  checked={mode === launchMode}
+                  onChange={() => onLaunchModeChange(mode)}
+                  name="simops-launch-mode"
+                  type="radio"
+                />
+                {mode}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="simops-field">
+          <label htmlFor="simops-runtime-limit">Runtime limit (sec)</label>
+          <input
+            id="simops-runtime-limit"
+            max={3600}
+            min={1}
+            onChange={(event) => onRuntimeLimitChange(Number(event.target.value) || 120)}
+            type="number"
+            value={runtimeLimit}
+          />
+        </div>
+        <div className="simops-field">
+          <label htmlFor="simops-idempotency">Idempotency key (optional)</label>
+          <input
+            id="simops-idempotency"
+            onChange={(event) => onIdempotencyChange(event.target.value)}
+            placeholder="click once, prevent accidental repeats"
+            value={idempotencyKey}
+          />
+        </div>
+        <div className="simops-actions">
+          <button disabled={submitting || isRunActive} className="primary-command" onClick={onCreate} type="button">
+            <Play size={16} />
+            {isRunActive ? "Run in progress" : activeRun ? "Launch replacement" : "Launch run"}
+          </button>
+          <button
+            className="secondary-command"
+            disabled={!activeRun || isRunComplete || submitting}
+            onClick={onStop}
+            type="button"
+          >
+            <Square size={16} />
+            Stop run
+          </button>
+        </div>
+        <p className="simops-message">{message}</p>
+        {error && <p className="simops-error">{error}</p>}
+      </div>
+
+      <div className="panel simops-details">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Run state</p>
+            <h2>Lifecycle and worker status</h2>
+          </div>
+        </div>
+        {!activeRun ? (
+          <p className="simops-placeholder">No active SimOps run yet.</p>
+        ) : (
+          <>
+            <div className="simops-run-header">
+              <span>
+                <strong>run:</strong> {activeRun.run_id}
+              </span>
+              <StatusPill label={activeRun.lifecycle} state={activeRun.lifecycle} />
+            </div>
+            <div className="simops-meta">
+              <span>scenario: {activeRun.scenario_id}</span>
+              <span>source: {activeRun.source}</span>
+              <span>mode: {activeRun.launch_mode}</span>
+              <span>created: {new Date(activeRun.created_at).toLocaleString()}</span>
+              <span>updated: {new Date(activeRun.updated_at).toLocaleString()}</span>
+            </div>
+            <div className="simops-subsection">
+              <h3>Workers</h3>
+              <div className="simops-worker-grid">
+                {activeRun.workers.map((worker) => (
+                  <article className="simops-worker-card" key={`${activeRun.run_id}-${worker.worker_id}`}>
+                    <div className="simops-worker-title">
+                      <span className="record-id">{worker.worker_id}</span>
+                      <StatusPill label={worker.lifecycle} state={worker.lifecycle} />
+                    </div>
+                    <p>
+                      kind: {worker.worker_kind} • frames: {worker.frames} • mode: {worker.launch_mode}
+                    </p>
+                    <p>endpoint: {worker.endpoint || "n/a"}</p>
+                    <p>updated: {new Date(worker.updated_at).toLocaleString()}</p>
+                  </article>
+                ))}
+              </div>
+            </div>
+            <div className="simops-subsection">
+              <h3>Latest spool commands</h3>
+              <div className="simops-log">
+                {activeRun.spool_commands.map((command) => (
+                  <p key={command.command_id}>
+                    {command.state} {command.worker_id}: {command.message}
+                  </p>
+                ))}
+              </div>
+            </div>
+            <div className="simops-subsection">
+              <h3>Artifacts</h3>
+              <div className="simops-log">
+                {activeRun.artifacts.map((artifact) => (
+                  <p key={artifact.artifact_id}>
+                    {artifact.kind} @ {artifact.location}
+                  </p>
+                ))}
+              </div>
+            </div>
+            <div className="simops-subsection">
+              <h3>MoQ subscription</h3>
+              <div className="simops-log">
+                <p>protocol: {activeRun.moq_subscription.protocol}</p>
+                <p>endpoint: {activeRun.moq_subscription.endpoint}</p>
+                <p>namespace: {activeRun.moq_subscription.namespace}</p>
+                <p>token: {activeRun.moq_subscription.token}</p>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -606,7 +1076,7 @@ function Metric({
   );
 }
 
-function StatusPill({ label, state }: { label: string; state: SchedulerState | BundleState }) {
+function StatusPill({ label, state }: { label: string; state: StatusPillState }) {
   return <span className={`status-pill ${state}`}>{label}</span>;
 }
 
@@ -669,4 +1139,12 @@ function displayedState(job: ComputeJob, bundleState: BundleState): SchedulerSta
   }
 
   return job.state;
+}
+
+function isSimopsRunActive(lifecycle: SimopsLifecycle): boolean {
+  return lifecycle === "created" || lifecycle === "starting" || lifecycle === "streaming" || lifecycle === "degraded";
+}
+
+function isSimopsRunTerminal(lifecycle: SimopsLifecycle): boolean {
+  return lifecycle === "complete" || lifecycle === "failed" || lifecycle === "stopped";
 }

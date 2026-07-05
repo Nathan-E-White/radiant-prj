@@ -41,6 +41,11 @@ type SimopsConfig struct {
 	RedpandaBrokers    string
 	RedpandaTopic      string
 	LaunchMode         string
+	WorkerRuntime      string
+	WorkerImage        string
+	WorkerManifestRoot string
+	WorkerNetwork      string
+	WorkerAutoRemove   bool
 	MoQWebTransportURL string
 	StreamTokenTTL     time.Duration
 	MaxActiveRuns      int
@@ -72,6 +77,11 @@ func DefaultConfig() Config {
 			RedpandaBrokers:    "redpanda:9092",
 			RedpandaTopic:      "simops.telemetry.v1",
 			LaunchMode:         "resident",
+			WorkerRuntime:      "contract",
+			WorkerImage:        "simops-generator:latest",
+			WorkerManifestRoot:  "/examples/simulation-ops",
+			WorkerNetwork:      "bridge",
+			WorkerAutoRemove:   false,
 			MoQWebTransportURL: "https://127.0.0.1:9443/moq/simops",
 			StreamTokenTTL:     15 * time.Minute,
 			MaxActiveRuns:      8,
@@ -100,6 +110,10 @@ func LoadConfigFromEnv() (Config, error) {
 	cfg.Simops.RedpandaBrokers = getenv("SIMOPS_REDPANDA_BROKERS", cfg.Simops.RedpandaBrokers)
 	cfg.Simops.RedpandaTopic = getenv("SIMOPS_REDPANDA_TOPIC", cfg.Simops.RedpandaTopic)
 	cfg.Simops.LaunchMode = getenv("SIMOPS_LAUNCH_MODE", cfg.Simops.LaunchMode)
+	cfg.Simops.WorkerRuntime = getenv("SIMOPS_WORKER_RUNTIME", cfg.Simops.WorkerRuntime)
+	cfg.Simops.WorkerImage = getenv("SIMOPS_WORKER_IMAGE", cfg.Simops.WorkerImage)
+	cfg.Simops.WorkerManifestRoot = getenv("SIMOPS_WORKER_MANIFEST_ROOT", cfg.Simops.WorkerManifestRoot)
+	cfg.Simops.WorkerNetwork = getenv("SIMOPS_WORKER_NETWORK", cfg.Simops.WorkerNetwork)
 	cfg.Simops.MoQWebTransportURL = getenv("SIMOPS_MOQ_WEBTRANSPORT_URL", cfg.Simops.MoQWebTransportURL)
 	cfg.Simops.IcebergCatalog = getenv("SIMOPS_ICEBERG_CATALOG", cfg.Simops.IcebergCatalog)
 	cfg.Simops.IcebergCatalogDSN = getenv("SIMOPS_ICEBERG_CATALOG_DSN", cfg.Simops.IcebergCatalogDSN)
@@ -165,6 +179,13 @@ func LoadConfigFromEnv() (Config, error) {
 			return cfg, fmt.Errorf("SIMOPS_MAX_ACTIVE_RUNS must be an integer: %w", err)
 		}
 		cfg.Simops.MaxActiveRuns = value
+	}
+	if raw := strings.TrimSpace(os.Getenv("SIMOPS_WORKER_AUTO_REMOVE")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return cfg, fmt.Errorf("SIMOPS_WORKER_AUTO_REMOVE must be boolean: %w", err)
+		}
+		cfg.Simops.WorkerAutoRemove = value
 	}
 
 	return cfg, cfg.Validate()
@@ -252,6 +273,19 @@ func (c SimopsConfig) Validate() error {
 	}
 	if c.MaxActiveRuns < 1 {
 		return fmt.Errorf("SIMOPS_MAX_ACTIVE_RUNS must be at least 1")
+	}
+	switch c.WorkerRuntime {
+	case "contract", "docker":
+	default:
+		return fmt.Errorf("unsupported SIMOPS_WORKER_RUNTIME %q", c.WorkerRuntime)
+	}
+	if c.WorkerRuntime == "docker" {
+		if strings.TrimSpace(c.WorkerImage) == "" {
+			return fmt.Errorf("SIMOPS_WORKER_IMAGE is required when SIMOPS_WORKER_RUNTIME=docker")
+		}
+		if strings.TrimSpace(c.WorkerManifestRoot) == "" {
+			return fmt.Errorf("SIMOPS_WORKER_MANIFEST_ROOT is required when SIMOPS_WORKER_RUNTIME=docker")
+		}
 	}
 	switch c.IcebergCatalog {
 	case "postgres-sql", "rest", "filesystem":

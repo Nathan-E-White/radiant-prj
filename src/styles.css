@@ -104,6 +104,7 @@ a:hover {
 .tab,
 .scenario,
 .primary-command,
+.secondary-command,
 .icon-command {
   display: inline-flex;
   gap: 8px;
@@ -152,6 +153,10 @@ a:hover {
   grid-template-areas:
     "requirements evidence"
     "deployment evidence";
+}
+
+.simops-grid {
+  grid-template-columns: minmax(0, 1.1fr) minmax(360px, 0.92fr);
 }
 
 .panel {
@@ -348,6 +353,11 @@ a:hover {
   color: #1e5834;
 }
 
+.status-pill.created {
+  background: #e7d8cf;
+  color: #79462b;
+}
+
 .status-pill.failed {
   background: #f1d0c9;
   color: #8d2e23;
@@ -358,11 +368,31 @@ a:hover {
   color: #23586b;
 }
 
+.status-pill.starting {
+  background: #d9e2ea;
+  color: #2f4f73;
+}
+
+.status-pill.streaming {
+  background: #cde7f1;
+  color: #1f5a76;
+}
+
+.status-pill.degraded {
+  background: #f4d5cf;
+  color: #7f3427;
+}
+
 .status-pill.held,
 .status-pill.ready,
 .status-pill.queued {
   background: #eadbbd;
   color: #795229;
+}
+
+.status-pill.stopped {
+  background: #d3dfda;
+  color: #43504c;
 }
 
 .metric {
@@ -404,6 +434,13 @@ a:hover {
   border-color: #273630;
   background: #273630;
   color: #fcfaf1;
+  padding: 9px 12px;
+}
+
+.secondary-command {
+  border-color: #7d928a;
+  background: #f0f3f1;
+  color: #273630;
   padding: 9px 12px;
 }
 
@@ -528,6 +565,161 @@ a:hover {
   padding: 14px;
   font-size: 0.78rem;
   line-height: 1.75;
+}
+
+.simops-field {
+  display: grid;
+  gap: 8px;
+  color: #2c3a34;
+}
+
+.simops-field label {
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: #415048;
+}
+
+.simops-field select,
+.simops-field input {
+  max-width: 500px;
+  border: 1px solid #bdc9c3;
+  border-radius: 7px;
+  background: #fff;
+  padding: 9px 11px;
+  color: #273630;
+}
+
+.simops-checkbox-group,
+.simops-radio-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.simops-checkbox,
+.simops-radio {
+  border: 1px solid #ccd6d1;
+  border-radius: 999px;
+  background: #f5f8f6;
+  padding: 7px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  text-transform: capitalize;
+  color: #34413b;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.simops-checkbox input,
+.simops-radio input {
+  width: 16px;
+  height: 16px;
+}
+
+.simops-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.simops-message {
+  margin: 0;
+  color: #44524d;
+  font-size: 0.88rem;
+}
+
+.simops-error {
+  margin: 0;
+  color: #8d2e23;
+  font-size: 0.87rem;
+  font-weight: 700;
+}
+
+.simops-placeholder {
+  margin: 0;
+  color: #6f7974;
+}
+
+.simops-run-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+}
+
+.simops-run-header strong {
+  color: #364e48;
+}
+
+.simops-meta {
+  display: grid;
+  gap: 6px;
+  color: #51605b;
+  font-size: 0.83rem;
+}
+
+.simops-meta span {
+  text-transform: capitalize;
+}
+
+.simops-subsection {
+  margin-top: 4px;
+}
+
+.simops-subsection h3 {
+  margin: 0 0 8px;
+  color: #2a3a35;
+  font-size: 0.93rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.simops-worker-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.simops-worker-card {
+  border: 1px solid #d4ddd8;
+  border-radius: 7px;
+  background: #fcfdfb;
+  padding: 9px;
+}
+
+.simops-worker-card p {
+  margin: 6px 0 0;
+  color: #4f5d58;
+  font-size: 0.82rem;
+}
+
+.simops-worker-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.simops-log {
+  border: 1px solid #d4ddd8;
+  border-radius: 7px;
+  background: #f7faf7;
+  padding: 8px 10px;
+  max-height: 140px;
+  overflow: auto;
+}
+
+.simops-log p {
+  margin: 0 0 8px;
+  color: #37423d;
+  font-size: 0.8rem;
+  line-height: 1.25;
+}
+
+.simops-log p:last-child {
+  margin-bottom: 0;
 }
 
 .finding {
@@ -721,6 +913,10 @@ a:hover {
 
   .requirements-row {
     min-width: 760px;
+  }
+
+  .simops-grid {
+    grid-template-columns: 1fr;
   }
 
   .top-bar h1 {

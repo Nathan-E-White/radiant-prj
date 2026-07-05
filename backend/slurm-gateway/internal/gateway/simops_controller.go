@@ -37,6 +37,11 @@ func NewDefaultSimopsController(cfg SimopsConfig) (*SimopsController, error) {
 		return nil, err
 	}
 
+	spooler := SimopsSpooler(ContractSimopsSpooler{Mode: cfg.LaunchMode})
+	if cfg.WorkerRuntime == "docker" {
+		spooler = NewDockerSimopsSpooler(cfg)
+	}
+
 	store := NewInMemorySimopsStore()
 	eventLog := SimopsEventLog(MemorySimopsEventLog{Store: store})
 	if cfg.TelemetryLog == "redpanda" {
@@ -50,7 +55,7 @@ func NewDefaultSimopsController(cfg SimopsConfig) (*SimopsController, error) {
 	return NewSimopsController(
 		cfg,
 		store,
-		ContractSimopsSpooler{Mode: cfg.LaunchMode},
+		spooler,
 		eventLog,
 		IcebergArtifactPlanner{
 			Warehouse: cfg.IcebergWarehouse,
@@ -187,6 +192,13 @@ func (c *SimopsController) StopRun(ctx context.Context, runID string) (SimopsRun
 	record, err = c.store.UpdateRunLifecycle(runID, SimopsStopped)
 	if err != nil {
 		return SimopsRunResponse{}, http.StatusInternalServerError, err
+	}
+	workers, err := c.store.ListWorkers(runID)
+	if err != nil {
+		return SimopsRunResponse{}, http.StatusInternalServerError, err
+	}
+	for _, worker := range workers {
+		_ = c.store.UpdateWorkerFrames(runID, worker.WorkerID, SimopsStopped, 0)
 	}
 	if err := c.eventLog.Publish(ctx, SimopsEvent{
 		RunID:      record.RunID,
