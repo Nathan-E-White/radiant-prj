@@ -34,27 +34,31 @@ type Config struct {
 }
 
 type SimopsConfig struct {
-	Enabled            bool
-	ControlStore       string
-	PostgresDSN        string
-	TelemetryLog       string
-	RedpandaBrokers    string
-	RedpandaTopic      string
-	LaunchMode         string
-	WorkerRuntime      string
-	WorkerImage        string
-	WorkerManifestRoot string
-	WorkerNetwork      string
-	WorkerAutoRemove   bool
-	MoQWebTransportURL string
-	StreamTokenTTL     time.Duration
-	MaxActiveRuns      int
-	IcebergCatalog     string
-	IcebergCatalogDSN  string
-	IcebergWarehouse   string
-	IcebergS3Endpoint  string
-	IcebergS3Bucket    string
-	IcebergWriterMode  string
+	Enabled             bool
+	ControlStore        string
+	PostgresDSN         string
+	TelemetryLog        string
+	RedpandaBrokers     string
+	RedpandaTopic       string
+	LaunchMode          string
+	WorkerRuntime       string
+	WorkerImage         string
+	WorkerManifestRoot  string
+	WorkerIngestBaseURL string
+	WorkerFrameOverride int
+	WorkerNetwork       string
+	WorkerAutoRemove    bool
+	MoQWebTransportURL  string
+	StreamTokenTTL      time.Duration
+	MaxActiveRuns       int
+	IcebergCatalog      string
+	IcebergCatalogDSN   string
+	IcebergWarehouse    string
+	IcebergS3Endpoint   string
+	IcebergS3Bucket     string
+	IcebergWriterMode   string
+	IcebergRustCommand  string
+	IcebergManifestDir  string
 }
 
 func DefaultConfig() Config {
@@ -71,25 +75,27 @@ func DefaultConfig() Config {
 		SbatchBin:         "sbatch",
 		RequireClientCert: true,
 		Simops: SimopsConfig{
-			Enabled:            true,
-			ControlStore:       "memory",
-			TelemetryLog:       "memory",
-			RedpandaBrokers:    "redpanda:9092",
-			RedpandaTopic:      "simops.telemetry.v1",
-			LaunchMode:         "resident",
-			WorkerRuntime:      "contract",
-			WorkerImage:        "simops-generator:latest",
+			Enabled:             true,
+			ControlStore:        "memory",
+			TelemetryLog:        "memory",
+			RedpandaBrokers:     "redpanda:9092",
+			RedpandaTopic:       "simops.telemetry.v1",
+			LaunchMode:          "resident",
+			WorkerRuntime:       "contract",
+			WorkerImage:         "simops-generator:latest",
 			WorkerManifestRoot:  "/examples/simulation-ops",
-			WorkerNetwork:      "bridge",
-			WorkerAutoRemove:   false,
-			MoQWebTransportURL: "https://127.0.0.1:9443/moq/simops",
-			StreamTokenTTL:     15 * time.Minute,
-			MaxActiveRuns:      8,
-			IcebergCatalog:     "postgres-sql",
-			IcebergWarehouse:   "s3://radiant-simops/warehouse",
-			IcebergS3Endpoint:  "http://minio:9000",
-			IcebergS3Bucket:    "radiant-simops",
-			IcebergWriterMode:  "external",
+			WorkerIngestBaseURL: "http://host.docker.internal:8080",
+			WorkerNetwork:       "bridge",
+			WorkerAutoRemove:    false,
+			MoQWebTransportURL:  "https://127.0.0.1:9443/moq/simops",
+			StreamTokenTTL:      15 * time.Minute,
+			MaxActiveRuns:       8,
+			IcebergCatalog:      "postgres-sql",
+			IcebergWarehouse:    "s3://radiant-simops/warehouse",
+			IcebergS3Endpoint:   "http://minio:9000",
+			IcebergS3Bucket:     "radiant-simops",
+			IcebergWriterMode:   "manifest",
+			IcebergManifestDir:  "/tmp/simops-iceberg-manifests",
 		},
 	}
 }
@@ -113,6 +119,7 @@ func LoadConfigFromEnv() (Config, error) {
 	cfg.Simops.WorkerRuntime = getenv("SIMOPS_WORKER_RUNTIME", cfg.Simops.WorkerRuntime)
 	cfg.Simops.WorkerImage = getenv("SIMOPS_WORKER_IMAGE", cfg.Simops.WorkerImage)
 	cfg.Simops.WorkerManifestRoot = getenv("SIMOPS_WORKER_MANIFEST_ROOT", cfg.Simops.WorkerManifestRoot)
+	cfg.Simops.WorkerIngestBaseURL = getenv("SIMOPS_WORKER_INGEST_BASE_URL", cfg.Simops.WorkerIngestBaseURL)
 	cfg.Simops.WorkerNetwork = getenv("SIMOPS_WORKER_NETWORK", cfg.Simops.WorkerNetwork)
 	cfg.Simops.MoQWebTransportURL = getenv("SIMOPS_MOQ_WEBTRANSPORT_URL", cfg.Simops.MoQWebTransportURL)
 	cfg.Simops.IcebergCatalog = getenv("SIMOPS_ICEBERG_CATALOG", cfg.Simops.IcebergCatalog)
@@ -121,6 +128,8 @@ func LoadConfigFromEnv() (Config, error) {
 	cfg.Simops.IcebergS3Endpoint = getenv("SIMOPS_ICEBERG_S3_ENDPOINT", cfg.Simops.IcebergS3Endpoint)
 	cfg.Simops.IcebergS3Bucket = getenv("SIMOPS_ICEBERG_S3_BUCKET", cfg.Simops.IcebergS3Bucket)
 	cfg.Simops.IcebergWriterMode = getenv("SIMOPS_ICEBERG_WRITER_MODE", cfg.Simops.IcebergWriterMode)
+	cfg.Simops.IcebergRustCommand = strings.TrimSpace(os.Getenv("SIMOPS_ICEBERG_RUST_CMD"))
+	cfg.Simops.IcebergManifestDir = getenv("SIMOPS_ICEBERG_MANIFEST_DIR", cfg.Simops.IcebergManifestDir)
 
 	if raw := strings.TrimSpace(os.Getenv("SLURM_GATEWAY_ALLOWED_CLIENTS")); raw != "" {
 		cfg.AllowedClients = csvSet(raw)
@@ -186,6 +195,13 @@ func LoadConfigFromEnv() (Config, error) {
 			return cfg, fmt.Errorf("SIMOPS_WORKER_AUTO_REMOVE must be boolean: %w", err)
 		}
 		cfg.Simops.WorkerAutoRemove = value
+	}
+	if raw := strings.TrimSpace(os.Getenv("SIMOPS_WORKER_FRAME_OVERRIDE")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil {
+			return cfg, fmt.Errorf("SIMOPS_WORKER_FRAME_OVERRIDE must be an integer: %w", err)
+		}
+		cfg.Simops.WorkerFrameOverride = value
 	}
 
 	return cfg, cfg.Validate()
@@ -286,6 +302,12 @@ func (c SimopsConfig) Validate() error {
 		if strings.TrimSpace(c.WorkerManifestRoot) == "" {
 			return fmt.Errorf("SIMOPS_WORKER_MANIFEST_ROOT is required when SIMOPS_WORKER_RUNTIME=docker")
 		}
+		if strings.TrimSpace(c.WorkerIngestBaseURL) == "" {
+			return fmt.Errorf("SIMOPS_WORKER_INGEST_BASE_URL is required when SIMOPS_WORKER_RUNTIME=docker")
+		}
+		if c.WorkerFrameOverride < 0 {
+			return fmt.Errorf("SIMOPS_WORKER_FRAME_OVERRIDE must be zero or positive")
+		}
 	}
 	switch c.IcebergCatalog {
 	case "postgres-sql", "rest", "filesystem":
@@ -301,10 +323,16 @@ func (c SimopsConfig) Validate() error {
 	if strings.TrimSpace(c.IcebergS3Bucket) == "" {
 		return fmt.Errorf("SIMOPS_ICEBERG_S3_BUCKET is required")
 	}
+	if strings.TrimSpace(c.IcebergManifestDir) == "" {
+		return fmt.Errorf("SIMOPS_ICEBERG_MANIFEST_DIR is required")
+	}
 	switch c.IcebergWriterMode {
-	case "external", "disabled":
+	case "manifest", "stub", "external", "disabled":
 	default:
 		return fmt.Errorf("unsupported SIMOPS_ICEBERG_WRITER_MODE %q", c.IcebergWriterMode)
+	}
+	if c.IcebergWriterMode == "external" && strings.TrimSpace(c.IcebergRustCommand) == "" {
+		return fmt.Errorf("SIMOPS_ICEBERG_RUST_CMD is required when SIMOPS_ICEBERG_WRITER_MODE=external")
 	}
 	return nil
 }

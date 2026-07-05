@@ -11,7 +11,7 @@ This is public-safe demo material. It is not reactor design, safety analysis, li
 - **Evidence Matrix:** requirements, verification methods, evidence packs, artifact hashes, deployment checks, and controlled change notes.
 - **DevOps Layer:** Docker Compose, dry-run Terraform, Ansible baseline templates, and CI checks for the synthetic hybrid compute environment.
 - **Version 3.0 Backend Gateway:** mock-first Go Slurm gateway handlers with mTLS identity checks, request validation, job status lookup, and Prometheus-format metrics.
-- **Simulation Ops Backend Slice:** Go run control endpoints, MoQ/WebTransport subscription metadata, Redpanda/Postgres/MinIO/Iceberg deployment seams, and Rust telemetry bucket containers.
+- **Simulation Ops Backend Slice:** Go run control endpoints, API polling events, Postgres-backed run state, Redpanda event publication, Docker-launched Rust worker containers, and local manifest artifact commits.
 - **Simulation Ops Contract:** telemetry schemas, NDJSON examples, MoQ/WebTransport live-track names, and scenario randomization blueprint for local worker swarms.
 - **Controlled Quality Package:** controlled quality, design, verification, release, records documentation, and fixture-backed process evidence suitable for serious engineering review.
 
@@ -35,9 +35,11 @@ bun run infra:check
 bun run quality:check
 bun run backend:test
 bun run simops:contract:check
+bun run simops:smoke:local
 ```
 
 `bun run ci` runs the full local verification chain.
+`bun run simops:smoke:local` is Docker-dependent and intentionally stays outside default CI.
 
 ## Version 3.0 Backend Gateway
 
@@ -49,10 +51,13 @@ The same Go backend now exposes the first Simulation Ops control-plane slice:
 
 - `POST /api/simops/runs` creates a bounded run from an allowed scenario/work script and returns MoQ/WebTransport subscription metadata.
 - `GET /api/simops/runs/{run_id}` returns run, worker, spool-command, and Iceberg artifact-planning state.
+- `GET /api/simops/runs/{run_id}/events` returns persisted lifecycle, telemetry, and artifact-ready events for the polling UI path.
 - `POST /api/simops/runs/{run_id}/stop` records a controlled stop request.
 - `POST /internal/simops/runs/{run_id}/ingest` accepts token-gated telemetry batches from Rust bucket workers.
 
-The local deployment model assigns Postgres to control-plane and Iceberg catalog metadata, Redpanda to the hot telemetry log, MinIO to S3-compatible Iceberg storage, and separate `simops-stream-gateway` and `simops-iceberg-writer` service boundaries. The checked-in Go slice exposes memory-backed contract adapters plus health/readiness surfaces; real Postgres, broker, MoQ, Docker-launcher, and Iceberg client modules remain explicit integration seams rather than browser-visible credentials.
+The local deployment model assigns Postgres to control-plane and Iceberg catalog metadata, Redpanda to the hot telemetry log, MinIO to S3-compatible Iceberg storage, and separate `simops-stream-gateway` and `simops-iceberg-writer` service boundaries. Docker Compose starts the always-on platform. The Go gateway launches run-scoped worker containers on demand, passes them the run id and ingest token, and records the resulting frames/events/artifact status through the same control-plane API the frontend polls. Real MoQ/WebTransport and full external Iceberg Rust commits remain explicit integration seams rather than browser-visible credentials.
+
+For browser-local development, the compose gateway sets `SLURM_GATEWAY_REQUIRE_CLIENT_CERT=false`; mTLS remains the non-browser gateway boundary. For host-run worker orchestration, use `SIMOPS_WORKER_RUNTIME=docker` and `SIMOPS_WORKER_INGEST_BASE_URL=http://host.docker.internal:8080` or the matching published gateway port.
 
 ```bash
 bun run backend:test
@@ -93,7 +98,7 @@ The existing `scripts/checkpoint-v1.sh` remains available for the historical v1 
 - `src/data/readiness-fixtures.json` is the controlled fixture source for public facts, jobs, requirements, compute evidence, controlled process evidence, milestones, and deployment checks.
 - `src/domain/readiness.ts` contains deterministic toy calculations, diagnosis rules, evidence hashing, and traceability checks.
 - `backend/slurm-gateway/` contains the v3.0 mock-first Slurm gateway handlers and tests.
-- `deploy/slurm-gateway.compose.yml` defines the SimOps control-plane, Redpanda, Postgres, MinIO, `simops-stream-gateway`, `simops-iceberg-writer`, and Rust bucket service topology.
+- `deploy/slurm-gateway.compose.yml` defines the SimOps control-plane, Redpanda, Postgres, MinIO, `simops-stream-gateway`, `simops-iceberg-writer`, and smoke/demo Rust bucket service topology.
 - `deploy/postgres-init/001_simops.sql` defines the SimOps control-plane and Iceberg SQL-catalog tables used by the local deployment.
 - `docs/schemas/simulation-ops/` and `examples/simulation-ops/` define the Simulation Ops telemetry contract and canonical example run artifacts.
 - `docs/requirements/` contains the requirements, verification matrix, change log, and objective evidence index.

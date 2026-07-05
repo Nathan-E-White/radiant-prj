@@ -57,6 +57,7 @@ if (existsSync("deploy/slurm-gateway.Dockerfile")) {
     "go test ./...",
     "simops-stream-gateway",
     "simops-iceberg-writer",
+    "docker-cli",
     "USER appuser",
     "SLURM_GATEWAY_MODE=mock"
   ]) {
@@ -72,13 +73,18 @@ if (existsSync("deploy/slurm-gateway.compose.yml")) {
     "slurm-gateway",
     "SIMOPS_CONTROL_STORE",
     "SIMOPS_TELEMETRY_LOG",
+    "SIMOPS_WORKER_RUNTIME",
+    "SIMOPS_WORKER_INGEST_BASE_URL",
     "SIMOPS_MOQ_WEBTRANSPORT_URL",
+    "SIMOPS_ICEBERG_WRITER_MODE",
     "simops-stream-gateway",
     "simops-iceberg-writer",
     "redpanda",
     "postgres",
     "minio",
     "simops-bucket-scheduler",
+    "radiant-simops-generator:latest",
+    "/var/run/docker.sock",
     "SLURM_GATEWAY_ALLOWED_CLIENTS",
     "no-new-privileges:true",
     "prometheus"
@@ -118,7 +124,7 @@ if (existsSync("deploy/prometheus.yml")) {
 
 if (existsSync("deploy/postgres-init/001_simops.sql")) {
   const sql = readFileSync("deploy/postgres-init/001_simops.sql", "utf8");
-  for (const token of ["simops_runs", "simops_workers", "simops_events", "simops_artifacts", "iceberg_catalog"]) {
+  for (const token of ["simops_runs", "ingest_token", "simops_workers", "simops_events", "simops_artifacts", "iceberg_catalog"]) {
     if (!sql.includes(token)) {
       problems.push(`SimOps Postgres init SQL missing ${token}`);
     }

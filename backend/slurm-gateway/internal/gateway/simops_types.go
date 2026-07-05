@@ -105,6 +105,7 @@ type SimopsArtifactRecord struct {
 	MediaType    string    `json:"media_type"`
 	Location     string    `json:"location"`
 	IcebergTable string    `json:"iceberg_table,omitempty"`
+	Status       string    `json:"status"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 

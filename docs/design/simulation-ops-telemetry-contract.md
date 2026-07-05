@@ -104,7 +104,7 @@ Repeatability is optional in this revision. `randomSeed` may appear in a manifes
 
 NDJSON is the canonical storage and example format for this slice. Each line is one telemetry envelope.
 
-Live frontend delivery uses MoQ over WebTransport. The Go control plane returns short-lived subscription metadata for a run; the browser does not receive Redpanda credentials or bucket container authority.
+The implemented frontend delivery path for this slice is API polling of run state and persisted run events. The Go control plane also returns short-lived MoQ/WebTransport subscription metadata for a run so the track contract remains stable, but the browser does not receive Redpanda credentials or bucket container authority.
 
 The controlled track layout is:
 
@@ -119,7 +119,7 @@ RoQ is not selected for v1 because the current plan needs browser-facing publish
 
 ## Persistence and Artifact Handoff
 
-The v1 deployment contract assigns Postgres to control-plane records for runs, workers, idempotency keys, spool commands, lifecycle state, artifact references, and local Iceberg SQL-catalog metadata. It assigns Redpanda to the hot durable telemetry log keyed by run and worker, MinIO to S3-compatible object storage, and Iceberg Rust to validated Parquet-backed table commits. The current checked-in Go slice keeps these as explicit adapter contracts while retaining a memory-backed local runtime for tests.
+The v1 deployment contract assigns Postgres to control-plane records for runs, workers, idempotency keys, ingest tokens, spool commands, lifecycle state, event polling, artifact references, and local Iceberg SQL-catalog metadata. It assigns Redpanda to the hot durable telemetry log keyed by run and worker, MinIO to S3-compatible object storage, and the local manifest writer to validated artifact-intent commits. External Iceberg Rust commits remain opt-in while memory-backed adapters stay available for deterministic tests.
 
 Iceberg manages analytic telemetry artifacts and table metadata. It does not replace Postgres for command, run, or authorization state.
 

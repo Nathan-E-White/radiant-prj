@@ -41,8 +41,21 @@ func TestSimopsCreateRunReturnsMoQSubscription(t *testing.T) {
 	if len(response.MoQSubscription.Tracks) != 4 {
 		t.Fatalf("expected lifecycle, artifact, telemetry, and quality tracks; got %d", len(response.MoQSubscription.Tracks))
 	}
-	if len(response.Artifacts) != 1 || response.Artifacts[0].IcebergTable != "simops.telemetry_frames" {
-		t.Fatalf("expected planned Iceberg artifact, got %#v", response.Artifacts)
+	if len(response.Artifacts) != 1 {
+		t.Fatalf("expected one planned artifact, got %d", len(response.Artifacts))
+	}
+	artifact := response.Artifacts[0]
+	if artifact.IcebergTable != "simops.telemetry_frames" {
+		t.Fatalf("expected planned Iceberg table, got %#v", artifact)
+	}
+	if artifact.Kind != "iceberg-table-partition" {
+		t.Fatalf("expected planned artifact kind, got %#v", artifact.Kind)
+	}
+	if artifact.Status != SimopsArtifactStatusReceived {
+		t.Fatalf("expected initial artifact status received, got %q", artifact.Status)
+	}
+	if artifact.Location == "" {
+		t.Fatalf("expected artifact location to be present: %#v", artifact)
 	}
 }
 
@@ -126,6 +139,37 @@ func TestSimopsInternalIngestAcceptsTelemetryBatch(t *testing.T) {
 	}
 }
 
+func TestSimopsRunEventsEndpointReturnsPersistedEvents(t *testing.T) {
+	app, _ := newSimopsTestGateway(t, "RUN-EVENTS")
+	create := signedRequest(http.MethodPost, "/api/simops/runs", `{"scenario_id":"scheduler-drift","worker_kinds":["scheduler"]}`, "react-backend-client")
+	createRR := httptest.NewRecorder()
+	app.Handler().ServeHTTP(createRR, create)
+	if createRR.Code != http.StatusAccepted {
+		t.Fatalf("create expected accepted, got %d: %s", createRR.Code, createRR.Body.String())
+	}
+
+	events := signedRequest(http.MethodGet, "/api/simops/runs/RUN-EVENTS/events", "", "react-backend-client")
+	eventsRR := httptest.NewRecorder()
+	app.Handler().ServeHTTP(eventsRR, events)
+	if eventsRR.Code != http.StatusOK {
+		t.Fatalf("events expected ok, got %d: %s", eventsRR.Code, eventsRR.Body.String())
+	}
+
+	var response struct {
+		RunID  string        `json:"run_id"`
+		Events []SimopsEvent `json:"events"`
+	}
+	if err := json.Unmarshal(eventsRR.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode events: %v", err)
+	}
+	if response.RunID != "RUN-EVENTS" {
+		t.Fatalf("unexpected run id %q", response.RunID)
+	}
+	if len(response.Events) == 0 || response.Events[0].EventType != "run.lifecycle" {
+		t.Fatalf("expected lifecycle event, got %#v", response.Events)
+	}
+}
+
 func TestSimopsInternalIngestRejectsOversizedBody(t *testing.T) {
 	app, _ := newSimopsTestGateway(t, "RUN-INGEST-LARGE")
 	create := signedRequest(http.MethodPost, "/api/simops/runs", `{"scenario_id":"scheduler-drift","worker_kinds":["scheduler"]}`, "react-backend-client")
@@ -160,6 +204,8 @@ func newSimopsTestGateway(t *testing.T, runID string) (*Gateway, *countingSimops
 		spooler,
 		MemorySimopsEventLog{Store: store},
 		IcebergArtifactPlanner{Warehouse: "s3://radiant-simops/warehouse", Bucket: "radiant-simops", Catalog: "postgres-sql"},
+		nil,
+		nil,
 	)
 	controller.runID = func() string { return runID }
 	controller.now = func() time.Time { return time.Date(2026, 7, 4, 12, 0, 0, 0, time.UTC) }

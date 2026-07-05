@@ -54,6 +54,25 @@ func (g *Gateway) handleSimopsRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if strings.HasSuffix(path, "/events") {
+		if r.Method != http.MethodGet {
+			writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "Only GET requests allowed", Code: "method_not_allowed"})
+			return
+		}
+		runID := strings.TrimSuffix(path, "/events")
+		runID = strings.TrimSuffix(runID, "/")
+		events, status, err := g.simops.ListEvents(runID)
+		if err != nil {
+			writeJSON(w, status, ErrorResponse{Error: err.Error(), Code: simopsErrorCode(status)})
+			return
+		}
+		writeJSON(w, status, map[string]any{
+			"run_id": runID,
+			"events": events,
+		})
+		return
+	}
+
 	if strings.HasSuffix(path, "/stop") {
 		if r.Method != http.MethodPost {
 			writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "Only POST requests allowed", Code: "method_not_allowed"})

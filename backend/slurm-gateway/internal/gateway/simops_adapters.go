@@ -4,12 +4,14 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"path"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/segmentio/kafka-go"
 )
 
 type SimopsSpooler interface {
@@ -95,21 +97,25 @@ func (s ContractSimopsSpooler) StopRun(ctx context.Context, runID string) error 
 type DockerSimopsSpooler struct {
 	Image         string
 	ManifestRoot  string
+	IngestBaseURL string
+	FrameOverride int
 	Network       string
 	AutoRemove    bool
 	LaunchMode    string
-	CmdRunner    func(context.Context, ...string) (string, error)
+	CmdRunner     func(context.Context, ...string) (string, error)
 }
 
 func NewDockerSimopsSpooler(cfg SimopsConfig) DockerSimopsSpooler {
 	runner := runDockerCommand
 	return DockerSimopsSpooler{
-		Image:        cfg.WorkerImage,
-		ManifestRoot: cfg.WorkerManifestRoot,
-		Network:      cfg.WorkerNetwork,
-		AutoRemove:   cfg.WorkerAutoRemove,
-		LaunchMode:   cfg.LaunchMode,
-		CmdRunner:   runner,
+		Image:         cfg.WorkerImage,
+		ManifestRoot:  cfg.WorkerManifestRoot,
+		IngestBaseURL: cfg.WorkerIngestBaseURL,
+		FrameOverride: cfg.WorkerFrameOverride,
+		Network:       cfg.WorkerNetwork,
+		AutoRemove:    cfg.WorkerAutoRemove,
+		LaunchMode:    cfg.LaunchMode,
+		CmdRunner:     runner,
 	}
 }
 
@@ -131,11 +137,12 @@ func (s DockerSimopsSpooler) StartRun(ctx context.Context, run SimopsRunRecord, 
 
 	records := make([]SimopsWorkerRecord, 0, len(workers))
 	commands := make([]SimopsSpoolCommand, 0, len(workers))
-	for index, worker := range workers {
-		workerID := fmt.Sprintf("%s-%02d", worker, index+1)
+	for _, worker := range workers {
+		workerID := fmt.Sprintf("%s-01", worker)
 		containerName := fmt.Sprintf("simops-%s-%s", run.RunID, workerID)
 		manifest := path.Join(s.ManifestRoot, fmt.Sprintf("run-manifest.%s.json", run.ScenarioID))
-		containerID, err := s.startWorker(ctx, run.RunID, containerName, workerID, worker, manifest, run.RuntimeLimitSec)
+		ingestURL := s.ingestURL(run.RunID)
+		containerID, err := s.startWorker(ctx, run.RunID, containerName, workerID, worker, manifest, ingestURL, run.IngestToken)
 		if err != nil {
 			s.tryStopRunWorkers(ctx, run.RunID)
 			return nil, nil, err
@@ -147,10 +154,10 @@ func (s DockerSimopsSpooler) StartRun(ctx context.Context, run SimopsRunRecord, 
 			WorkerKind: worker,
 			Lifecycle:  SimopsStarting,
 			LaunchMode: mode,
-			Endpoint:   "",
+			Endpoint:   ingestURL,
 			UpdatedAt:  time.Now().UTC(),
 			Labels: map[string]string{
-				"simops.runtime":      "docker",
+				"simops.runtime":       "docker",
 				"simops.worker_image":  s.Image,
 				"simops.container_id":  containerID,
 				"simops.worker_mode":   mode,
@@ -181,7 +188,7 @@ func (s DockerSimopsSpooler) StopRun(ctx context.Context, runID string) error {
 	}
 }
 
-func (s DockerSimopsSpooler) startWorker(ctx context.Context, runID, containerName, workerID string, worker SimopsWorkerKind, manifestPath string, frames int) (string, error) {
+func (s DockerSimopsSpooler) startWorker(ctx context.Context, runID, containerName, workerID string, worker SimopsWorkerKind, manifestPath string, ingestURL string, ingestToken string) (string, error) {
 	args := []string{"run", "-d", "--name", containerName, "--label", "simops.run_id=" + runID, "--label", "simops.worker_id=" + workerID, "--label", "simops.worker_kind=" + string(worker)}
 	if s.Network != "" {
 		args = append(args, "--network", s.Network)
@@ -189,7 +196,10 @@ func (s DockerSimopsSpooler) startWorker(ctx context.Context, runID, containerNa
 	if s.AutoRemove {
 		args = append(args, "--rm")
 	}
-	args = append(args, s.Image, "--manifest", manifestPath, "--worker", string(worker), "--frames", strconv.Itoa(frames), "--output", "-")
+	args = append(args, s.Image, "--manifest", manifestPath, "--worker", string(worker), "--run-id", runID, "--ingest-url", ingestURL, "--ingest-token", ingestToken, "--output", "-")
+	if s.FrameOverride > 0 {
+		args = append(args, "--frames", fmt.Sprintf("%d", s.FrameOverride))
+	}
 
 	containerID, err := s.CmdRunner(ctx, args...)
 	if err != nil {
@@ -200,6 +210,11 @@ func (s DockerSimopsSpooler) startWorker(ctx context.Context, runID, containerNa
 		return "", fmt.Errorf("empty container id returned from docker run")
 	}
 	return containerID, nil
+}
+
+func (s DockerSimopsSpooler) ingestURL(runID string) string {
+	base := strings.TrimRight(strings.TrimSpace(s.IngestBaseURL), "/")
+	return base + "/internal/simops/runs/" + strings.TrimSpace(runID) + "/ingest"
 }
 
 func (s DockerSimopsSpooler) ensureImage(ctx context.Context) error {
@@ -286,25 +301,77 @@ func (l MemorySimopsEventLog) Publish(ctx context.Context, event SimopsEvent) er
 	return l.Store.SaveEvent(event)
 }
 
-type RedpandaContractEventLog struct {
-	Brokers string
-	Topic   string
-	Store   SimopsStore
+type kafkaMessageWriter interface {
+	WriteMessages(ctx context.Context, msgs ...kafka.Message) error
 }
 
-func (l RedpandaContractEventLog) Publish(ctx context.Context, event SimopsEvent) error {
+type RedpandaEventLog struct {
+	Topic  string
+	Store  SimopsStore
+	Writer kafkaMessageWriter
+}
+
+func NewRedpandaEventLog(cfg SimopsConfig, store SimopsStore) (*RedpandaEventLog, error) {
+	brokers := csvValues(cfg.RedpandaBrokers)
+	if len(brokers) == 0 {
+		return nil, fmt.Errorf("redpanda event log requires brokers")
+	}
+	if strings.TrimSpace(cfg.RedpandaTopic) == "" {
+		return nil, fmt.Errorf("redpanda event log requires topic")
+	}
+	return &RedpandaEventLog{
+		Topic: cfg.RedpandaTopic,
+		Store: store,
+		Writer: &kafka.Writer{
+			Addr:         kafka.TCP(brokers...),
+			Topic:        cfg.RedpandaTopic,
+			Balancer:     &kafka.Hash{},
+			RequiredAcks: kafka.RequireOne,
+			Async:        false,
+		},
+	}, nil
+}
+
+func (l *RedpandaEventLog) Publish(ctx context.Context, event SimopsEvent) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
 	default:
 	}
-	if strings.TrimSpace(l.Brokers) == "" || strings.TrimSpace(l.Topic) == "" {
-		return fmt.Errorf("redpanda event log requires brokers and topic")
+	if l.Writer == nil {
+		return fmt.Errorf("redpanda event log requires writer")
+	}
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return err
+	}
+	key := event.RunID
+	if event.WorkerID != "" {
+		key += "|" + event.WorkerID
+	}
+	if err := l.Writer.WriteMessages(ctx, kafka.Message{
+		Key:   []byte(key),
+		Value: payload,
+		Time:  event.OccurredAt,
+	}); err != nil {
+		return err
 	}
 	if l.Store != nil {
 		return l.Store.SaveEvent(event)
 	}
 	return nil
+}
+
+func csvValues(raw string) []string {
+	parts := strings.Split(raw, ",")
+	values := make([]string, 0, len(parts))
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value != "" {
+			values = append(values, value)
+		}
+	}
+	return values
 }
 
 type IcebergArtifactPlanner struct {
@@ -319,15 +386,26 @@ func (p IcebergArtifactPlanner) PlanArtifact(run SimopsRunRecord) SimopsArtifact
 	if p.Now != nil {
 		now = p.Now().UTC()
 	}
-	location := strings.TrimRight(p.Warehouse, "/") + "/simops_telemetry/run_id=" + run.RunID
-	if strings.TrimSpace(location) == "" || strings.HasPrefix(location, "/simops_telemetry") {
-		location = "s3://" + p.Bucket + "/warehouse/simops_telemetry/run_id=" + run.RunID
+	location := strings.TrimRight(strings.TrimSpace(p.Warehouse), "/")
+	if location == "" {
+		location = "s3://" + strings.TrimSpace(p.Bucket)
+	}
+	if location == "" {
+		location = "s3://simops-warehouse"
+	}
+	if !strings.HasPrefix(location, "s3://") && !strings.HasPrefix(location, "file://") {
+		location = "s3://" + strings.TrimPrefix(location, "file://")
+	}
+	location = strings.TrimRight(location, "/") + "/simops_telemetry/run_id=" + run.RunID
+	if strings.TrimSpace(p.Catalog) == "" {
+		location = strings.TrimRight(location, "/") + "/run=" + run.RunID
 	}
 	return SimopsArtifactRecord{
 		ArtifactID:   "iceberg-telemetry-" + run.RunID,
 		RunID:        run.RunID,
 		Kind:         "iceberg-table-partition",
 		MediaType:    "application/vnd.apache.iceberg.table",
+		Status:       SimopsArtifactStatusReceived,
 		Location:     location,
 		IcebergTable: "simops.telemetry_frames",
 		CreatedAt:    now,

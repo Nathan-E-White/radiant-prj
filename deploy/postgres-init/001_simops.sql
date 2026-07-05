@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS simops_runs (
   runtime_limit_sec INTEGER NOT NULL,
   idempotency_key TEXT,
   submitted_by TEXT NOT NULL,
+  ingest_token TEXT NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL,
   UNIQUE (submitted_by, idempotency_key)
@@ -52,6 +53,7 @@ CREATE TABLE IF NOT EXISTS simops_artifacts (
   run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
   kind TEXT NOT NULL,
   media_type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'received',
   location TEXT NOT NULL,
   iceberg_table TEXT,
   created_at TIMESTAMPTZ NOT NULL

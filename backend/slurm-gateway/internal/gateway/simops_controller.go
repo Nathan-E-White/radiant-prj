@@ -25,6 +25,8 @@ type SimopsController struct {
 	spooler  SimopsSpooler
 	eventLog SimopsEventLog
 	artifact SimopsArtifactSink
+	writer   SimopsArtifactWriter
+	intent   *SimopsArtifactIntentProcessor
 	now      func() time.Time
 	runID    func() string
 }
@@ -42,15 +44,29 @@ func NewDefaultSimopsController(cfg SimopsConfig) (*SimopsController, error) {
 		spooler = NewDockerSimopsSpooler(cfg)
 	}
 
-	store := NewInMemorySimopsStore()
+	var store SimopsStore = NewInMemorySimopsStore()
+	if cfg.ControlStore == "postgres" {
+		postgresStore, err := NewPostgresSimopsStore(cfg.PostgresDSN)
+		if err != nil {
+			return nil, err
+		}
+		store = postgresStore
+	}
+
 	eventLog := SimopsEventLog(MemorySimopsEventLog{Store: store})
 	if cfg.TelemetryLog == "redpanda" {
-		eventLog = RedpandaContractEventLog{
-			Brokers: cfg.RedpandaBrokers,
-			Topic:   cfg.RedpandaTopic,
-			Store:   store,
+		redpandaLog, err := NewRedpandaEventLog(cfg, store)
+		if err != nil {
+			return nil, err
 		}
+		eventLog = redpandaLog
 	}
+
+	writer, err := NewSimopsArtifactWriter(cfg, store, time.Now)
+	if err != nil {
+		return nil, err
+	}
+	intent := NewSimopsArtifactIntentProcessor(writer, eventLog, cfg.RedpandaTopic, 1, time.Now)
 
 	return NewSimopsController(
 		cfg,
@@ -62,10 +78,12 @@ func NewDefaultSimopsController(cfg SimopsConfig) (*SimopsController, error) {
 			Bucket:    cfg.IcebergS3Bucket,
 			Catalog:   cfg.IcebergCatalog,
 		},
+		writer,
+		intent,
 	), nil
 }
 
-func NewSimopsController(cfg SimopsConfig, store SimopsStore, spooler SimopsSpooler, eventLog SimopsEventLog, artifact SimopsArtifactSink) *SimopsController {
+func NewSimopsController(cfg SimopsConfig, store SimopsStore, spooler SimopsSpooler, eventLog SimopsEventLog, artifact SimopsArtifactSink, writer SimopsArtifactWriter, intent *SimopsArtifactIntentProcessor) *SimopsController {
 	if store == nil {
 		store = NewInMemorySimopsStore()
 	}
@@ -78,12 +96,20 @@ func NewSimopsController(cfg SimopsConfig, store SimopsStore, spooler SimopsSpoo
 	if artifact == nil {
 		artifact = IcebergArtifactPlanner{Warehouse: cfg.IcebergWarehouse, Bucket: cfg.IcebergS3Bucket, Catalog: cfg.IcebergCatalog}
 	}
+	if writer == nil {
+		writer = &DisabledSimopsArtifactWriter{base: &simopsArtifactWriterBase{store: store, topic: cfg.RedpandaTopic, manifestDir: cfg.IcebergManifestDir, now: time.Now}}
+	}
+	if intent == nil {
+		intent = NewSimopsArtifactIntentProcessor(writer, eventLog, cfg.RedpandaTopic, 1, time.Now)
+	}
 	return &SimopsController{
 		cfg:      cfg,
 		store:    store,
 		spooler:  spooler,
 		eventLog: eventLog,
 		artifact: artifact,
+		writer:   writer,
+		intent:   intent,
 		now:      time.Now,
 		runID:    defaultRunID,
 	}
@@ -177,6 +203,20 @@ func (c *SimopsController) GetRun(runID string) (SimopsRunResponse, int, error) 
 	return resp, http.StatusOK, err
 }
 
+func (c *SimopsController) ListEvents(runID string) ([]SimopsEvent, int, error) {
+	if !runIDPattern.MatchString(runID) {
+		return nil, http.StatusNotFound, ErrSimopsRunNotFound
+	}
+	events, err := c.store.ListEvents(runID)
+	if errors.Is(err, ErrSimopsRunNotFound) {
+		return nil, http.StatusNotFound, err
+	}
+	if err != nil {
+		return nil, http.StatusInternalServerError, err
+	}
+	return events, http.StatusOK, nil
+}
+
 func (c *SimopsController) StopRun(ctx context.Context, runID string) (SimopsRunResponse, int, error) {
 	record, status, err := c.getRecordForWrite(runID)
 	if err != nil {
@@ -245,6 +285,17 @@ func (c *SimopsController) Ingest(ctx context.Context, runID string, token strin
 		}
 		if err := c.store.UpdateWorkerFrames(runID, frame.WorkerID, SimopsStreaming, 1); err != nil {
 			return 0, http.StatusUnprocessableEntity, err
+		}
+		if c.intent != nil {
+			if _, err := c.intent.ProcessEvent(ctx, SimopsEvent{
+				RunID:      runID,
+				WorkerID:   frame.WorkerID,
+				EventType:  "worker.telemetry",
+				Frame:      raw,
+				OccurredAt: c.now().UTC(),
+			}); err != nil {
+				return 0, http.StatusBadGateway, err
+			}
 		}
 	}
 

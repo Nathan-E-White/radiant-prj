@@ -111,6 +111,7 @@ func (g *Gateway) handleReady(w http.ResponseWriter, r *http.Request) {
 			"stream_gateway":       g.cfg.Simops.MoQWebTransportURL,
 			"iceberg_catalog":      g.cfg.Simops.IcebergCatalog,
 			"iceberg_writer_mode":  g.cfg.Simops.IcebergWriterMode,
+			"iceberg_manifest_dir": g.cfg.Simops.IcebergManifestDir,
 			"adapter_contracts_v1": true,
 		},
 	})

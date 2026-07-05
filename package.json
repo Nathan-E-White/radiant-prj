@@ -17,6 +17,7 @@
     "adr:check": "node scripts/check-adr-docs.mjs",
     "simops:contract:check": "node scripts/check-simops-contract.mjs",
     "simops:generator:test": "cd workers/simops-generator && cargo test",
+    "simops:smoke:local": "scripts/simops-local-smoke.sh",
     "backend:test": "cd backend/slurm-gateway && env GOCACHE=/tmp/radiant-go-cache go test ./...",
     "backend:run": "cd backend/slurm-gateway && go run ./cmd/server",
     "certs:local": "scripts/create-local-gateway-certs.sh",

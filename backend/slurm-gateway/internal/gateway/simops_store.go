@@ -7,6 +7,7 @@ import (
 )
 
 var ErrSimopsRunNotFound = errors.New("simops run not found")
+var ErrSimopsArtifactNotFound = errors.New("simops artifact not found")
 var ErrSimopsConflict = errors.New("simops conflict")
 
 type SimopsStore interface {
@@ -21,6 +22,7 @@ type SimopsStore interface {
 	SaveArtifact(record SimopsArtifactRecord) error
 	SaveEvent(event SimopsEvent) error
 	ListEvents(runID string) ([]SimopsEvent, error)
+	UpdateArtifactStatus(runID string, artifactID string, status string) error
 	ActiveRunCount() int
 }
 
@@ -182,6 +184,27 @@ func (s *InMemorySimopsStore) SaveEvent(event SimopsEvent) error {
 	}
 	s.eventsByRun[event.RunID] = append(s.eventsByRun[event.RunID], event)
 	return nil
+}
+
+func (s *InMemorySimopsStore) UpdateArtifactStatus(runID string, artifactID string, status string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.runs[runID]; !ok {
+		return ErrSimopsRunNotFound
+	}
+	artifacts, ok := s.artifactsByRun[runID]
+	if !ok {
+		return ErrSimopsArtifactNotFound
+	}
+	for i, artifact := range artifacts {
+		if artifact.ArtifactID == artifactID {
+			artifact.Status = status
+			artifacts[i] = artifact
+			s.artifactsByRun[runID] = artifacts
+			return nil
+		}
+	}
+	return ErrSimopsArtifactNotFound
 }
 
 func (s *InMemorySimopsStore) ListEvents(runID string) ([]SimopsEvent, error) {

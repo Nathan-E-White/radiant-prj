@@ -16,6 +16,10 @@ func main() {
 		log.Fatalf("invalid iceberg writer configuration: %v", err)
 	}
 
+	if _, err := gateway.NewSimopsArtifactWriter(cfg.Simops, nil, time.Now); err != nil {
+		log.Fatalf("invalid iceberg writer configuration: %v", err)
+	}
+
 	addr := getenv("SIMOPS_ICEBERG_WRITER_ADDR", ":9460")
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
@@ -23,13 +27,15 @@ func main() {
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{
-			"status":             "ready",
-			"catalog":            cfg.Simops.IcebergCatalog,
-			"warehouse":          cfg.Simops.IcebergWarehouse,
-			"s3_endpoint":        cfg.Simops.IcebergS3Endpoint,
-			"redpanda_topic":     cfg.Simops.RedpandaTopic,
-			"writer_mode":        cfg.Simops.IcebergWriterMode,
-			"implementation_gap": "Iceberg Rust batch commit worker is an external adapter target for this service",
+			"status":              "ready",
+			"catalog":             cfg.Simops.IcebergCatalog,
+			"warehouse":           cfg.Simops.IcebergWarehouse,
+			"s3_endpoint":         cfg.Simops.IcebergS3Endpoint,
+			"manifest_dir":        cfg.Simops.IcebergManifestDir,
+			"rust_command":        cfg.Simops.IcebergRustCommand,
+			"redpanda_topic":      cfg.Simops.RedpandaTopic,
+			"writer_mode":         cfg.Simops.IcebergWriterMode,
+			"implementation_note": "manifest mode is the local artifact writer; external mode delegates to the configured Iceberg Rust command",
 		})
 	})
 	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {

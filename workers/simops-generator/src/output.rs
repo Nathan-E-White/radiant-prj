@@ -1,9 +1,12 @@
 use std::collections::HashMap;
 use std::fs::{File, create_dir_all};
-use std::io::{self, BufWriter, Write};
+use std::io::{self, BufWriter, Read, Write};
+use std::net::TcpStream;
 use std::path::Path;
+use std::time::Duration as StdDuration;
 
 use serde_json::Value;
+use serde_json::json;
 use time::format_description::well_known::Rfc3339;
 use time::{Duration, OffsetDateTime};
 
@@ -38,6 +41,41 @@ pub fn write_summary(summary: &RunSummary, path: &str) -> Result<()> {
     serde_json::to_writer_pretty(&mut writer, summary)?;
     writer.write_all(b"\n")?;
     writer.flush()?;
+    Ok(())
+}
+
+pub fn post_ingest(run: &GeneratedRun, url: &str, token: &str) -> Result<()> {
+    let target = HttpTarget::parse(url)?;
+    let frames: Vec<_> = run
+        .frames
+        .iter()
+        .map(|generated| &generated.frame)
+        .collect();
+    let payload = serde_json::to_vec(&json!({ "frames": frames }))?;
+    let mut stream = TcpStream::connect(&target.connect_addr)?;
+    stream.set_read_timeout(Some(StdDuration::from_secs(10)))?;
+    stream.set_write_timeout(Some(StdDuration::from_secs(10)))?;
+
+    let request = format!(
+        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nAccept: application/json\r\nX-Simops-Ingest-Token: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        target.path,
+        target.host_header,
+        token,
+        payload.len()
+    );
+    stream.write_all(request.as_bytes())?;
+    stream.write_all(&payload)?;
+    stream.flush()?;
+
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+    let status_line = response.lines().next().unwrap_or_default();
+    if !status_line.starts_with("HTTP/1.1 2") && !status_line.starts_with("HTTP/1.0 2") {
+        return Err(SimopsError::new(format!(
+            "ingest endpoint returned non-success status: {}",
+            status_line
+        )));
+    }
     Ok(())
 }
 
@@ -223,4 +261,169 @@ pub fn ensure_positive_frames(frames: usize) -> Result<usize> {
         return Err(SimopsError::new("--frames must be greater than zero"));
     }
     Ok(frames)
+}
+
+struct HttpTarget {
+    connect_addr: String,
+    host_header: String,
+    path: String,
+}
+
+impl HttpTarget {
+    fn parse(url: &str) -> Result<Self> {
+        let without_scheme = url
+            .strip_prefix("http://")
+            .ok_or_else(|| SimopsError::new("--ingest-url must use http:// for local ingestion"))?;
+        let (host, path) = match without_scheme.split_once('/') {
+            Some((host, path)) => (host, format!("/{path}")),
+            None => (without_scheme, "/".to_string()),
+        };
+        if host.is_empty() {
+            return Err(SimopsError::new("--ingest-url host is required"));
+        }
+        let connect_addr = if host.contains(':') {
+            host.to_string()
+        } else {
+            format!("{host}:80")
+        };
+        Ok(Self {
+            connect_addr,
+            host_header: host.to_string(),
+            path,
+        })
+    }
+}
+
+#[cfg(test)]
+mod ingest_tests {
+    use super::*;
+    use crate::generators::{WorkerSelection, generate_run};
+    use crate::manifest::RunManifest;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::sync::mpsc;
+    use std::thread;
+
+    fn manifest() -> RunManifest {
+        let raw = serde_json::json!({
+            "schemaVersion": "simops.run-manifest.v1",
+            "runId": "RUN-TEST-001",
+            "scenarioId": "scheduler-drift",
+            "createdAt": "2026-07-04T18:00:00.000Z",
+            "lifecycle": "created",
+            "workbenchAnchor": {
+                "jobId": "JOB-HPC-404",
+                "evidencePackId": "EP-HPC-404",
+                "gatewayEvidenceId": "SLURM-GATEWAY-001"
+            },
+            "runtimeLimitSec": 10,
+            "transportBinding": "ndjson",
+            "randomization": {
+                "mode": "correlated-pressure",
+                "pressureCurve": [
+                    { "offsetSec": 0, "pressure": 0.1 },
+                    { "offsetSec": 10, "pressure": 0.2 }
+                ],
+                "baseline": [
+                    { "metricPath": "scheduler.barrierWaitMs.p95", "nominalMin": 8, "nominalMax": 35, "unit": "ms" }
+                ],
+                "couplings": [],
+                "events": [],
+                "bounds": [
+                    { "metricPath": "payload.barrierWaitMs.p95", "min": 0, "max": 1000, "unit": "ms" }
+                ]
+            },
+            "workers": [
+                {
+                    "workerId": "scheduler-01",
+                    "workerKind": "scheduler",
+                    "payloadType": "schedulerCoScheduling",
+                    "emitHz": 1,
+                    "panelTarget": "Multiphysics Job Co-scheduler"
+                }
+            ],
+            "artifacts": [],
+            "provenance": {
+                "generatedBy": "test",
+                "dataClass": "synthetic-simulation-ops",
+                "storageFormat": "ndjson"
+            }
+        });
+        RunManifest::from_json(&raw.to_string()).expect("manifest")
+    }
+
+    #[test]
+    fn posts_ingest_batch_to_http_endpoint() {
+        let listener = match TcpListener::bind("127.0.0.1:0") {
+            Ok(listener) => listener,
+            Err(error) => {
+                eprintln!("skipping local ingest listener test: {error}");
+                return;
+            }
+        };
+        let addr = listener.local_addr().expect("addr");
+        let (tx, rx) = mpsc::channel();
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buffer = [0u8; 8192];
+            let count = stream.read(&mut buffer).expect("read");
+            let request = String::from_utf8_lossy(&buffer[..count]).to_string();
+            stream
+                .write_all(b"HTTP/1.1 202 Accepted\r\nContent-Length: 2\r\n\r\n{}")
+                .expect("write");
+            tx.send(request).expect("send");
+        });
+
+        let run = generate_run(
+            &manifest(),
+            WorkerSelection::One(crate::manifest::WorkerKind::Scheduler),
+            Some(1),
+        )
+        .expect("run");
+        post_ingest(
+            &run,
+            &format!("http://{addr}/internal/simops/runs/RUN-TEST-001/ingest"),
+            "secret-token",
+        )
+        .expect("post ingest");
+
+        let request = rx.recv().expect("request");
+        assert!(request.starts_with("POST /internal/simops/runs/RUN-TEST-001/ingest HTTP/1.1"));
+        assert!(request.contains("X-Simops-Ingest-Token: secret-token"));
+        assert!(request.contains("\"frames\""));
+    }
+
+    #[test]
+    fn rejects_bad_ingest_status() {
+        let listener = match TcpListener::bind("127.0.0.1:0") {
+            Ok(listener) => listener,
+            Err(error) => {
+                eprintln!("skipping local ingest listener test: {error}");
+                return;
+            }
+        };
+        let addr = listener.local_addr().expect("addr");
+        thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buffer = [0u8; 1024];
+            let _ = stream.read(&mut buffer);
+            stream
+                .write_all(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n")
+                .expect("write");
+        });
+
+        let run = generate_run(
+            &manifest(),
+            WorkerSelection::One(crate::manifest::WorkerKind::Scheduler),
+            Some(1),
+        )
+        .expect("run");
+        let error = post_ingest(
+            &run,
+            &format!("http://{addr}/internal/simops/runs/RUN-TEST-001/ingest"),
+            "secret-token",
+        )
+        .expect_err("bad status should fail");
+        assert!(error.to_string().contains("non-success status"));
+    }
 }

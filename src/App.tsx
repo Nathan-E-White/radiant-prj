@@ -20,6 +20,19 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import {
+  createSimopsRun as createSimopsRunRequest,
+  getSimopsRun,
+  listSimopsEvents,
+  stopSimopsRun as stopSimopsRunRequest
+} from "./api/simops";
+import type {
+  SimopsEvent,
+  SimopsLifecycle,
+  SimopsRunRequest,
+  SimopsRunResponse,
+  SimopsWorkerKind
+} from "./api/simops";
+import {
   deploymentScore,
   diagnoseJob,
   fixtures,
@@ -39,77 +52,9 @@ import type {
   SchedulerState
 } from "./domain/types";
 
-type SimopsLifecycle = "created" | "starting" | "streaming" | "degraded" | "complete" | "failed" | "stopped";
-type SimopsWorkerKind = "scheduler" | "storage" | "burst" | "fabric";
 type StatusPillState = SchedulerState | BundleState | SimopsLifecycle | "complete";
 type TabId = "brief" | "workbench" | "evidence" | "simops";
 type BundleState = "ready" | "running" | "complete";
-type SimopsRunRequest = {
-  scenario_id: string;
-  source: string;
-  work_script: string;
-  launch_mode: "resident" | "spawn" | "auto";
-  worker_kinds: SimopsWorkerKind[];
-  runtime_limit_sec: number;
-  idempotency_key?: string;
-};
-type SimopsRunResponse = {
-  run_id: string;
-  scenario_id: string;
-  lifecycle: SimopsLifecycle;
-  source: string;
-  launch_mode: string;
-  runtime_limit_sec: number;
-  created: boolean;
-  submitted_by: string;
-  created_at: string;
-  updated_at: string;
-  moq_subscription: SimopsMoQSubscription;
-  workers: SimopsWorkerRecord[];
-  spool_commands: SimopsSpoolCommand[];
-  artifacts: SimopsArtifactRecord[];
-};
-type SimopsWorkerRecord = {
-  worker_id: string;
-  worker_kind: SimopsWorkerKind;
-  lifecycle: SimopsLifecycle;
-  launch_mode: string;
-  endpoint?: string;
-  frames: number;
-  updated_at: string;
-};
-type SimopsSpoolCommand = {
-  command_id: string;
-  run_id: string;
-  worker_id: string;
-  mode: string;
-  state: SimopsLifecycle;
-  message: string;
-  created_at: string;
-  updated_at: string;
-};
-type SimopsArtifactRecord = {
-  artifact_id: string;
-  run_id: string;
-  kind: string;
-  media_type: string;
-  location: string;
-  iceberg_table?: string;
-  created_at: string;
-};
-type SimopsMoQSubscription = {
-  protocol: string;
-  endpoint: string;
-  namespace: string;
-  token: string;
-  expires_at: string;
-  tracks: Array<{
-    name: string;
-    role: string;
-    worker_id?: string;
-    worker_kind?: string;
-  }>;
-};
 
 const tabItems: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
   { id: "brief", label: "Kaleidos Brief", icon: Boxes },
@@ -125,11 +70,6 @@ const scenarioOptions = [
 const simopsScenarios = ["nominal", "scheduler-drift", "checkpoint-pressure", "cloud-burst", "fabric-warning"];
 const simopsWorkerOptions: SimopsWorkerKind[] = ["scheduler", "storage", "burst", "fabric"];
 const simopsLaunchModes: Array<SimopsRunRequest["launch_mode"]> = ["resident", "spawn", "auto"];
-const SIMOPS_API_BASE = (import.meta.env.VITE_SIMOPS_API_BASE ?? "").replace(/\/$/, "");
-
-function simopsApiUrl(path: string): string {
-  return `${SIMOPS_API_BASE}${path}`;
-}
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>("brief");
@@ -143,6 +83,7 @@ export default function App() {
   const [simopsRuntimeLimit, setSimopsRuntimeLimit] = useState(120);
   const [simopsIdempotency, setSimopsIdempotency] = useState("");
   const [simopsRun, setSimopsRun] = useState<SimopsRunResponse | null>(null);
+  const [simopsEvents, setSimopsEvents] = useState<SimopsEvent[]>([]);
   const [simopsMessage, setSimopsMessage] = useState("No run selected.");
   const [simopsError, setSimopsError] = useState("");
   const [isSubmittingSimops, setIsSubmittingSimops] = useState(false);
@@ -211,22 +152,18 @@ export default function App() {
       return;
     }
     try {
-      const response = await fetch(simopsApiUrl(`/api/simops/runs/${encodeURIComponent(runID)}`), {
-        method: "GET",
-        headers: {
-          Accept: "application/json"
-        }
-      });
-      if (!response.ok) {
-        setSimopsError(`simops refresh failed (${response.status})`);
-        return;
-      }
-      const next = (await response.json()) as SimopsRunResponse;
+      const next = await getSimopsRun(runID);
       setSimopsRun(next);
+      await refreshSimopsEvents(runID);
       setSimopsError("");
     } catch (error) {
       setSimopsError(`simops refresh failed: ${(error as Error).message}`);
     }
+  }
+
+  async function refreshSimopsEvents(runID: string) {
+    const response = await listSimopsEvents(runID);
+    setSimopsEvents(response.events);
   }
 
   async function createSimopsRun() {
@@ -254,22 +191,10 @@ export default function App() {
     }
 
     try {
-      const response = await fetch(simopsApiUrl("/api/simops/runs"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json"
-        },
-        body: JSON.stringify(payload)
-      });
-      const raw = await response.text();
-      if (!response.ok) {
-        setSimopsError(`simops create failed (${response.status}): ${raw}`);
-        return;
-      }
-      const run = JSON.parse(raw) as SimopsRunResponse;
+      const run = await createSimopsRunRequest(payload);
       setSimopsRun(run);
       setSimopsMessage("Run launched. Polling for worker status...");
+      await refreshSimopsEvents(run.run_id);
       void refreshSimopsRun(run.run_id);
     } catch (error) {
       setSimopsError(`simops create failed: ${(error as Error).message}`);
@@ -286,22 +211,9 @@ export default function App() {
     setSimopsError("");
     setSimopsMessage("Issuing stop command...");
     try {
-      const response = await fetch(
-        simopsApiUrl(`/api/simops/runs/${encodeURIComponent(simopsRun.run_id)}/stop`),
-        {
-          method: "POST",
-          headers: {
-            Accept: "application/json"
-          }
-        }
-      );
-      if (!response.ok) {
-        const raw = await response.text();
-        setSimopsError(`simops stop failed (${response.status}): ${raw}`);
-        return;
-      }
-      const run = (await response.json()) as SimopsRunResponse;
+      const run = await stopSimopsRunRequest(simopsRun.run_id);
       setSimopsRun(run);
+      await refreshSimopsEvents(run.run_id);
       setSimopsMessage("Stop requested for run.");
     } catch (error) {
       setSimopsError(`simops stop failed: ${(error as Error).message}`);
@@ -401,6 +313,7 @@ export default function App() {
           workerKinds={simopsWorkerKinds}
           idempotencyKey={simopsIdempotency}
           activeRun={simopsRun}
+          events={simopsEvents}
           submitting={isSubmittingSimops}
           onScenarioChange={setSimopsScenario}
           onSourceChange={setSimopsSource}
@@ -433,6 +346,7 @@ function SimOpsControlPanel({
   workerKinds,
   idempotencyKey,
   activeRun,
+  events,
   submitting,
   onScenarioChange,
   onSourceChange,
@@ -453,6 +367,7 @@ function SimOpsControlPanel({
   workerKinds: SimopsWorkerKind[];
   idempotencyKey: string;
   activeRun: SimopsRunResponse | null;
+  events: SimopsEvent[];
   submitting: boolean;
   onScenarioChange: (scenario: string) => void;
   onSourceChange: (source: string) => void;
@@ -627,9 +542,25 @@ function SimOpsControlPanel({
               <div className="simops-log">
                 {activeRun.artifacts.map((artifact) => (
                   <p key={artifact.artifact_id}>
-                    {artifact.kind} @ {artifact.location}
+                    {artifact.status} {artifact.kind} @ {artifact.location}
                   </p>
                 ))}
+              </div>
+            </div>
+            <div className="simops-subsection">
+              <h3>Events</h3>
+              <div className="simops-log">
+                {events.length === 0 ? (
+                  <p>No persisted events yet.</p>
+                ) : (
+                  events.slice(-8).map((event, index) => (
+                    <p key={`${event.run_id}-${event.event_type}-${event.occurred_at}-${index}`}>
+                      {event.event_type}
+                      {event.worker_id ? ` ${event.worker_id}` : ""}
+                      {event.lifecycle ? ` ${event.lifecycle}` : ""} @ {new Date(event.occurred_at).toLocaleTimeString()}
+                    </p>
+                  ))
+                )}
               </div>
             </div>
             <div className="simops-subsection">

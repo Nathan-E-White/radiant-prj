@@ -11,22 +11,32 @@ services:
       SLURM_GATEWAY_ALLOWED_PARTITIONS: "transport,thermal,fleet,cpu-short,cpu-long,gpu"
       SLURM_GATEWAY_ALLOWED_SCRIPTS: "transport-toy,thermal-margin,fleet-screen,module-rerun"
       SLURM_GATEWAY_SCRIPT_ROOT: "/app/.local/slurm-scripts"
+      SLURM_GATEWAY_REQUIRE_CLIENT_CERT: "false"
       SIMOPS_CONTROL_STORE: "postgres"
       SIMOPS_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
       SIMOPS_TELEMETRY_LOG: "redpanda"
       SIMOPS_REDPANDA_BROKERS: "redpanda:9092"
       SIMOPS_REDPANDA_TOPIC: "simops.telemetry.v1"
       SIMOPS_LAUNCH_MODE: "auto"
+      SIMOPS_WORKER_RUNTIME: "docker"
+      SIMOPS_WORKER_IMAGE: "radiant-simops-generator:latest"
+      SIMOPS_WORKER_INGEST_BASE_URL: "http://host.docker.internal:8081"
+      SIMOPS_WORKER_AUTO_REMOVE: "true"
       SIMOPS_MOQ_WEBTRANSPORT_URL: "https://127.0.0.1:9443/moq/simops"
       SIMOPS_ICEBERG_CATALOG: "postgres-sql"
       SIMOPS_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
       SIMOPS_ICEBERG_WAREHOUSE: "s3://radiant-simops/warehouse"
       SIMOPS_ICEBERG_S3_ENDPOINT: "http://minio:9000"
       SIMOPS_ICEBERG_S3_BUCKET: "radiant-simops"
-      SIMOPS_ICEBERG_WRITER_MODE: "external"
+      SIMOPS_ICEBERG_WRITER_MODE: "manifest"
+      SIMOPS_ICEBERG_RUST_CMD: ""
+      SIMOPS_ICEBERG_MANIFEST_DIR: "/tmp/simops-iceberg-manifests"
+    user: "0:0"
     read_only: true
     tmpfs:
       - /tmp
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     security_opt:
       - no-new-privileges:true
     depends_on:
@@ -81,7 +91,9 @@ services:
       SIMOPS_ICEBERG_WAREHOUSE: "s3://radiant-simops/warehouse"
       SIMOPS_ICEBERG_S3_ENDPOINT: "http://minio:9000"
       SIMOPS_ICEBERG_S3_BUCKET: "radiant-simops"
-      SIMOPS_ICEBERG_WRITER_MODE: "external"
+      SIMOPS_ICEBERG_WRITER_MODE: "manifest"
+      SIMOPS_ICEBERG_RUST_CMD: ""
+      SIMOPS_ICEBERG_MANIFEST_DIR: "/tmp/simops-iceberg-manifests"
     depends_on:
       - postgres
       - redpanda
@@ -170,6 +182,7 @@ services:
       - simops-iceberg-writer
 
   simops-bucket-scheduler:
+    image: radiant-simops-generator:latest
     build:
       context: ..
       dockerfile: deploy/simops-generator.Dockerfile
@@ -179,6 +192,7 @@ services:
       org.opencontainers.image.title: "Kaleidos SimOps Scheduler Bucket"
 
   simops-bucket-storage:
+    image: radiant-simops-generator:latest
     build:
       context: ..
       dockerfile: deploy/simops-generator.Dockerfile
@@ -188,6 +202,7 @@ services:
       org.opencontainers.image.title: "Kaleidos SimOps Storage Bucket"
 
   simops-bucket-burst:
+    image: radiant-simops-generator:latest
     build:
       context: ..
       dockerfile: deploy/simops-generator.Dockerfile
@@ -197,6 +212,7 @@ services:
       org.opencontainers.image.title: "Kaleidos SimOps Burst Bucket"
 
   simops-bucket-fabric:
+    image: radiant-simops-generator:latest
     build:
       context: ..
       dockerfile: deploy/simops-generator.Dockerfile
