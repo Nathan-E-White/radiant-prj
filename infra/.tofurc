@@ -1,0 +1,13 @@
+provider_installation {
+  # Direct OpenTofu to check local filesystem first
+  filesystem_mirror {
+    # TODO(Placeholder)
+    path = "/users/$USERNAME"
+    include = ["registry.opentofu.org/local/*"]
+  }
+
+  # Fallback to public OpenTofu registry for standard modules
+  direct {
+    exclude = ["registry.opentofu.org/local/*"]
+  }
+}

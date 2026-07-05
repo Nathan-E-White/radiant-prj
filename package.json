@@ -12,6 +12,7 @@
     "validate:fixtures": "node scripts/validate-fixtures.mjs",
     "evidence:generate": "node scripts/generate-evidence.mjs",
     "infra:check": "node scripts/check-infra.mjs",
+    "compose:smoke": "scripts/compose-smoke.sh",
     "quality:check": "node scripts/check-quality-docs.mjs",
     "adr:check": "node scripts/check-adr-docs.mjs",
     "simops:contract:check": "node scripts/check-simops-contract.mjs",
@@ -19,6 +20,8 @@
     "backend:test": "cd backend/slurm-gateway && env GOCACHE=/tmp/radiant-go-cache go test ./...",
     "backend:run": "cd backend/slurm-gateway && go run ./cmd/server",
     "certs:local": "scripts/create-local-gateway-certs.sh",
+    "docker:up": "scripts/docker-up.sh",
+    "docker:down": "scripts/docker-down.sh",
     "mock:worker": "node scripts/mock-worker.mjs",
     "checkpoint:wip": "scripts/checkpoint-wip.sh",
     "fold:branch": "scripts/fold-branch.sh",
@@ -27,7 +30,8 @@
     "fold:v2": "scripts/archive/fold-v2-to-main.sh",
     "checkpoint:v2": "scripts/archive/checkpoint-v2.sh",
     "cleanup:v2": "scripts/archive/cleanup-v2-hygiene.sh",
-    "ci": "bun run typecheck && bun run test && bun run backend:test && bun run validate:fixtures && bun run evidence:generate && bun run infra:check && bun run quality:check && bun run adr:check && bun run simops:contract:check && bun run simops:generator:test"
+    "ci": "bun run typecheck && bun run test && bun run backend:test && bun run validate:fixtures && bun run evidence:generate && bun run infra:check && bun run quality:check && bun run adr:check && bun run simops:contract:check && bun run simops:generator:test",
+    "ci:full": "bun run ci && bun run compose:smoke"
   },
   "dependencies": {
     "@storybook/react-vite": "^10.4.6",

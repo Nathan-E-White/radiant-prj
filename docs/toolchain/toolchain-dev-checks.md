@@ -32,6 +32,16 @@ And two integration paths:
 1. `ci`: normal dev/CI path
 2. `ci:full`: includes native infra and compose smoke tests
 
+Docker lifecycle helpers:
+* `scripts/docker-up.sh`: starts Docker Desktop on macOS and waits for `docker info`
+* `scripts/docker-down.sh`: quits Docker Desktop on macOS and waits for the daemon to disappear
+* `scripts/compose-smoke.sh`: calls `scripts/docker-up.sh` before Compose validation
+* Package scripts:
+  * `docker:up`
+  * `docker:down`
+  * `compose:smoke`
+  * `ci:full`
+
 ## Package manager:
 
 Cleanup the package managers. We have `bun.lock` and `package-lock.json`, but the README/CI say Bun. Pick Bun as primary, keep `package-lock.json` out for now.
