@@ -1,0 +1,266 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "simops-run-manifest.v1",
+  "title": "Simulation Ops Run Manifest v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "scenarioId",
+    "createdAt",
+    "lifecycle",
+    "workbenchAnchor",
+    "runtimeLimitSec",
+    "transportBinding",
+    "randomization",
+    "workers",
+    "artifacts",
+    "provenance"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "string", "enum": ["simops.run-manifest.v1"] },
+    "runId": { "type": "string", "pattern": "^RUN-[A-Z0-9-]+$" },
+    "scenarioId": {
+      "type": "string",
+      "enum": ["nominal", "scheduler-drift", "checkpoint-pressure", "cloud-burst", "fabric-warning"]
+    },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "lifecycle": {
+      "type": "string",
+      "enum": ["created", "starting", "streaming", "degraded", "complete", "failed", "stopped"]
+    },
+    "workbenchAnchor": {
+      "type": "object",
+      "required": ["jobId", "evidencePackId", "gatewayEvidenceId"],
+      "additionalProperties": false,
+      "properties": {
+        "jobId": { "type": "string" },
+        "evidencePackId": { "type": "string" },
+        "gatewayEvidenceId": { "type": "string" }
+      }
+    },
+    "runtimeLimitSec": { "type": "integer", "minimum": 10, "maximum": 600 },
+    "transportBinding": {
+      "type": "string",
+      "enum": ["ndjson", "moq-webtransport", "websocket", "http-batch", "local-tcp", "quic-webtransport"]
+    },
+    "randomization": {
+      "type": "object",
+      "required": ["mode", "pressureCurve", "baseline", "couplings", "events", "bounds"],
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string", "enum": ["correlated-pressure"] },
+        "randomSeed": { "type": "integer", "minimum": 1 },
+        "distributionProfile": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "emission": {
+              "type": "object",
+              "required": ["probability"],
+              "additionalProperties": false,
+              "properties": {
+                "probability": {
+                  "type": "object",
+                  "required": ["base", "min", "max"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "base": { "type": "number" },
+                    "pressureSlope": { "type": "number" },
+                    "min": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "max": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                }
+              }
+            },
+            "delay": {
+              "type": "object",
+              "required": ["distribution", "sourceLagMs", "collectorLagMs"],
+              "additionalProperties": false,
+              "properties": {
+                "distribution": { "type": "string", "enum": ["lognormal", "gamma"] },
+                "sourceLagMs": {
+                  "type": "object",
+                  "required": ["base", "min", "max"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "base": { "type": "number" },
+                    "pressureSlope": { "type": "number" },
+                    "min": { "type": "number", "minimum": 0 },
+                    "max": { "type": "number", "minimum": 0 }
+                  }
+                },
+                "collectorLagMs": {
+                  "type": "object",
+                  "required": ["base", "min", "max"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "base": { "type": "number" },
+                    "pressureSlope": { "type": "number" },
+                    "min": { "type": "number", "minimum": 0 },
+                    "max": { "type": "number", "minimum": 0 }
+                  }
+                },
+                "sigma": { "type": "number", "minimum": 0 },
+                "shape": { "type": "number", "minimum": 0 }
+              }
+            },
+            "burstLoss": {
+              "type": "object",
+              "required": ["goodToBad", "badToGood", "badEmitProbability"],
+              "additionalProperties": false,
+              "properties": {
+                "goodToBad": {
+                  "type": "object",
+                  "required": ["base", "min", "max"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "base": { "type": "number" },
+                    "pressureSlope": { "type": "number" },
+                    "min": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "max": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                },
+                "badToGood": {
+                  "type": "object",
+                  "required": ["base", "min", "max"],
+                  "additionalProperties": false,
+                  "properties": {
+                    "base": { "type": "number" },
+                    "pressureSlope": { "type": "number" },
+                    "min": { "type": "number", "minimum": 0, "maximum": 1 },
+                    "max": { "type": "number", "minimum": 0, "maximum": 1 }
+                  }
+                },
+                "badEmitProbability": { "type": "number", "minimum": 0, "maximum": 1 }
+              }
+            },
+            "workerSensitivity": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "scheduler": { "type": "number", "minimum": 0, "maximum": 10 },
+                "storage": { "type": "number", "minimum": 0, "maximum": 10 },
+                "burst": { "type": "number", "minimum": 0, "maximum": 10 },
+                "fabric": { "type": "number", "minimum": 0, "maximum": 10 }
+              }
+            }
+          }
+        },
+        "pressureCurve": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["offsetSec", "pressure"],
+            "additionalProperties": false,
+            "properties": {
+              "offsetSec": { "type": "integer", "minimum": 0, "maximum": 600 },
+              "pressure": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        },
+        "baseline": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["metricPath", "nominalMin", "nominalMax", "unit"],
+            "additionalProperties": false,
+            "properties": {
+              "metricPath": { "type": "string" },
+              "nominalMin": { "type": "number" },
+              "nominalMax": { "type": "number" },
+              "unit": { "type": "string" }
+            }
+          }
+        },
+        "couplings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["from", "to", "effect"],
+            "additionalProperties": false,
+            "properties": {
+              "from": { "type": "string" },
+              "to": { "type": "string" },
+              "effect": { "type": "string" }
+            }
+          }
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["offsetSec", "eventType", "description"],
+            "additionalProperties": false,
+            "properties": {
+              "offsetSec": { "type": "integer", "minimum": 0, "maximum": 600 },
+              "eventType": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          }
+        },
+        "bounds": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["metricPath", "min", "max", "unit"],
+            "additionalProperties": false,
+            "properties": {
+              "metricPath": { "type": "string" },
+              "min": { "type": "number" },
+              "max": { "type": "number" },
+              "unit": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "workers": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["workerId", "workerKind", "payloadType", "emitHz", "panelTarget"],
+        "additionalProperties": false,
+        "properties": {
+          "workerId": { "type": "string" },
+          "workerKind": { "type": "string", "enum": ["scheduler", "storage", "burst", "fabric"] },
+          "payloadType": {
+            "type": "string",
+            "enum": ["schedulerCoScheduling", "checkpointStorage", "elasticBursting", "fabricProfiler"]
+          },
+          "emitHz": { "type": "number", "minimum": 0.1, "maximum": 20 },
+          "panelTarget": { "type": "string" }
+        }
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["artifactId", "path", "mediaType"],
+        "additionalProperties": false,
+        "properties": {
+          "artifactId": { "type": "string" },
+          "path": { "type": "string" },
+          "mediaType": { "type": "string" }
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["generatedBy", "dataClass", "storageFormat"],
+      "additionalProperties": false,
+      "properties": {
+        "generatedBy": { "type": "string" },
+        "dataClass": { "type": "string", "enum": ["synthetic-simulation-ops"] },
+        "storageFormat": { "type": "string", "enum": ["ndjson"] }
+      }
+    }
+  }
+}

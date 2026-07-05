@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="700" viewBox="0 0 1120 700" role="img" aria-labelledby="title desc">
+  <title id="title">Panel 3 Core Thermal Mesh Elastic Bursting Visualizer Mockup</title>
+  <desc id="desc">Synthetic thermal-mesh workload visualizer with AWS ParallelCluster autoscaling state, EFA packet-drop rates, spot cost tracking, and cloud-burst topology graph.</desc>
+  <defs>
+    <radialGradient id="hot" cx="58%" cy="42%" r="62%">
+      <stop offset="0%" stop-color="#e85a3b"/>
+      <stop offset="35%" stop-color="#d9a43b"/>
+      <stop offset="70%" stop-color="#3b8d77"/>
+      <stop offset="100%" stop-color="#1f4f5a"/>
+    </radialGradient>
+    <linearGradient id="header" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#192b32"/>
+      <stop offset="100%" stop-color="#4a2e5b"/>
+    </linearGradient>
+    <style>
+      text { font-family: Inter, Arial, sans-serif; }
+      .title { fill: #fbf8ff; font-size: 22px; font-weight: 800; }
+      .sub { fill: #d8d0e5; font-size: 13px; }
+      .label { fill: #546267; font-size: 13px; }
+      .h2 { fill: #182326; font-size: 15px; font-weight: 800; }
+      .metric { fill: #172126; font-size: 30px; font-weight: 800; }
+    </style>
+  </defs>
+  <rect width="1120" height="700" fill="#f4f4f7"/>
+  <rect x="28" y="24" width="1064" height="652" rx="8" fill="#ffffff" stroke="#22313b" stroke-width="2"/>
+  <rect x="28" y="24" width="1064" height="82" rx="8" fill="url(#header)"/>
+  <text x="56" y="58" class="title">Panel 3: Core Thermal Mesh Elastic Bursting Visualizer</text>
+  <text x="56" y="84" class="sub">Synthetic hot-spot workload trigger | ParallelCluster autoscaling, EFA packet drops, spot cost tracking</text>
+  <rect x="826" y="48" width="214" height="30" rx="15" fill="#ffe1d6" stroke="#d98469"/>
+  <text x="860" y="68" fill="#8d3928" font-size="12" font-weight="800">CLOUD BURST ACTIVE</text>
+
+  <rect x="56" y="132" width="230" height="104" rx="8" fill="#eef6f1" stroke="#bad0c4"/>
+  <text x="78" y="158" class="label" font-weight="800">ParallelCluster state</text>
+  <text x="78" y="196" class="metric">scaling</text>
+  <text x="78" y="220" class="label">128 local -> 512 cloud nodes</text>
+  <rect x="314" y="132" width="230" height="104" rx="8" fill="#fff6e5" stroke="#dcc083"/>
+  <text x="336" y="158" class="label" font-weight="800">AWS EFA packet drops</text>
+  <text x="336" y="196" class="metric">0.18%</text>
+  <text x="336" y="220" class="label">warning threshold: 0.15%</text>
+  <rect x="572" y="132" width="230" height="104" rx="8" fill="#f2f5fb" stroke="#bdc9dc"/>
+  <text x="594" y="158" class="label" font-weight="800">Spot cost tracker</text>
+  <text x="594" y="196" class="metric">$41.20/hr</text>
+  <text x="594" y="220" class="label">synthetic burst estimate</text>
+  <rect x="830" y="132" width="210" height="104" rx="8" fill="#f8eeee" stroke="#d6aaa3"/>
+  <text x="852" y="158" class="label" font-weight="800">Hot-spot trigger</text>
+  <text x="852" y="196" class="metric">cell C7</text>
+  <text x="852" y="220" class="label">click target, not physics claim</text>
+
+  <rect x="56" y="270" width="472" height="344" rx="8" fill="#fbfcfb" stroke="#c7d2cd"/>
+  <text x="80" y="302" class="h2">Synthetic thermal mesh workload</text>
+  <text x="80" y="328" class="label">A hot-spot click creates a compute stress scenario, not a validated reactor state.</text>
+  <g transform="translate(126 356)">
+    <rect x="0" y="0" width="308" height="208" rx="8" fill="#ecf1f0" stroke="#cbd6d1"/>
+    <g>
+      <rect x="24" y="24" width="52" height="40" fill="#1f4f5a"/><rect x="80" y="24" width="52" height="40" fill="#34796f"/><rect x="136" y="24" width="52" height="40" fill="#4f9a72"/><rect x="192" y="24" width="52" height="40" fill="#d9a43b"/><rect x="248" y="24" width="36" height="40" fill="#e85a3b"/>
+      <rect x="24" y="68" width="52" height="40" fill="#34796f"/><rect x="80" y="68" width="52" height="40" fill="#4f9a72"/><rect x="136" y="68" width="52" height="40" fill="#d9a43b"/><rect x="192" y="68" width="52" height="40" fill="#e85a3b"/><rect x="248" y="68" width="36" height="40" fill="#e85a3b"/>
+      <rect x="24" y="112" width="52" height="40" fill="#1f4f5a"/><rect x="80" y="112" width="52" height="40" fill="#34796f"/><rect x="136" y="112" width="52" height="40" fill="#4f9a72"/><rect x="192" y="112" width="52" height="40" fill="#d9a43b"/><rect x="248" y="112" width="36" height="40" fill="#d9a43b"/>
+      <rect x="24" y="156" width="52" height="28" fill="#1f4f5a"/><rect x="80" y="156" width="52" height="28" fill="#1f4f5a"/><rect x="136" y="156" width="52" height="28" fill="#34796f"/><rect x="192" y="156" width="52" height="28" fill="#4f9a72"/><rect x="248" y="156" width="36" height="28" fill="#d9a43b"/>
+    </g>
+    <circle cx="218" cy="88" r="26" fill="none" stroke="#ffffff" stroke-width="5"/>
+    <circle cx="218" cy="88" r="10" fill="#ffffff"/>
+    <text x="198" y="92" fill="#8d3928" font-size="12" font-weight="800">C7</text>
+  </g>
+
+  <rect x="560" y="270" width="480" height="344" rx="8" fill="#fbfcfb" stroke="#c7d2cd"/>
+  <text x="584" y="302" class="h2">Cloud bursting network topology graph</text>
+  <text x="584" y="328" class="label">Localized hot-spot workload triggers synthetic cloud-burst orchestration.</text>
+  <line x1="692" y1="444" x2="812" y2="374" stroke="#8fa2ad" stroke-width="4"/>
+  <line x1="692" y1="444" x2="812" y2="512" stroke="#8fa2ad" stroke-width="4"/>
+  <line x1="812" y1="374" x2="948" y2="374" stroke="#d66a4d" stroke-width="5"/>
+  <line x1="812" y1="512" x2="948" y2="512" stroke="#8fa2ad" stroke-width="4" stroke-dasharray="7 5"/>
+  <circle cx="692" cy="444" r="42" fill="#20373f"/>
+  <text x="654" y="440" fill="#ffffff" font-size="13" font-weight="800">LOCAL</text>
+  <text x="646" y="458" fill="#cfe2e6" font-size="11">128 nodes</text>
+  <circle cx="812" cy="374" r="36" fill="#d66a4d"/>
+  <text x="784" y="378" fill="#ffffff" font-size="12" font-weight="800">BURST</text>
+  <circle cx="812" cy="512" r="34" fill="#526f94"/>
+  <text x="790" y="516" fill="#ffffff" font-size="12" font-weight="800">EFA</text>
+  <circle cx="948" cy="374" r="42" fill="#2f7b64"/>
+  <text x="914" y="370" fill="#ffffff" font-size="13" font-weight="800">CLOUD</text>
+  <text x="910" y="388" fill="#d8eee5" font-size="11">512 nodes</text>
+  <circle cx="948" cy="512" r="34" fill="#d7a437"/>
+  <text x="924" y="516" fill="#1f1807" font-size="12" font-weight="800">SPOT</text>
+  <text x="584" y="572" fill="#5f4b2b" font-size="13">Boundary: thermal mesh is a workload visual, not a reactor analysis or safety display.</text>
+  <text x="56" y="650" fill="#5f4b2b" font-size="13">Review focus: does a hot-spot click clearly create compute pressure without implying physical plant control?</text>
+</svg>

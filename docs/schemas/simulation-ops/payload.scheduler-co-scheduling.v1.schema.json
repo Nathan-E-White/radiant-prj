@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "payload.scheduler-co-scheduling.v1",
+  "title": "Scheduler Co-scheduling Payload v1",
+  "type": "object",
+  "required": ["slurm", "mpiApps", "barrierWaitMs", "syncLatencyUs"],
+  "additionalProperties": false,
+  "properties": {
+    "slurm": {
+      "type": "object",
+      "required": ["jobId", "partition", "allocationState", "queueLanes"],
+      "additionalProperties": false,
+      "properties": {
+        "jobId": { "type": "string" },
+        "partition": { "type": "string" },
+        "allocationState": {
+          "type": "string",
+          "enum": ["queued", "running", "held", "degraded", "completed", "failed"]
+        },
+        "queueLanes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["queue", "state", "offsetStartSec", "durationSec", "allocatedNodes", "pendingNodes"],
+            "additionalProperties": false,
+            "properties": {
+              "queue": { "type": "string" },
+              "state": { "type": "string", "enum": ["queued", "running", "held", "completed"] },
+              "offsetStartSec": { "type": "number", "minimum": 0, "maximum": 600 },
+              "durationSec": { "type": "number", "minimum": 0, "maximum": 600 },
+              "allocatedNodes": { "type": "integer", "minimum": 0, "maximum": 256 },
+              "pendingNodes": { "type": "integer", "minimum": 0, "maximum": 256 }
+            }
+          }
+        }
+      }
+    },
+    "mpiApps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["app", "ranks", "rankStart", "rankEnd", "state"],
+        "additionalProperties": false,
+        "properties": {
+          "app": { "type": "string" },
+          "ranks": { "type": "integer", "minimum": 1, "maximum": 4096 },
+          "rankStart": { "type": "integer", "minimum": 0, "maximum": 4095 },
+          "rankEnd": { "type": "integer", "minimum": 0, "maximum": 4095 },
+          "state": { "type": "string", "enum": ["running", "idle", "waiting", "failed"] }
+        }
+      }
+    },
+    "barrierWaitMs": {
+      "type": "object",
+      "required": ["p50", "p95", "max", "samples"],
+      "additionalProperties": false,
+      "properties": {
+        "p50": { "type": "number", "minimum": 0, "maximum": 500 },
+        "p95": { "type": "number", "minimum": 0, "maximum": 1000 },
+        "max": { "type": "number", "minimum": 0, "maximum": 1500 },
+        "samples": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["offsetSec", "waitMs"],
+            "additionalProperties": false,
+            "properties": {
+              "offsetSec": { "type": "number", "minimum": 0, "maximum": 600 },
+              "waitMs": { "type": "number", "minimum": 0, "maximum": 1500 }
+            }
+          }
+        }
+      }
+    },
+    "syncLatencyUs": {
+      "type": "object",
+      "required": ["p50", "p95", "max"],
+      "additionalProperties": false,
+      "properties": {
+        "p50": { "type": "number", "minimum": 0, "maximum": 2000 },
+        "p95": { "type": "number", "minimum": 0, "maximum": 5000 },
+        "max": { "type": "number", "minimum": 0, "maximum": 10000 }
+      }
+    }
+  }
+}

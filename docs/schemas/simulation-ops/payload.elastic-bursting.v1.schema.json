@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "payload.elastic-bursting.v1",
+  "title": "Elastic Bursting Payload v1",
+  "type": "object",
+  "required": ["mesh", "parallelCluster", "efa", "spotCost", "topology"],
+  "additionalProperties": false,
+  "properties": {
+    "mesh": {
+      "type": "object",
+      "required": ["hotspot", "cells"],
+      "additionalProperties": false,
+      "properties": {
+        "hotspot": {
+          "type": "object",
+          "required": ["active", "cellId", "intensity"],
+          "additionalProperties": false,
+          "properties": {
+            "active": { "type": "boolean" },
+            "cellId": { "type": "string" },
+            "intensity": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "cells": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["cellId", "x", "y", "loadPct", "thermalProxy"],
+            "additionalProperties": false,
+            "properties": {
+              "cellId": { "type": "string" },
+              "x": { "type": "integer", "minimum": 0, "maximum": 64 },
+              "y": { "type": "integer", "minimum": 0, "maximum": 64 },
+              "loadPct": { "type": "number", "minimum": 0, "maximum": 100 },
+              "thermalProxy": { "type": "number", "minimum": 0, "maximum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "parallelCluster": {
+      "type": "object",
+      "required": ["state", "localNodes", "cloudDesired", "cloudPending", "cloudReady"],
+      "additionalProperties": false,
+      "properties": {
+        "state": { "type": "string", "enum": ["inactive", "requesting", "scaling", "active", "draining"] },
+        "localNodes": { "type": "integer", "minimum": 0, "maximum": 256 },
+        "cloudDesired": { "type": "integer", "minimum": 0, "maximum": 1024 },
+        "cloudPending": { "type": "integer", "minimum": 0, "maximum": 1024 },
+        "cloudReady": { "type": "integer", "minimum": 0, "maximum": 1024 }
+      }
+    },
+    "efa": {
+      "type": "object",
+      "required": ["packetDropRate", "retransmitPct", "latencyUsP95"],
+      "additionalProperties": false,
+      "properties": {
+        "packetDropRate": { "type": "number", "minimum": 0, "maximum": 1 },
+        "retransmitPct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "latencyUsP95": { "type": "number", "minimum": 0, "maximum": 10000 }
+      }
+    },
+    "spotCost": {
+      "type": "object",
+      "required": ["usdPerHour", "estimatedRunUsd", "interruptionRiskPct"],
+      "additionalProperties": false,
+      "properties": {
+        "usdPerHour": { "type": "number", "minimum": 0, "maximum": 10000 },
+        "estimatedRunUsd": { "type": "number", "minimum": 0, "maximum": 10000 },
+        "interruptionRiskPct": { "type": "number", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "topology": {
+      "type": "object",
+      "required": ["nodes", "links"],
+      "additionalProperties": false,
+      "properties": {
+        "nodes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["nodeId", "nodeType", "state"],
+            "additionalProperties": false,
+            "properties": {
+              "nodeId": { "type": "string" },
+              "nodeType": { "type": "string", "enum": ["local", "cloud", "gateway"] },
+              "state": { "type": "string", "enum": ["ready", "pending", "active", "draining"] }
+            }
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["source", "target", "latencyMs", "utilizationPct"],
+            "additionalProperties": false,
+            "properties": {
+              "source": { "type": "string" },
+              "target": { "type": "string" },
+              "latencyMs": { "type": "number", "minimum": 0, "maximum": 1000 },
+              "utilizationPct": { "type": "number", "minimum": 0, "maximum": 100 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Document ID | REQ-001 |
-| Revision | 2.1 |
-| Status | Draft for v2.1 review |
+| Revision | 3.0 |
+| Status | Draft for v3.0 review |
 | Owner | Systems |
-| Baseline | v2.1 candidate |
+| Baseline | v3.0 candidate |
 
 This document defines controlled system-level objectives for the Kaleidos Compute Readiness Console. The project is a public-safe synthetic demonstration and does not contain proprietary reactor design data, safety analysis, licensing evidence, or production infrastructure records.
 
@@ -18,6 +18,8 @@ This document defines controlled system-level objectives for the Kaleidos Comput
 | DI-002 | Public Radiant product and program pages | Bounds mission, test-readiness, and deployment-context claims |
 | DI-003 | Interview-facing compute-readiness objective | Drives synthetic workbench and evidence views |
 | DI-004 | Quality documentation objective | Drives controlled documentation and version-aware release process |
+| DI-005 | Backend handler objective | Drives mock-first Slurm gateway handlers, identity controls, and metrics |
+| DI-006 | Simulation Ops backend objective | Drives bounded run orchestration, live telemetry transport, and durable telemetry persistence seams |
 
 | ID | Requirement | Rationale | Verification | Status |
 | --- | --- | --- | --- | --- |
@@ -27,6 +29,8 @@ This document defines controlled system-level objectives for the Kaleidos Comput
 | SR-004 | The project shall maintain a requirements-to-evidence matrix with artifact hashes and controlled status. | Traceability and objective evidence are core to high-consequence engineering software practice. | Configuration audit | Verified |
 | SR-005 | The project shall maintain controlled quality, design, verification, and release documentation for the v2 and v2.1 baselines. | Reviewers should be able to inspect the engineering-control story without relying on oral explanation. | Configuration audit | Verified |
 | SR-006 | The release process shall provide version-aware checkpoint, branch-fold, and release-hygiene scripts with dry-run capability. | Baseline transitions should be reproducible and recoverable without cloning release logic for every version. | Configuration audit | Verified |
+| SR-007 | The backend gateway shall preserve public-safe default behavior while providing an opt-in integration path for real Slurm submission. | The v3.0 backend needs real handler structure without implying access to Radiant infrastructure. | Configuration audit | Verified |
+| SR-008 | The backend shall orchestrate bounded Simulation Ops runs from approved work scripts or frontend actions while keeping control state and stream credentials behind backend trust boundaries. | Simulation buckets need a real control-plane slice without giving the browser direct infrastructure authority. | Configuration audit | Verified |
 
 ## Public-Claim Boundary
 
@@ -34,7 +38,7 @@ The application may present only source-linked public facts about Kaleidos and R
 
 ## Traceability Notes
 
-SR-001 through SR-006 are represented in the controlled fixture set. SR-005 and SR-006 link to controlled evidence records for documentation and release-process artifacts.
+SR-001 through SR-008 are represented in the controlled fixture set. SR-005, SR-006, SR-007, and SR-008 link to controlled evidence records for documentation, release-process, backend-gateway, and Simulation Ops backend artifacts.
 
 ## External Sources
 

@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "simops.run-manifest.v1",
+  "runId": "RUN-HPC-404-001",
+  "scenarioId": "scheduler-drift",
+  "createdAt": "2026-07-04T18:00:00.000Z",
+  "lifecycle": "created",
+  "workbenchAnchor": {
+    "jobId": "JOB-HPC-404",
+    "evidencePackId": "EP-HPC-404",
+    "gatewayEvidenceId": "SLURM-GATEWAY-001"
+  },
+  "runtimeLimitSec": 120,
+  "transportBinding": "ndjson",
+  "randomization": {
+    "mode": "correlated-pressure",
+    "pressureCurve": [
+      { "offsetSec": 0, "pressure": 0.12 },
+      { "offsetSec": 15, "pressure": 0.58 },
+      { "offsetSec": 35, "pressure": 0.82 },
+      { "offsetSec": 80, "pressure": 0.38 },
+      { "offsetSec": 120, "pressure": 0.18 }
+    ],
+    "baseline": [
+      { "metricPath": "scheduler.barrierWaitMs.p95", "nominalMin": 8, "nominalMax": 35, "unit": "ms" },
+      { "metricPath": "storage.nvmeOf.cacheSaturationPct", "nominalMin": 18, "nominalMax": 45, "unit": "percent" },
+      { "metricPath": "burst.parallelCluster.cloudReady", "nominalMin": 0, "nominalMax": 0, "unit": "nodes" },
+      { "metricPath": "fabric.nonblockingComm.completionOverheadPct", "nominalMin": 3, "nominalMax": 12, "unit": "percent" }
+    ],
+    "couplings": [
+      {
+        "from": "scheduler.moduleDrift",
+        "to": "scheduler.barrierWaitMs.p95",
+        "effect": "held worker image increases rank wait variance"
+      },
+      {
+        "from": "scheduler.barrierWaitMs.p95",
+        "to": "fabric.nonblockingComm.progressStallMsP95",
+        "effect": "rank stalls raise fabric profiler wait windows"
+      },
+      {
+        "from": "scheduler.requeue",
+        "to": "storage.checkpoint.etaSec",
+        "effect": "partial checkpoint retry extends write horizon"
+      }
+    ],
+    "events": [
+      {
+        "offsetSec": 12,
+        "eventType": "queue-hold",
+        "description": "worker-b image drift holds a module-dependent rank group"
+      },
+      {
+        "offsetSec": 22,
+        "eventType": "barrier-wait-spike",
+        "description": "MPI barrier waits widen while neutronics ranks wait on coupled fluid ranks"
+      },
+      {
+        "offsetSec": 45,
+        "eventType": "partial-recovery",
+        "description": "scheduler retry clears pending allocation but leaves fabric lag elevated"
+      }
+    ],
+    "bounds": [
+      { "metricPath": "payload.barrierWaitMs.p95", "min": 0, "max": 1000, "unit": "ms" },
+      { "metricPath": "payload.syncLatencyUs.p95", "min": 0, "max": 5000, "unit": "us" },
+      { "metricPath": "payload.nvmeOf.cacheSaturationPct", "min": 0, "max": 100, "unit": "percent" },
+      { "metricPath": "payload.parallelCluster.cloudReady", "min": 0, "max": 1024, "unit": "nodes" },
+      { "metricPath": "payload.nonblockingComm.completionOverheadPct", "min": 0, "max": 100, "unit": "percent" }
+    ]
+  },
+  "workers": [
+    {
+      "workerId": "scheduler-01",
+      "workerKind": "scheduler",
+      "payloadType": "schedulerCoScheduling",
+      "emitHz": 2,
+      "panelTarget": "Multiphysics Job Co-scheduler"
+    },
+    {
+      "workerId": "storage-01",
+      "workerKind": "storage",
+      "payloadType": "checkpointStorage",
+      "emitHz": 1,
+      "panelTarget": "IO and Checkpoint Burst Buffer Monitor"
+    },
+    {
+      "workerId": "burst-01",
+      "workerKind": "burst",
+      "payloadType": "elasticBursting",
+      "emitHz": 1,
+      "panelTarget": "Core Thermal Mesh Elastic Bursting Visualizer"
+    },
+    {
+      "workerId": "fabric-01",
+      "workerKind": "fabric",
+      "payloadType": "fabricProfiler",
+      "emitHz": 2,
+      "panelTarget": "Fabric Topology and MPI Profiler"
+    }
+  ],
+  "artifacts": [
+    {
+      "artifactId": "simops-run-manifest.scheduler-drift",
+      "path": "examples/simulation-ops/run-manifest.scheduler-drift.json",
+      "mediaType": "application/json"
+    },
+    {
+      "artifactId": "simops-telemetry.scheduler-drift",
+      "path": "examples/simulation-ops/telemetry.scheduler-drift.ndjson",
+      "mediaType": "application/x-ndjson"
+    },
+    {
+      "artifactId": "simops-run-summary.scheduler-drift",
+      "path": "examples/simulation-ops/run-summary.scheduler-drift.json",
+      "mediaType": "application/json"
+    }
+  ],
+  "provenance": {
+    "generatedBy": "simops-contract-example",
+    "dataClass": "synthetic-simulation-ops",
+    "storageFormat": "ndjson"
+  }
+}

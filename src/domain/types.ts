@@ -95,7 +95,7 @@ export type EvidencePack = {
 export type ControlledEvidenceRecord = {
   id: string;
   title: string;
-  category: "documentation-baseline" | "release-tooling";
+  category: "documentation-baseline" | "release-tooling" | "backend-gateway" | "simops-backend";
   requirementIds: string[];
   artifacts: string[];
   summary: string;

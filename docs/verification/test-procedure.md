@@ -29,6 +29,7 @@ bun run validate:fixtures
 bun run evidence:generate
 bun run infra:check
 bun run quality:check
+bun run simops:contract:check
 bun run build
 bun run ci
 ```
@@ -40,4 +41,3 @@ All commands shall exit with status 0. Any skipped optional native infrastructur
 ## Failure Handling
 
 Record failures in the release checklist or corrective-action log, identify affected requirements or records, implement the fix, and rerun the affected verification activity plus `bun run ci`.
-

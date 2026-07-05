@@ -3,10 +3,10 @@
 | Field | Value |
 | --- | --- |
 | Document ID | OEI-001 |
-| Revision | 2.1 |
-| Status | Draft for v2.1 review |
+| Revision | 3.0 |
+| Status | Draft for v3.0 review |
 | Owner | Quality |
-| Baseline | v2.1 candidate |
+| Baseline | v3.0 candidate |
 
 The evidence records below are synthetic and public-safe. They demonstrate traceability habits and reproducible engineering records.
 
@@ -18,6 +18,8 @@ The evidence records below are synthetic and public-safe. They demonstrate trace
 | EP-HPC-404 | JOB-HPC-404 | SW-001, SW-002, SW-004 | `slurm-404.out`, `module-inventory.diff`, `triage-note.md` | Synthetic scheduler and module logs only |
 | DOC-V2-001 | Documentation baseline | SR-005, SW-005 | `docs/quality/`, `docs/design/`, `docs/verification/`, `docs/release/`, `docs/requirements/` | Controlled documentation package only |
 | REL-TOOL-001 | Version-aware release tooling baseline | SR-006, SW-006 | `scripts/checkpoint-version.sh`, `scripts/fold-branch.sh`, `scripts/cleanup-version-hygiene.sh`, v2 wrappers | Local git release operation only |
+| SLURM-GATEWAY-001 | Backend gateway baseline | SR-007, SW-007, SW-008, SW-009 | `backend/slurm-gateway/`, `deploy/slurm-gateway.Dockerfile`, `deploy/slurm-gateway.compose.yml`, `scripts/create-local-gateway-certs.sh` | Controlled mock-first gateway only |
+| SIMOPS-BACKEND-001 | Simulation Ops backend slice | SR-008, SW-010, SW-011, SW-012 | `backend/slurm-gateway/internal/gateway/simops_*.go`, `backend/slurm-gateway/cmd/simops-stream-gateway/`, `backend/slurm-gateway/cmd/simops-iceberg-writer/`, `deploy/postgres-init/001_simops.sql`, `deploy/slurm-gateway.compose.yml`, `workers/simops-generator/` | Contract-first local backend slice; production MoQ, Redpanda, and Iceberg client modules remain integration seams |
 
 ## Generated Evidence
 
@@ -29,4 +31,4 @@ The app fixtures use stable toy FNV-1a identifiers. The generation script uses S
 
 ## Release Evidence
 
-The v2 release package is recorded by the existing `v2.0.0` tag. The v2.1 release package shall include completed release checklist, baseline record, approval record, test report, and dry-run output for generic checkpoint/fold/version scripts.
+The v2 release package is recorded by the existing `v2.0.0` tag. The v3.0 release package shall include completed release checklist, baseline record, approval record, test report, Go backend test output, Simulation Ops contract output, infrastructure check output, and dry-run output for generic checkpoint/fold/version scripts.

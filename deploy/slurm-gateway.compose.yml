@@ -1,0 +1,227 @@
+services:
+  slurm-gateway:
+    build:
+      context: ..
+      dockerfile: deploy/slurm-gateway.Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      SLURM_GATEWAY_MODE: "mock"
+      SLURM_GATEWAY_ALLOWED_CLIENTS: "react-backend-client,cluster-admin"
+      SLURM_GATEWAY_ALLOWED_PARTITIONS: "transport,thermal,fleet,cpu-short,cpu-long,gpu"
+      SLURM_GATEWAY_ALLOWED_SCRIPTS: "transport-toy,thermal-margin,fleet-screen,module-rerun"
+      SLURM_GATEWAY_SCRIPT_ROOT: "/app/.local/slurm-scripts"
+      SLURM_GATEWAY_REQUIRE_CLIENT_CERT: "false"
+      SIMOPS_CONTROL_STORE: "postgres"
+      SIMOPS_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      SIMOPS_TELEMETRY_LOG: "redpanda"
+      SIMOPS_REDPANDA_BROKERS: "redpanda:9092"
+      SIMOPS_REDPANDA_TOPIC: "simops.telemetry.v1"
+      SIMOPS_LAUNCH_MODE: "auto"
+      SIMOPS_WORKER_RUNTIME: "docker"
+      SIMOPS_WORKER_IMAGE: "radiant-simops-generator:latest"
+      SIMOPS_WORKER_INGEST_BASE_URL: "http://host.docker.internal:8081"
+      SIMOPS_WORKER_AUTO_REMOVE: "true"
+      SIMOPS_MOQ_WEBTRANSPORT_URL: "https://127.0.0.1:9443/moq/simops"
+      SIMOPS_ICEBERG_CATALOG: "postgres-sql"
+      SIMOPS_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      SIMOPS_ICEBERG_WAREHOUSE: "s3://radiant-simops/warehouse"
+      SIMOPS_ICEBERG_S3_ENDPOINT: "http://minio:9000"
+      SIMOPS_ICEBERG_S3_BUCKET: "radiant-simops"
+      SIMOPS_ICEBERG_WRITER_MODE: "manifest"
+      SIMOPS_ICEBERG_RUST_CMD: ""
+      SIMOPS_ICEBERG_MANIFEST_DIR: "/tmp/simops-iceberg-manifests"
+    user: "0:0"
+    read_only: true
+    tmpfs:
+      - /tmp
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      - postgres
+      - redpanda
+      - minio
+    labels:
+      org.opencontainers.image.title: "Kaleidos Slurm Gateway"
+      org.opencontainers.image.description: "Public-safe mock-first backend handler gateway"
+
+  simops-stream-gateway:
+    build:
+      context: ..
+      dockerfile: deploy/slurm-gateway.Dockerfile
+    command: ["/app/simops-stream-gateway"]
+    ports:
+      - "9443:9443/tcp"
+      - "9443:9443/udp"
+    environment:
+      SIMOPS_STREAM_GATEWAY_ADDR: ":9443"
+      SIMOPS_CONTROL_STORE: "postgres"
+      SIMOPS_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      SIMOPS_TELEMETRY_LOG: "redpanda"
+      SIMOPS_REDPANDA_BROKERS: "redpanda:9092"
+      SIMOPS_REDPANDA_TOPIC: "simops.telemetry.v1"
+      SIMOPS_MOQ_WEBTRANSPORT_URL: "https://127.0.0.1:9443/moq/simops"
+      SIMOPS_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+    depends_on:
+      - redpanda
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      org.opencontainers.image.title: "Kaleidos SimOps Stream Gateway"
+      org.opencontainers.image.description: "MoQ over WebTransport telemetry publication boundary"
+
+  simops-iceberg-writer:
+    build:
+      context: ..
+      dockerfile: deploy/slurm-gateway.Dockerfile
+    command: ["/app/simops-iceberg-writer"]
+    ports:
+      - "9460:9460"
+    environment:
+      SIMOPS_ICEBERG_WRITER_ADDR: ":9460"
+      SIMOPS_CONTROL_STORE: "postgres"
+      SIMOPS_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      SIMOPS_TELEMETRY_LOG: "redpanda"
+      SIMOPS_REDPANDA_BROKERS: "redpanda:9092"
+      SIMOPS_REDPANDA_TOPIC: "simops.telemetry.v1"
+      SIMOPS_ICEBERG_CATALOG: "postgres-sql"
+      SIMOPS_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      SIMOPS_ICEBERG_WAREHOUSE: "s3://radiant-simops/warehouse"
+      SIMOPS_ICEBERG_S3_ENDPOINT: "http://minio:9000"
+      SIMOPS_ICEBERG_S3_BUCKET: "radiant-simops"
+      SIMOPS_ICEBERG_WRITER_MODE: "manifest"
+      SIMOPS_ICEBERG_RUST_CMD: ""
+      SIMOPS_ICEBERG_MANIFEST_DIR: "/tmp/simops-iceberg-manifests"
+    depends_on:
+      - postgres
+      - redpanda
+      - minio
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      org.opencontainers.image.title: "Kaleidos SimOps Iceberg Writer"
+      org.opencontainers.image.description: "Iceberg Rust telemetry artifact writer boundary"
+
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    command:
+      - redpanda
+      - start
+      - --overprovisioned
+      - --smp
+      - "1"
+      - --memory
+      - 512M
+      - --reserve-memory
+      - 0M
+      - --node-id
+      - "0"
+      - --check=false
+      - --kafka-addr
+      - PLAINTEXT://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - PLAINTEXT://redpanda:9092
+    ports:
+      - "9092:9092"
+      - "9644:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    labels:
+      org.opencontainers.image.title: "Kaleidos SimOps Redpanda"
+      org.opencontainers.image.description: "Hot durable telemetry log for Simulation Ops"
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: "radiant"
+      POSTGRES_USER: "radiant"
+      POSTGRES_PASSWORD: "radiant"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    labels:
+      org.opencontainers.image.title: "Kaleidos SimOps Postgres"
+      org.opencontainers.image.description: "Control-plane state and Iceberg SQL catalog metadata"
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: "radiant"
+      MINIO_ROOT_PASSWORD: "radiant-password"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    labels:
+      org.opencontainers.image.title: "Kaleidos SimOps MinIO"
+      org.opencontainers.image.description: "S3-compatible local warehouse storage for Iceberg telemetry artifacts"
+
+  minio-init:
+    image: quay.io/minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - "mc alias set local http://minio:9000 radiant radiant-password && mc mb --ignore-existing local/radiant-simops"
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - slurm-gateway
+      - simops-stream-gateway
+      - simops-iceberg-writer
+
+  simops-bucket-scheduler:
+    image: radiant-simops-generator:latest
+    build:
+      context: ..
+      dockerfile: deploy/simops-generator.Dockerfile
+    command: ["--manifest", "/examples/simulation-ops/run-manifest.scheduler-drift.json", "--worker", "scheduler", "--frames", "2", "--output", "-"]
+    profiles: ["simops-buckets"]
+    labels:
+      org.opencontainers.image.title: "Kaleidos SimOps Scheduler Bucket"
+
+  simops-bucket-storage:
+    image: radiant-simops-generator:latest
+    build:
+      context: ..
+      dockerfile: deploy/simops-generator.Dockerfile
+    command: ["--manifest", "/examples/simulation-ops/run-manifest.scheduler-drift.json", "--worker", "storage", "--frames", "2", "--output", "-"]
+    profiles: ["simops-buckets"]
+    labels:
+      org.opencontainers.image.title: "Kaleidos SimOps Storage Bucket"
+
+  simops-bucket-burst:
+    image: radiant-simops-generator:latest
+    build:
+      context: ..
+      dockerfile: deploy/simops-generator.Dockerfile
+    command: ["--manifest", "/examples/simulation-ops/run-manifest.scheduler-drift.json", "--worker", "burst", "--frames", "2", "--output", "-"]
+    profiles: ["simops-buckets"]
+    labels:
+      org.opencontainers.image.title: "Kaleidos SimOps Burst Bucket"
+
+  simops-bucket-fabric:
+    image: radiant-simops-generator:latest
+    build:
+      context: ..
+      dockerfile: deploy/simops-generator.Dockerfile
+    command: ["--manifest", "/examples/simulation-ops/run-manifest.scheduler-drift.json", "--worker", "fabric", "--frames", "2", "--output", "-"]
+    profiles: ["simops-buckets"]
+    labels:
+      org.opencontainers.image.title: "Kaleidos SimOps Fabric Bucket"
+
+volumes:
+  postgres-data:
+  redpanda-data:
+  minio-data:

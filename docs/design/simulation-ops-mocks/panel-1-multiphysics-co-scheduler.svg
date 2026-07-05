@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1120" height="700" viewBox="0 0 1120 700" role="img" aria-labelledby="title desc">
+  <title id="title">Panel 1 Multiphysics Job Co-scheduler Mockup</title>
+  <desc id="desc">HPC operations panel with Slurm allocations, MPI rank distribution, internode synchronization latency, barrier wait timeline, and active Slurm queue Gantt chart.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" x2="1" y1="0" y2="1">
+      <stop offset="0%" stop-color="#f6f5ef"/>
+      <stop offset="100%" stop-color="#e7edf0"/>
+    </linearGradient>
+    <linearGradient id="header" x1="0" x2="1" y1="0" y2="0">
+      <stop offset="0%" stop-color="#12221e"/>
+      <stop offset="100%" stop-color="#223f4d"/>
+    </linearGradient>
+    <style>
+      text { font-family: Inter, Arial, sans-serif; }
+      .label { fill: #4f625d; font-size: 13px; }
+      .small { fill: #60736d; font-size: 12px; }
+      .title { fill: #f8fbf8; font-size: 22px; font-weight: 800; }
+      .sub { fill: #cddbd6; font-size: 13px; }
+      .h2 { fill: #17231f; font-size: 15px; font-weight: 800; }
+      .metric { fill: #17231f; font-size: 28px; font-weight: 800; }
+    </style>
+  </defs>
+  <rect width="1120" height="700" fill="url(#bg)"/>
+  <rect x="28" y="24" width="1064" height="652" rx="8" fill="#ffffff" stroke="#1e2f2a" stroke-width="2"/>
+  <rect x="28" y="24" width="1064" height="82" rx="8" fill="url(#header)"/>
+  <text x="56" y="58" class="title">Panel 1: Multiphysics Job Co-scheduler</text>
+  <text x="56" y="84" class="sub">Synthetic simulation-ops stress view | Slurm allocations, MPI ranks, barrier waits, active queue Gantt</text>
+  <rect x="874" y="48" width="166" height="30" rx="15" fill="#dff1e7" stroke="#82b997"/>
+  <text x="914" y="68" fill="#245338" font-size="12" font-weight="800">NON-SAFETY</text>
+
+  <rect x="56" y="132" width="238" height="116" rx="8" fill="#edf5f1" stroke="#b8ccc4"/>
+  <text x="78" y="158" class="label" font-weight="800">Slurm allocation</text>
+  <text x="78" y="195" class="metric">768 ranks</text>
+  <text x="78" y="224" class="small">4 apps across 18 nodes</text>
+
+  <rect x="316" y="132" width="238" height="116" rx="8" fill="#f3f7fb" stroke="#bfd0df"/>
+  <text x="338" y="158" class="label" font-weight="800">Internode sync</text>
+  <text x="338" y="195" class="metric">1.04 ms</text>
+  <text x="338" y="224" class="small">p95 MPI barrier wait</text>
+
+  <rect x="576" y="132" width="238" height="116" rx="8" fill="#fff8e9" stroke="#dac083"/>
+  <text x="598" y="158" class="label" font-weight="800">Queue pressure</text>
+  <text x="598" y="195" class="metric">6 active</text>
+  <text x="598" y="224" class="small">2 waiting on GPU partition</text>
+
+  <rect x="836" y="132" width="206" height="116" rx="8" fill="#f8eeee" stroke="#d8aaa1"/>
+  <text x="858" y="158" class="label" font-weight="800">Synthetic alert</text>
+  <text x="858" y="192" fill="#9a3d2b" font-size="26" font-weight="800">rank 17</text>
+  <text x="858" y="224" class="small">module drift suspected</text>
+
+  <rect x="56" y="282" width="438" height="332" rx="8" fill="#fbfcfb" stroke="#c9d5d0"/>
+  <text x="80" y="314" class="h2">MPI rank distribution per application</text>
+  <text x="80" y="346" class="small">OpenMC neutronics</text>
+  <rect x="220" y="332" width="220" height="20" rx="10" fill="#dfe8e4"/>
+  <rect x="220" y="332" width="180" height="20" rx="10" fill="#2f7b64"/>
+  <text x="412" y="347" fill="#17231f" font-size="13" font-weight="800">512</text>
+  <text x="80" y="384" class="small">MOOSE thermal fluids</text>
+  <rect x="220" y="370" width="220" height="20" rx="10" fill="#dfe8e4"/>
+  <rect x="220" y="370" width="90" height="20" rx="10" fill="#416f9a"/>
+  <text x="326" y="385" fill="#17231f" font-size="13" font-weight="800">256</text>
+  <text x="80" y="422" class="small">Restart validator</text>
+  <rect x="220" y="408" width="220" height="20" rx="10" fill="#dfe8e4"/>
+  <rect x="220" y="408" width="32" height="20" rx="10" fill="#d7a437"/>
+  <text x="266" y="423" fill="#17231f" font-size="13" font-weight="800">64</text>
+  <text x="80" y="460" class="small">Artifact packer</text>
+  <rect x="220" y="446" width="220" height="20" rx="10" fill="#dfe8e4"/>
+  <rect x="220" y="446" width="18" height="20" rx="9" fill="#c65a3c"/>
+  <text x="252" y="461" fill="#17231f" font-size="13" font-weight="800">16</text>
+  <text x="80" y="520" class="h2">Barrier wait timeline</text>
+  <polyline points="84,576 132,558 180,562 228,536 276,544 324,512 372,524 420,498 468,508" fill="none" stroke="#2f7b64" stroke-width="4"/>
+  <line x1="84" y1="548" x2="468" y2="548" stroke="#d4a437" stroke-width="2" stroke-dasharray="6 6"/>
+  <text x="84" y="598" class="small">0s</text>
+  <text x="444" y="598" class="small">60s</text>
+  <text x="308" y="504" fill="#2f7b64" font-size="12" font-weight="800">spike: 1.7 ms</text>
+
+  <rect x="526" y="282" width="516" height="332" rx="8" fill="#fbfcfb" stroke="#c9d5d0"/>
+  <text x="550" y="314" class="h2">Active Slurm queue Gantt</text>
+  <line x1="650" y1="342" x2="1004" y2="342" stroke="#c7d2cd"/>
+  <text x="650" y="330" class="small">now</text>
+  <text x="806" y="330" class="small">+10m</text>
+  <text x="976" y="330" class="small">+20m</text>
+  <text x="550" y="374" class="small">JOB-TRN-001</text>
+  <rect x="650" y="356" width="252" height="26" rx="6" fill="#2f7b64"/>
+  <text x="664" y="374" fill="#ffffff" font-size="12" font-weight="800">OpenMC 512 ranks</text>
+  <text x="550" y="422" class="small">JOB-THM-001</text>
+  <rect x="690" y="404" width="206" height="26" rx="6" fill="#416f9a"/>
+  <text x="704" y="422" fill="#ffffff" font-size="12" font-weight="800">MOOSE 256 ranks</text>
+  <text x="550" y="470" class="small">JOB-HPC-404</text>
+  <rect x="650" y="452" width="116" height="26" rx="6" fill="#c65a3c"/>
+  <rect x="766" y="452" width="176" height="26" rx="6" fill="#f2d9cf" stroke="#c65a3c"/>
+  <text x="664" y="470" fill="#ffffff" font-size="12" font-weight="800">held</text>
+  <text x="786" y="470" fill="#8d3928" font-size="12" font-weight="800">module mismatch</text>
+  <text x="550" y="518" class="small">JOB-FLT-001</text>
+  <rect x="718" y="500" width="178" height="26" rx="6" fill="#d7a437"/>
+  <text x="732" y="518" fill="#2d220a" font-size="12" font-weight="800">fleet telemetry</text>
+  <text x="550" y="566" class="small">GPU-QUEUED</text>
+  <rect x="840" y="548" width="118" height="26" rx="6" fill="#eceff1" stroke="#9ba9b0" stroke-dasharray="5 4"/>
+  <text x="858" y="566" fill="#53626a" font-size="12" font-weight="800">waiting</text>
+  <text x="56" y="650" fill="#5f4b2b" font-size="13">Boundary: scheduler and MPI telemetry are synthetic infrastructure stress signals, not plant instrumentation.</text>
+</svg>

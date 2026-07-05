@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "simops-telemetry-envelope.v1",
+  "title": "Simulation Ops Telemetry Envelope v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "scenarioId",
+    "workerId",
+    "workerKind",
+    "sequence",
+    "emittedAt",
+    "payloadType",
+    "payload"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "string", "enum": ["simops.telemetry.v1"] },
+    "runId": { "type": "string", "pattern": "^RUN-[A-Z0-9-]+$" },
+    "scenarioId": {
+      "type": "string",
+      "enum": ["nominal", "scheduler-drift", "checkpoint-pressure", "cloud-burst", "fabric-warning"]
+    },
+    "workerId": { "type": "string" },
+    "workerKind": { "type": "string", "enum": ["scheduler", "storage", "burst", "fabric"] },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "emittedAt": { "type": "string", "format": "date-time" },
+    "receivedAt": { "type": "string", "format": "date-time" },
+    "payloadType": {
+      "type": "string",
+      "enum": ["schedulerCoScheduling", "checkpointStorage", "elasticBursting", "fabricProfiler"]
+    },
+    "streamQuality": {
+      "type": "object",
+      "required": ["quality", "sourceLagMs", "collectorLagMs", "droppedFrameCount"],
+      "additionalProperties": false,
+      "properties": {
+        "quality": { "type": "string", "enum": ["good", "lagging", "degraded", "unknown"] },
+        "sourceLagMs": { "type": "number", "minimum": 0, "maximum": 10000 },
+        "collectorLagMs": { "type": "number", "minimum": 0, "maximum": 10000 },
+        "droppedFrameCount": { "type": "integer", "minimum": 0, "maximum": 100000 }
+      }
+    },
+    "payload": { "type": "object" }
+  }
+}
