@@ -17,6 +17,8 @@
     "adr:check": "node scripts/check-adr-docs.mjs",
     "simops:contract:check": "node scripts/check-simops-contract.mjs",
     "simops:generator:test": "cd workers/simops-generator && cargo test",
+    "simulator-workbench:contract:check": "node scripts/check-simulator-workbench-contract.mjs",
+    "scada:standins:test": "cd workers/scada-standins && cargo test",
     "simops:smoke:local": "scripts/simops-local-smoke.sh",
     "backend:test": "cd backend/slurm-gateway && PATH=/opt/homebrew/bin:/usr/local/bin:$PATH env GOCACHE=/tmp/radiant-go-cache GOMODCACHE=/tmp/radiant-go-mod-cache go test ./...",
     "backend:run": "cd backend/slurm-gateway && go run ./cmd/server",
@@ -31,7 +33,7 @@
     "fold:v2": "scripts/archive/fold-v2-to-main.sh",
     "checkpoint:v2": "scripts/archive/checkpoint-v2.sh",
     "cleanup:v2": "scripts/archive/cleanup-v2-hygiene.sh",
-    "ci": "\"$npm_execpath\" run typecheck && \"$npm_execpath\" run test && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run infra:check && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run simops:contract:check && \"$npm_execpath\" run simops:generator:test",
+    "ci": "\"$npm_execpath\" run typecheck && \"$npm_execpath\" run test && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run infra:check && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run simops:contract:check && \"$npm_execpath\" run simulator-workbench:contract:check && \"$npm_execpath\" run simops:generator:test && \"$npm_execpath\" run scada:standins:test",
     "ci:full": "\"$npm_execpath\" run ci && \"$npm_execpath\" run compose:smoke"
   },
   "dependencies": {

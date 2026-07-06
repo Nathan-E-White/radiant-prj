@@ -13,6 +13,7 @@ This is public-safe demo material. It is not reactor design, safety analysis, li
 - **Version 3.0 Backend Gateway:** mock-first Go Slurm gateway handlers with mTLS identity checks, request validation, job status lookup, and Prometheus-format metrics.
 - **Simulation Ops Backend Slice:** Go run control endpoints, API polling events, Postgres-backed run state, Redpanda event publication, Docker-launched Rust worker containers, WebTransport live-track delivery, and Iceberg-Go artifact commits.
 - **Simulation Ops Contract:** telemetry schemas, NDJSON examples, WebTransport live-track names, and scenario randomization blueprint for local worker swarms.
+- **Simulator Workbench Scaffold:** contract-first stubs for measured stand-ins, imputed twin state, simulated results, lineage, and a digital-twin visual draft without runtime wiring.
 - **Controlled Quality Package:** controlled quality, design, verification, release, records documentation, and fixture-backed process evidence suitable for serious engineering review.
 
 ## Run Locally
@@ -35,6 +36,8 @@ bun run infra:check
 bun run quality:check
 bun run backend:test
 bun run simops:contract:check
+bun run simulator-workbench:contract:check
+bun run scada:standins:test
 bun run simops:smoke:local
 ```
 
@@ -101,6 +104,9 @@ The existing `scripts/checkpoint-v1.sh` remains available for the historical v1 
 - `deploy/slurm-gateway.compose.yml` defines the SimOps control-plane, Redpanda, Timescale/Postgres, MinIO, `simops-moq-gateway`, `simops-timescale-writer`, `simops-iceberg-writer`, and smoke/demo Rust bucket service topology.
 - `deploy/postgres-init/001_simops.sql` defines the SimOps control-plane, Timescale telemetry hypertable, consumer offsets, and Iceberg SQL-catalog tables used by the local deployment.
 - `docs/schemas/simulation-ops/` and `examples/simulation-ops/` define the Simulation Ops telemetry contract and canonical example run artifacts.
+- `docs/schemas/scada/`, `docs/schemas/digital-twin/`, `docs/schemas/simulator-workbench/`, `examples/scada/`, `examples/digital-twin/`, and `examples/simulator-workbench/` define the inert Simulator Workbench scaffold contracts and examples.
+- `docs/design/simulator-workbench-stub-ledger.md` tracks the scaffold seams and acceptance criteria; `docs/design/simulator-workbench-visual-draft.md` stores the first concept image notes.
+- `workers/scada-standins/` contains the compile-safe resident measured-source scaffold for future Simulator Workbench work.
 - `docs/requirements/` contains the requirements, verification matrix, change log, and objective evidence index.
 - `docs/quality/` contains quality program, document control, configuration management, lifecycle, V&V, corrective action, records, tool, supplier, release readiness, and document-index procedures.
 - `docs/design/` contains software design and interface-control records.

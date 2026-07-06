@@ -33,6 +33,7 @@ This document identifies internal and operational interfaces that are controlled
 | `scripts/check-infra.mjs` | Infrastructure files | Pass/fail static and optional native checks |
 | `scripts/check-quality-docs.mjs` | Controlled markdown docs | Pass/fail documentation structure check |
 | `scripts/check-simops-contract.mjs` | Simulation Ops schemas and examples | Pass/fail contract example validation |
+| `scripts/check-simulator-workbench-contract.mjs` | Simulator Workbench, SCADA stand-in, and digital twin schemas/examples | Pass/fail scaffold contract validation |
 | `scripts/checkpoint-wip.sh` | Git worktree state | WIP checkpoint commit and optional push |
 | `scripts/fold-branch.sh` | Source and target branches | No-fast-forward merge into target branch |
 | `scripts/checkpoint-version.sh` | Release candidate branch and version tag | Version checkpoint commit/tag and optional push |
@@ -87,6 +88,18 @@ The contract uses NDJSON as the canonical example and local fixture format. Live
 | Timescale writer | Redpanda consumer projecting telemetry frames into `simops_telemetry_frames` idempotently | `backend/slurm-gateway/cmd/simops-timescale-writer` |
 | Iceberg-Go writer | Redpanda consumer appending telemetry frames to `simops.telemetry_frames` and updating artifact status | `backend/slurm-gateway/cmd/simops-iceberg-writer` |
 | WebTransport gateway | Redpanda consumer routing lifecycle, telemetry, quality, and artifact tracks to actual WebTransport subscribers | `backend/slurm-gateway/cmd/simops-stream-gateway`, `backend/slurm-gateway/cmd/simops-webtransport-probe` |
+
+## Simulator Workbench Scaffold Interface
+
+| Interface | Input | Output | Control |
+| --- | --- | --- | --- |
+| Value basis | Displayed value basis | `measured`, `imputed`, or `simulated` | `value-basis.v1` schema and contract check |
+| Resident source declaration | Mixed public-safe source set | Declared measured tags for flux, temperature, pressure, actuator, electrical, and comms stand-ins | SCADA source schema and `workers/scada-standins` tests |
+| Measured telemetry | Resident stand-in frame | `scada.telemetry.v1` measured frame | SCADA telemetry schema and contract check |
+| Digital twin state | Measured tags, imputed model state, and simulation references | `digital-twin.state.v1` values with lineage ids | Digital twin schema and contract check |
+| Workbench state | Contract refs and panel summaries | `simulator-workbench.state.v1` state summary | Workbench schema and contract check |
+
+The scaffold defines intended future API paths under `/api/simulator-workbench/*`, but no handlers are registered in this pass. The first implementation path remains HTTP-polled read APIs; live streaming can be added later without replacing the recovery/inspection contracts.
 
 ## Infrastructure Interface
 
