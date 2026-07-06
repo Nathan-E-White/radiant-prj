@@ -24,6 +24,9 @@ This document defines software and deployment requirements for the interview dem
 | SW-010 | The Simulation Ops API shall create, inspect, stop, and ingest bounded runs with idempotency, authorization, worker-count limits, and spool-command records. | Button mashing and scripted launch flows need one backend authority for run state and worker dispatch. | Test | Verified |
 | SW-011 | The Simulation Ops live telemetry interface shall return WebTransport subscription metadata and controlled track names backed by Redpanda consumption instead of exposing an SSE endpoint or broker credentials. | Browser-facing telemetry uses a WebTransport session with MoQ-compatible namespace/track envelopes while preserving backend-only Redpanda access. | Test | Verified |
 | SW-012 | The Simulation Ops persistence model shall separate Timescale/Postgres control/catalog/projection state, Redpanda hot telemetry logging, MinIO object storage, and Iceberg-Go artifact-writer boundaries. | Control-plane state, live replay, object storage, and analytic artifacts have different durability and query needs. | Configuration audit | Verified |
+| SW-013 | Simulator Workbench backend dataflow shall preserve measured, simulated, and imputed value-basis separation through transport, storage, and read APIs. | The Workbench must not collapse source observations, worker results, and twin estimates into generic metrics. | Test | Verified |
+| SW-014 | Resident public-safe SCADA stand-ins shall declare measured sources and emit deterministic measured frames into Redpanda, Postgres projection storage, and Iceberg tables. | Long-running measured sources need their own resident flow independent of run-scoped simulation workers. | Test | Verified |
+| SW-015 | SimOps workers shall emit separate synthetic simulated result frames that the twin projector consumes to materialize imputed twin state and lineage. | The full backend slice must prove result-to-imputation flow before frontend controls are added. | Test | Verified |
 
 ## Interface Summary
 
@@ -35,6 +38,7 @@ This document defines software and deployment requirements for the interview dem
 - `bun run quality:check` verifies the v3.0 controlled documentation and traceability package.
 - `bun run backend:test` runs the Go Slurm gateway handler and spooler tests.
 - `bun run simops:contract:check` validates Simulation Ops schemas and example telemetry.
+- `bun run simulator-workbench:dataflow:smoke` proves resident measured, operational telemetry, simulated result, and imputed twin units through the backend dataflow.
 - `bun run simops:generator:test` runs the Rust Simulation Ops generator tests.
 
 ## Controlled Inputs
@@ -44,5 +48,6 @@ This document defines software and deployment requirements for the interview dem
 - `infra/ansible/` targets a local dry-run root under `/tmp/kaleidos-readiness`.
 - `backend/slurm-gateway/` contains the mock-first Go Slurm gateway.
 - `backend/slurm-gateway/internal/gateway/simops_*.go` contains the Simulation Ops control-plane, spooler, ingest, Redpanda consumers, WebTransport track routing, Timescale projection, and Iceberg-Go append/readback contracts.
+- `backend/slurm-gateway/internal/gateway/*workbench*.go` contains SCADA source ingest, simulated result ingest, Workbench projections, twin projection, lineage materialization, Iceberg append/readback, and read-only Workbench APIs.
 - `deploy/slurm-gateway.compose.yml` defines local SimOps services for the Go control plane, WebTransport gateway, Timescale writer, Iceberg writer, Redpanda, Timescale/Postgres, MinIO, Prometheus, and Rust bucket containers.
 - `docs/` contains controlled requirements, design, quality, verification, and release records.

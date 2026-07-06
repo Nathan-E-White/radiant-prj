@@ -55,6 +55,62 @@ pub struct GeneratedRun {
     pub dropped_frame_count: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimulatedResultFrame {
+    pub schema_version: String,
+    pub run_id: String,
+    pub scenario_id: ScenarioId,
+    pub worker_id: String,
+    pub worker_kind: WorkerKind,
+    pub sequence: u64,
+    pub produced_at: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub received_at: Option<String>,
+    pub result_type: SimulatedResultType,
+    pub model_id: String,
+    pub input_window: ResultInputWindow,
+    pub value_basis: String,
+    pub synthetic_status: String,
+    pub values: Vec<SimulatedResultValue>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lineage_inputs: Vec<ResultLineageInput>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SimulatedResultType {
+    SyntheticEngineeringState,
+    SyntheticPhysicsState,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultInputWindow {
+    pub start: String,
+    pub end: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SimulatedResultValue {
+    pub result_id: String,
+    pub entity_id: String,
+    pub value_id: String,
+    pub label: String,
+    pub unit: String,
+    pub value: Value,
+    pub confidence: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResultLineageInput {
+    pub source_kind: String,
+    pub source_id: String,
+    pub value_basis: String,
+}
+
 #[derive(Debug, Clone)]
 pub struct GeneratedWorkerStats {
     pub worker_id: String,

@@ -107,6 +107,10 @@ func (g *Gateway) handleSimopsRun(w http.ResponseWriter, r *http.Request) {
 
 func (g *Gateway) handleInternalSimopsRun(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/internal/simops/runs/")
+	if strings.HasSuffix(path, "/results") {
+		g.handleInternalSimopsResults(w, r, strings.TrimSuffix(path, "/results"))
+		return
+	}
 	if !strings.HasSuffix(path, "/ingest") {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Internal SimOps route not found", Code: "simops_route_not_found"})
 		return
@@ -129,6 +133,39 @@ func (g *Gateway) handleInternalSimopsRun(w http.ResponseWriter, r *http.Request
 	writeJSON(w, status, map[string]any{
 		"accepted_frames": count,
 		"run_id":          runID,
+	})
+}
+
+func (g *Gateway) handleInternalSimopsResults(w http.ResponseWriter, r *http.Request, runPath string) {
+	if g.workbench == nil {
+		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Workbench dataflow disabled", Code: "workbench_disabled"})
+		return
+	}
+	if r.Method != http.MethodPost {
+		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "Only POST requests allowed", Code: "method_not_allowed"})
+		return
+	}
+	runID := strings.TrimSuffix(runPath, "/")
+	token := strings.TrimSpace(r.Header.Get("X-Simops-Ingest-Token"))
+	defer r.Body.Close()
+
+	record, status, err := g.simops.getRecordForWrite(runID)
+	if err != nil {
+		writeJSON(w, status, ErrorResponse{Error: err.Error(), Code: simopsErrorCode(status)})
+		return
+	}
+	if token == "" || token != record.IngestToken {
+		writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "invalid SimOps ingest token", Code: "unauthorized"})
+		return
+	}
+	count, status, err := g.workbench.IngestResults(r.Context(), record, r.Body)
+	if err != nil {
+		writeJSON(w, status, ErrorResponse{Error: err.Error(), Code: workbenchErrorCode(status)})
+		return
+	}
+	writeJSON(w, status, map[string]any{
+		"accepted_results": count,
+		"run_id":           runID,
 	})
 }
 

@@ -4,7 +4,8 @@ use std::fs::read_to_string;
 use crate::generators::{WorkerSelection, generate_run};
 use crate::manifest::RunManifest;
 use crate::output::{
-    build_summary, ensure_positive_frames, post_ingest, write_ndjson, write_summary,
+    build_simulated_results, build_summary, ensure_positive_frames, post_ingest, post_results,
+    write_ndjson, write_results, write_summary,
 };
 use crate::{Result, SimopsError};
 
@@ -15,9 +16,12 @@ struct CliConfig {
     frames: Option<usize>,
     output_path: String,
     summary_path: Option<String>,
+    results_output_path: Option<String>,
     run_id: Option<String>,
     ingest_url: Option<String>,
     ingest_token: Option<String>,
+    result_ingest_url: Option<String>,
+    result_ingest_token: Option<String>,
 }
 
 pub fn run_from_env() -> Result<()> {
@@ -37,6 +41,10 @@ where
     }
 
     write_ndjson(&run, &config.output_path)?;
+    let results = build_simulated_results(&run);
+    if let Some(results_output_path) = config.results_output_path.as_deref() {
+        write_results(&results, results_output_path)?;
+    }
     if let Some(ingest_url) = config.ingest_url.as_deref() {
         let token = config.ingest_token.as_deref().ok_or_else(|| {
             SimopsError::new("--ingest-token is required when --ingest-url is supplied")
@@ -45,6 +53,16 @@ where
     } else if config.ingest_token.is_some() {
         return Err(SimopsError::new(
             "--ingest-url is required when --ingest-token is supplied",
+        ));
+    }
+    if let Some(result_ingest_url) = config.result_ingest_url.as_deref() {
+        let token = config.result_ingest_token.as_deref().ok_or_else(|| {
+            SimopsError::new("--result-ingest-token is required when --result-ingest-url is supplied")
+        })?;
+        post_results(&results, result_ingest_url, token)?;
+    } else if config.result_ingest_token.is_some() {
+        return Err(SimopsError::new(
+            "--result-ingest-url is required when --result-ingest-token is supplied",
         ));
     }
 
@@ -65,9 +83,12 @@ where
     let mut frames = None;
     let mut output_path = "-".to_string();
     let mut summary_path = None;
+    let mut results_output_path = None;
     let mut run_id = None;
     let mut ingest_url = None;
     let mut ingest_token = None;
+    let mut result_ingest_url = None;
+    let mut result_ingest_token = None;
 
     let mut args = args.into_iter();
     let _program = args.next();
@@ -86,9 +107,18 @@ where
             }
             "--output" => output_path = next_value(&mut args, "--output")?,
             "--summary" => summary_path = Some(next_value(&mut args, "--summary")?),
+            "--results-output" => {
+                results_output_path = Some(next_value(&mut args, "--results-output")?)
+            }
             "--run-id" => run_id = Some(next_value(&mut args, "--run-id")?),
             "--ingest-url" => ingest_url = Some(next_value(&mut args, "--ingest-url")?),
             "--ingest-token" => ingest_token = Some(next_value(&mut args, "--ingest-token")?),
+            "--result-ingest-url" => {
+                result_ingest_url = Some(next_value(&mut args, "--result-ingest-url")?)
+            }
+            "--result-ingest-token" => {
+                result_ingest_token = Some(next_value(&mut args, "--result-ingest-token")?)
+            }
             "--help" | "-h" => {
                 println!("{}", usage());
                 std::process::exit(0);
@@ -112,9 +142,12 @@ where
         frames,
         output_path,
         summary_path,
+        results_output_path,
         run_id,
         ingest_url,
         ingest_token,
+        result_ingest_url,
+        result_ingest_token,
     })
 }
 
@@ -124,7 +157,7 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 }
 
 fn usage() -> &'static str {
-    "usage: simops-generator --manifest <path> [--worker scheduler|storage|burst|fabric|all] [--frames <n>] [--run-id <id>] [--output <path|->] [--summary <path>] [--ingest-url <url> --ingest-token <token>]"
+    "usage: simops-generator --manifest <path> [--worker scheduler|storage|burst|fabric|all] [--frames <n>] [--run-id <id>] [--output <path|->] [--summary <path>] [--results-output <path|->] [--ingest-url <url> --ingest-token <token>] [--result-ingest-url <url> --result-ingest-token <token>]"
 }
 
 fn override_run_id(run: &mut crate::envelope::GeneratedRun, run_id: &str) {
@@ -162,6 +195,10 @@ mod tests {
             "http://127.0.0.1:8080/internal/simops/runs/RUN-LIVE-001/ingest".to_string(),
             "--ingest-token".to_string(),
             "token".to_string(),
+            "--result-ingest-url".to_string(),
+            "http://127.0.0.1:8080/internal/simops/runs/RUN-LIVE-001/results".to_string(),
+            "--result-ingest-token".to_string(),
+            "token".to_string(),
         ])
         .expect("valid args");
 
@@ -173,5 +210,7 @@ mod tests {
         assert_eq!(config.run_id.as_deref(), Some("RUN-LIVE-001"));
         assert!(config.ingest_url.is_some());
         assert_eq!(config.ingest_token.as_deref(), Some("token"));
+        assert!(config.result_ingest_url.is_some());
+        assert_eq!(config.result_ingest_token.as_deref(), Some("token"));
     }
 }

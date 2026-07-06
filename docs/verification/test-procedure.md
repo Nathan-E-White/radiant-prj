@@ -30,13 +30,17 @@ bun run evidence:generate
 bun run infra:check
 bun run quality:check
 bun run simops:contract:check
+bun run simulator-workbench:contract:check
+bun run scada:standins:test
+bun run simops:generator:test
+bun run simulator-workbench:dataflow:smoke
 bun run build
 bun run ci
 ```
 
 ## Expected Result
 
-All commands shall exit with status 0. Any skipped optional native infrastructure checks shall be explicitly reported by `scripts/check-infra.mjs`.
+All commands shall exit with status 0. Any skipped optional native infrastructure checks shall be explicitly reported by `scripts/check-infra.mjs`. Docker-dependent smoke commands shall report service readiness and the final observed evidence counts.
 
 ## Failure Handling
 

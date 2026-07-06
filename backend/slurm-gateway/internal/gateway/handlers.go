@@ -18,12 +18,13 @@ const maxSubmitBodyBytes = 64 * 1024
 var scriptNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
 type Gateway struct {
-	cfg     Config
-	spooler SlurmSpooler
-	store   JobStore
-	metrics *Metrics
-	simops  *SimopsController
-	now     func() time.Time
+	cfg       Config
+	spooler   SlurmSpooler
+	store     JobStore
+	metrics   *Metrics
+	simops    *SimopsController
+	workbench *WorkbenchController
+	now       func() time.Time
 }
 
 func NewDefaultGateway(cfg Config) (*Gateway, error) {
@@ -46,6 +47,11 @@ func NewDefaultGateway(cfg Config) (*Gateway, error) {
 		return nil, err
 	}
 	app.simops = simops
+	workbench, err := NewDefaultWorkbenchController(cfg.Workbench)
+	if err != nil {
+		return nil, err
+	}
+	app.workbench = workbench
 	return app, nil
 }
 
@@ -77,6 +83,10 @@ func (g *Gateway) Handler() http.Handler {
 		mux.HandleFunc("/api/simops/runs", g.handleSimopsRuns)
 		mux.HandleFunc("/api/simops/runs/", g.handleSimopsRun)
 		mux.HandleFunc("/internal/simops/runs/", g.handleInternalSimopsRun)
+	}
+	if g.workbench != nil {
+		mux.HandleFunc("/internal/scada/", g.handleInternalScada)
+		mux.HandleFunc("/api/simulator-workbench/", g.handleSimulatorWorkbench)
 	}
 	mux.HandleFunc("/api/jobs/submit", g.handleSubmitJob)
 	mux.HandleFunc("/api/jobs/", g.handleJobStatus)

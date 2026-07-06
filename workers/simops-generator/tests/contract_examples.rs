@@ -12,6 +12,10 @@ fn emits_scheduler_drift_contract_frames_and_summary() {
         "simops-generator-summary-{}.json",
         std::process::id()
     ));
+    let results_path = std::env::temp_dir().join(format!(
+        "simops-generator-results-{}.ndjson",
+        std::process::id()
+    ));
 
     let output = Command::new(binary)
         .args([
@@ -25,6 +29,8 @@ fn emits_scheduler_drift_contract_frames_and_summary() {
             "-",
             "--summary",
             summary_path.to_str().expect("utf8 temp path"),
+            "--results-output",
+            results_path.to_str().expect("utf8 results path"),
         ])
         .output()
         .expect("run simops-generator");
@@ -72,7 +78,21 @@ fn emits_scheduler_drift_contract_frames_and_summary() {
             .is_empty()
     );
 
+    let results_text = fs::read_to_string(&results_path).expect("results file");
+    let results: Vec<Value> = results_text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| serde_json::from_str(line).expect("valid result json"))
+        .collect();
+    assert_eq!(results.len(), 2);
+    for result in &results {
+        assert_eq!(result["schemaVersion"], "simops.result.v1");
+        assert_eq!(result["valueBasis"], "simulated");
+        assert_eq!(result["values"][0]["valueId"], "VAL-SIMULATED-FORECAST-MARGIN");
+    }
+
     let _ = fs::remove_file(summary_path);
+    let _ = fs::remove_file(results_path);
 }
 
 #[test]

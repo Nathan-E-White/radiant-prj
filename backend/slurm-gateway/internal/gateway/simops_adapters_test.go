@@ -55,6 +55,8 @@ func TestDockerSimopsSpoolerLaunchesWorkerWithIngestArgs(t *testing.T) {
 		"--run-id RUN-DOCKER-001",
 		"--ingest-url http://host.docker.internal:8080/internal/simops/runs/RUN-DOCKER-001/ingest",
 		"--ingest-token ingest-token",
+		"--result-ingest-url http://host.docker.internal:8080/internal/simops/runs/RUN-DOCKER-001/results",
+		"--result-ingest-token ingest-token",
 	} {
 		if !strings.Contains(joined, token) {
 			t.Fatalf("docker args missing %q:\n%#v", token, runArgs)

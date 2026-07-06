@@ -14,6 +14,9 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/simops-
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/simops-timescale-writer ./cmd/simops-timescale-writer
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/simops-iceberg-writer ./cmd/simops-iceberg-writer
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/simops-webtransport-probe ./cmd/simops-webtransport-probe
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/workbench-projection-writer ./cmd/workbench-projection-writer
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/twin-projector ./cmd/twin-projector
+RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/workbench-iceberg-writer ./cmd/workbench-iceberg-writer
 
 FROM ${SIMOPS_GATEWAY_RUNTIME_IMAGE}
 
@@ -25,6 +28,9 @@ COPY --from=builder /out/simops-stream-gateway /app/simops-stream-gateway
 COPY --from=builder /out/simops-timescale-writer /app/simops-timescale-writer
 COPY --from=builder /out/simops-iceberg-writer /app/simops-iceberg-writer
 COPY --from=builder /out/simops-webtransport-probe /app/simops-webtransport-probe
+COPY --from=builder /out/workbench-projection-writer /app/workbench-projection-writer
+COPY --from=builder /out/twin-projector /app/twin-projector
+COPY --from=builder /out/workbench-iceberg-writer /app/workbench-iceberg-writer
 RUN mkdir -p /app/.local/slurm-scripts && chown -R appuser:appgroup /app
 
 USER appuser

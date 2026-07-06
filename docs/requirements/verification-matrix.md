@@ -30,6 +30,9 @@
 | SW-010 | Test | SimOps run creation, idempotency, stop, and token-gated ingest handler tests | `bun run backend:test` | SIMOPS-BACKEND-001 |
 | SW-011 | Test | WebTransport subscription metadata, Redpanda-backed lifecycle/telemetry/quality/artifact track routing tests, and the containerized WebTransport smoke probe | `bun run backend:test`, `bun run simops:contract:check`, `bun run simops:smoke:local` | SIMOPS-BACKEND-001 |
 | SW-012 | Configuration audit | Compose, Timescale init SQL, Redpanda, MinIO, WebTransport gateway, Timescale writer, Iceberg-Go writer, and Docker metadata/content preflight artifacts | `bun run infra:check`, `bun run simops:smoke:local` | SIMOPS-BACKEND-001 |
+| SW-013 | Test | Workbench value-basis validation, separate topics, Postgres projections, Iceberg tables, and read-only APIs | `bun run backend:test`, `bun run simops:contract:check`, `bun run simulator-workbench:contract:check`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
+| SW-014 | Test | Resident source declaration, measured-only SCADA frames, token-gated ingest, `scada_measured_frames`, and `scada.measured_frames` | `bun run scada:standins:test`, `bun run backend:test`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
+| SW-015 | Test | `simops.result.v1` contract, simulated-only result ingest, twin imputed state, and lineage materialization | `bun run simops:generator:test`, `bun run backend:test`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
 
 ## Acceptance Scenario
 
@@ -42,3 +45,4 @@
 7. Run `bun run backend:test` and confirm the Slurm gateway rejects unauthorized requests and records mock jobs.
 8. Create a Simulation Ops run through `POST /api/simops/runs` and confirm the response contains WebTransport subscription metadata, worker tracks, and artifact references.
 9. Run `bun run quality:check` and confirm the v3.0 controlled document and traceability package is complete.
+10. Run `bun run simulator-workbench:dataflow:smoke` and confirm measured, telemetry, simulated, and imputed units reach Redpanda, Postgres, Iceberg, and the read-only Workbench APIs.

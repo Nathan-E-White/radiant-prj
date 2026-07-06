@@ -11,9 +11,9 @@ This is public-safe demo material. It is not reactor design, safety analysis, li
 - **Evidence Matrix:** requirements, verification methods, evidence packs, artifact hashes, deployment checks, and controlled change notes.
 - **DevOps Layer:** Docker Compose, dry-run Terraform, Ansible baseline templates, and CI checks for the synthetic hybrid compute environment.
 - **Version 3.0 Backend Gateway:** mock-first Go Slurm gateway handlers with mTLS identity checks, request validation, job status lookup, and Prometheus-format metrics.
-- **Simulation Ops Backend Slice:** Go run control endpoints, API polling events, Postgres-backed run state, Redpanda event publication, Docker-launched Rust worker containers, WebTransport live-track delivery, and Iceberg-Go artifact commits.
+- **Simulation Ops Backend Slice:** Go run control endpoints, API polling events, Postgres-backed run state, Redpanda telemetry publication, Docker-launched Rust worker containers, WebTransport live-track delivery, and Iceberg-Go artifact commits.
 - **Simulation Ops Contract:** telemetry schemas, NDJSON examples, WebTransport live-track names, and scenario randomization blueprint for local worker swarms.
-- **Simulator Workbench Scaffold:** contract-first stubs for measured stand-ins, imputed twin state, simulated results, lineage, and a digital-twin visual draft without runtime wiring.
+- **Simulator Workbench Backend Dataflow:** resident measured SCADA stand-ins, separate simulated result ingest, twin imputed-state projection, Postgres read models, Iceberg tables, and read-only Workbench APIs.
 - **Controlled Quality Package:** controlled quality, design, verification, release, records documentation, and fixture-backed process evidence suitable for serious engineering review.
 
 ## Run Locally
@@ -38,11 +38,13 @@ bun run backend:test
 bun run simops:contract:check
 bun run simulator-workbench:contract:check
 bun run scada:standins:test
+bun run simops:generator:test
 bun run simops:smoke:local
+bun run simulator-workbench:dataflow:smoke
 ```
 
 `bun run ci` runs the full local verification chain.
-`bun run simops:smoke:local` is Docker-dependent and intentionally stays outside default CI.
+`bun run simops:smoke:local` and `bun run simulator-workbench:dataflow:smoke` are Docker-dependent and intentionally stay outside default CI.
 
 ## Version 3.0 Backend Gateway
 
@@ -56,9 +58,13 @@ The same Go backend now exposes the first Simulation Ops control-plane slice:
 - `GET /api/simops/runs/{run_id}` returns run, worker, spool-command, and Iceberg artifact-planning state.
 - `GET /api/simops/runs/{run_id}/events` returns persisted lifecycle, telemetry, and artifact-ready events for recovery and inspection; it is not the live telemetry read path.
 - `POST /api/simops/runs/{run_id}/stop` records a controlled stop request.
-- `POST /internal/simops/runs/{run_id}/ingest` accepts token-gated telemetry batches from Rust bucket workers.
+- `POST /internal/simops/runs/{run_id}/ingest` accepts token-gated operational telemetry batches from Rust bucket workers.
+- `POST /internal/simops/runs/{run_id}/results` accepts token-gated synthetic simulated result batches from Rust bucket workers.
+- `POST /internal/scada/sources` registers public-safe resident measured source declarations.
+- `POST /internal/scada/telemetry` accepts token-gated measured SCADA stand-in frames.
+- `GET /api/simulator-workbench/state`, `/measured`, `/twin`, and `/lineage/{value_id}` expose read-only backend dataflow projections for the follow-up frontend-control slice.
 
-The local deployment model assigns Timescale/Postgres to control-plane state and telemetry projection, Redpanda to the hot durable telemetry log, MinIO to S3-compatible Iceberg storage, `simops-moq-gateway` to Redpanda-backed WebTransport track delivery, `simops-timescale-writer` to hypertable projection, and `simops-iceberg-writer` to Iceberg-Go table appends with fresh catalog readback before artifact commit. Docker Compose starts the always-on platform. The Go gateway launches run-scoped worker containers on demand, passes them the run id and ingest token, validates incoming frames, publishes them to Redpanda, and updates lightweight run/worker counters. Workers never receive broker, database, MinIO, or Iceberg credentials. `bun run simops:smoke:local` now runs Docker image metadata/content preflights, then verifies Timescale rows, readable Iceberg/Parquet data, and a WebTransport subscriber probe for telemetry and quality tracks.
+The local deployment model assigns Timescale/Postgres to control-plane state, telemetry projection, Workbench read models, and Iceberg SQL catalog metadata. Redpanda carries the hot durable telemetry, measured SCADA, simulated result, and twin-state streams. MinIO stores S3-compatible Iceberg data. `simops-moq-gateway` delivers Redpanda-backed WebTransport tracks, `simops-timescale-writer` and `simops-iceberg-writer` persist operational telemetry, `workbench-projection-writer` persists measured/result/twin projections, `twin-projector` is the only process that emits imputed twin state, and `workbench-iceberg-writer` appends Workbench lake tables. Docker Compose starts the always-on platform. The Go gateway launches run-scoped worker containers on demand, passes them the run id and ingest tokens, validates incoming frames, publishes them to Redpanda, and updates lightweight run/worker counters. Workers never receive broker, database, MinIO, or Iceberg credentials. `bun run simops:smoke:local` verifies Timescale rows, readable Iceberg/Parquet data, and a WebTransport subscriber probe. `bun run simulator-workbench:dataflow:smoke` verifies one measured unit, one operational telemetry unit, one simulated result unit, and one imputed twin value through Redpanda, Postgres, Iceberg, and the read-only Workbench APIs.
 
 For browser-local development, the compose gateway sets `SLURM_GATEWAY_REQUIRE_CLIENT_CERT=false`; mTLS remains the non-browser gateway boundary. The Compose-local smoke path launches worker containers on the `radiant-simops-local` network with `SIMOPS_WORKER_INGEST_BASE_URL=http://slurm-gateway:8080` and a two-frame override to keep the proof bounded. For host-run worker orchestration, use `SIMOPS_WORKER_RUNTIME=docker` and `SIMOPS_WORKER_INGEST_BASE_URL=http://host.docker.internal:8080` or the matching published gateway port.
 
@@ -101,12 +107,12 @@ The existing `scripts/checkpoint-v1.sh` remains available for the historical v1 
 - `src/data/readiness-fixtures.json` is the controlled fixture source for public facts, jobs, requirements, compute evidence, controlled process evidence, milestones, and deployment checks.
 - `src/domain/readiness.ts` contains deterministic toy calculations, diagnosis rules, evidence hashing, and traceability checks.
 - `backend/slurm-gateway/` contains the v3.0 mock-first Slurm gateway handlers and tests.
-- `deploy/slurm-gateway.compose.yml` defines the SimOps control-plane, Redpanda, Timescale/Postgres, MinIO, `simops-moq-gateway`, `simops-timescale-writer`, `simops-iceberg-writer`, and smoke/demo Rust bucket service topology.
-- `deploy/postgres-init/001_simops.sql` defines the SimOps control-plane, Timescale telemetry hypertable, consumer offsets, and Iceberg SQL-catalog tables used by the local deployment.
+- `deploy/slurm-gateway.compose.yml` defines the SimOps control-plane, Redpanda, Timescale/Postgres, MinIO, `simops-moq-gateway`, `simops-timescale-writer`, `simops-iceberg-writer`, Workbench writers, `twin-projector`, `scada-standins`, and smoke/demo Rust bucket service topology.
+- `deploy/postgres-init/001_simops.sql` defines the SimOps control-plane, Timescale telemetry hypertable, Workbench projection tables, twin lineage tables, consumer offsets, and Iceberg SQL-catalog tables used by the local deployment.
 - `docs/schemas/simulation-ops/` and `examples/simulation-ops/` define the Simulation Ops telemetry contract and canonical example run artifacts.
-- `docs/schemas/scada/`, `docs/schemas/digital-twin/`, `docs/schemas/simulator-workbench/`, `examples/scada/`, `examples/digital-twin/`, and `examples/simulator-workbench/` define the inert Simulator Workbench scaffold contracts and examples.
-- `docs/design/simulator-workbench-stub-ledger.md` tracks the scaffold seams and acceptance criteria; `docs/design/simulator-workbench-visual-draft.md` stores the first concept image notes.
-- `workers/scada-standins/` contains the compile-safe resident measured-source scaffold for future Simulator Workbench work.
+- `docs/schemas/scada/`, `docs/schemas/digital-twin/`, `docs/schemas/simulator-workbench/`, `examples/scada/`, `examples/digital-twin/`, and `examples/simulator-workbench/` define the Simulator Workbench contracts and examples.
+- `docs/design/simulator-workbench-stub-ledger.md` tracks scaffold seams and acceptance criteria; `docs/design/simulator-workbench-backend-dataflow-slice.md` controls the backend dataflow proof; `docs/design/simulator-workbench-visual-draft.md` stores the first concept image notes.
+- `workers/scada-standins/` contains the resident measured-source service for Simulator Workbench backend dataflow work.
 - `docs/requirements/` contains the requirements, verification matrix, change log, and objective evidence index.
 - `docs/quality/` contains quality program, document control, configuration management, lifecycle, V&V, corrective action, records, tool, supplier, release readiness, and document-index procedures.
 - `docs/design/` contains software design and interface-control records.

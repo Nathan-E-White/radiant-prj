@@ -31,6 +31,7 @@ type Config struct {
 	ClientCAFile      string
 	RequireClientCert bool
 	Simops            SimopsConfig
+	Workbench         WorkbenchConfig
 }
 
 type SimopsConfig struct {
@@ -67,6 +68,32 @@ type SimopsConfig struct {
 	IcebergFlushInterval   time.Duration
 	IcebergRustCommand     string
 	IcebergManifestDir     string
+}
+
+type WorkbenchConfig struct {
+	Enabled                       bool
+	Store                         string
+	PostgresDSN                   string
+	EventLog                      string
+	RedpandaBrokers               string
+	ScadaTopic                    string
+	ResultsTopic                  string
+	TwinStateTopic                string
+	InternalIngestToken           string
+	ScadaProjectionConsumerGroup  string
+	ResultProjectionConsumerGroup string
+	TwinProjectionConsumerGroup   string
+	TwinProjectorScadaGroup       string
+	TwinProjectorResultGroup      string
+	IcebergConsumerGroup          string
+	IcebergCatalogDSN             string
+	IcebergWarehouse              string
+	IcebergS3Endpoint             string
+	IcebergS3Bucket               string
+	IcebergS3Region               string
+	IcebergS3AccessKeyID          string
+	IcebergS3SecretKey            string
+	IcebergBatchSize              int
 }
 
 func DefaultConfig() Config {
@@ -113,6 +140,31 @@ func DefaultConfig() Config {
 			IcebergFlushInterval:   5 * time.Second,
 			IcebergManifestDir:     "/tmp/simops-iceberg-manifests",
 		},
+		Workbench: WorkbenchConfig{
+			Enabled:                       true,
+			Store:                         "memory",
+			PostgresDSN:                   "",
+			EventLog:                      "memory",
+			RedpandaBrokers:               "redpanda:9092",
+			ScadaTopic:                    "scada.telemetry.v1",
+			ResultsTopic:                  "simops.results.v1",
+			TwinStateTopic:                "digital-twin.state.v1",
+			InternalIngestToken:           "workbench-local-token",
+			ScadaProjectionConsumerGroup:  "workbench-scada-projection-writer",
+			ResultProjectionConsumerGroup: "workbench-result-projection-writer",
+			TwinProjectionConsumerGroup:   "workbench-twin-projection-writer",
+			TwinProjectorScadaGroup:       "workbench-twin-projector-scada",
+			TwinProjectorResultGroup:      "workbench-twin-projector-results",
+			IcebergConsumerGroup:          "workbench-iceberg-writer",
+			IcebergCatalogDSN:             "",
+			IcebergWarehouse:              "s3://radiant-simops/warehouse",
+			IcebergS3Endpoint:             "http://minio:9000",
+			IcebergS3Bucket:               "radiant-simops",
+			IcebergS3Region:               "us-east-1",
+			IcebergS3AccessKeyID:          "radiant",
+			IcebergS3SecretKey:            "radiant-password",
+			IcebergBatchSize:              1,
+		},
 	}
 }
 
@@ -152,6 +204,27 @@ func LoadConfigFromEnv() (Config, error) {
 	cfg.Simops.IcebergWriterMode = getenv("SIMOPS_ICEBERG_WRITER_MODE", cfg.Simops.IcebergWriterMode)
 	cfg.Simops.IcebergRustCommand = strings.TrimSpace(os.Getenv("SIMOPS_ICEBERG_RUST_CMD"))
 	cfg.Simops.IcebergManifestDir = getenv("SIMOPS_ICEBERG_MANIFEST_DIR", cfg.Simops.IcebergManifestDir)
+	cfg.Workbench.Store = getenv("WORKBENCH_STORE", cfg.Workbench.Store)
+	cfg.Workbench.PostgresDSN = getenv("WORKBENCH_POSTGRES_DSN", cfg.Workbench.PostgresDSN)
+	cfg.Workbench.EventLog = getenv("WORKBENCH_EVENT_LOG", cfg.Workbench.EventLog)
+	cfg.Workbench.RedpandaBrokers = getenv("WORKBENCH_REDPANDA_BROKERS", cfg.Workbench.RedpandaBrokers)
+	cfg.Workbench.ScadaTopic = getenv("WORKBENCH_SCADA_TOPIC", cfg.Workbench.ScadaTopic)
+	cfg.Workbench.ResultsTopic = getenv("WORKBENCH_RESULTS_TOPIC", cfg.Workbench.ResultsTopic)
+	cfg.Workbench.TwinStateTopic = getenv("WORKBENCH_TWIN_STATE_TOPIC", cfg.Workbench.TwinStateTopic)
+	cfg.Workbench.InternalIngestToken = getenv("WORKBENCH_INTERNAL_INGEST_TOKEN", cfg.Workbench.InternalIngestToken)
+	cfg.Workbench.ScadaProjectionConsumerGroup = getenv("WORKBENCH_SCADA_PROJECTION_CONSUMER_GROUP", cfg.Workbench.ScadaProjectionConsumerGroup)
+	cfg.Workbench.ResultProjectionConsumerGroup = getenv("WORKBENCH_RESULT_PROJECTION_CONSUMER_GROUP", cfg.Workbench.ResultProjectionConsumerGroup)
+	cfg.Workbench.TwinProjectionConsumerGroup = getenv("WORKBENCH_TWIN_PROJECTION_CONSUMER_GROUP", cfg.Workbench.TwinProjectionConsumerGroup)
+	cfg.Workbench.TwinProjectorScadaGroup = getenv("WORKBENCH_TWIN_PROJECTOR_SCADA_GROUP", cfg.Workbench.TwinProjectorScadaGroup)
+	cfg.Workbench.TwinProjectorResultGroup = getenv("WORKBENCH_TWIN_PROJECTOR_RESULT_GROUP", cfg.Workbench.TwinProjectorResultGroup)
+	cfg.Workbench.IcebergConsumerGroup = getenv("WORKBENCH_ICEBERG_CONSUMER_GROUP", cfg.Workbench.IcebergConsumerGroup)
+	cfg.Workbench.IcebergCatalogDSN = getenv("WORKBENCH_ICEBERG_CATALOG_DSN", cfg.Workbench.IcebergCatalogDSN)
+	cfg.Workbench.IcebergWarehouse = getenv("WORKBENCH_ICEBERG_WAREHOUSE", cfg.Workbench.IcebergWarehouse)
+	cfg.Workbench.IcebergS3Endpoint = getenv("WORKBENCH_ICEBERG_S3_ENDPOINT", cfg.Workbench.IcebergS3Endpoint)
+	cfg.Workbench.IcebergS3Bucket = getenv("WORKBENCH_ICEBERG_S3_BUCKET", cfg.Workbench.IcebergS3Bucket)
+	cfg.Workbench.IcebergS3Region = getenv("WORKBENCH_ICEBERG_S3_REGION", cfg.Workbench.IcebergS3Region)
+	cfg.Workbench.IcebergS3AccessKeyID = getenv("WORKBENCH_ICEBERG_S3_ACCESS_KEY_ID", cfg.Workbench.IcebergS3AccessKeyID)
+	cfg.Workbench.IcebergS3SecretKey = getenv("WORKBENCH_ICEBERG_S3_SECRET_ACCESS_KEY", cfg.Workbench.IcebergS3SecretKey)
 
 	if raw := strings.TrimSpace(os.Getenv("SLURM_GATEWAY_ALLOWED_CLIENTS")); raw != "" {
 		cfg.AllowedClients = csvSet(raw)
@@ -239,6 +312,20 @@ func LoadConfigFromEnv() (Config, error) {
 		}
 		cfg.Simops.IcebergFlushInterval = value
 	}
+	if raw := strings.TrimSpace(os.Getenv("WORKBENCH_ENABLED")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return cfg, fmt.Errorf("WORKBENCH_ENABLED must be boolean: %w", err)
+		}
+		cfg.Workbench.Enabled = value
+	}
+	if raw := strings.TrimSpace(os.Getenv("WORKBENCH_ICEBERG_BATCH_SIZE")); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil {
+			return cfg, fmt.Errorf("WORKBENCH_ICEBERG_BATCH_SIZE must be an integer: %w", err)
+		}
+		cfg.Workbench.IcebergBatchSize = value
+	}
 
 	return cfg, cfg.Validate()
 }
@@ -282,6 +369,9 @@ func (c Config) Validate() error {
 		}
 	}
 	if err := c.Simops.Validate(); err != nil {
+		return err
+	}
+	if err := c.Workbench.Validate(); err != nil {
 		return err
 	}
 	return nil
@@ -387,6 +477,46 @@ func (c SimopsConfig) Validate() error {
 	}
 	if c.IcebergWriterMode == "external" && strings.TrimSpace(c.IcebergRustCommand) == "" {
 		return fmt.Errorf("SIMOPS_ICEBERG_RUST_CMD is required when SIMOPS_ICEBERG_WRITER_MODE=external")
+	}
+	return nil
+}
+
+func (c WorkbenchConfig) Validate() error {
+	if !c.Enabled {
+		return nil
+	}
+	switch c.Store {
+	case "memory", "postgres":
+	default:
+		return fmt.Errorf("unsupported WORKBENCH_STORE %q", c.Store)
+	}
+	if c.Store == "postgres" && strings.TrimSpace(c.PostgresDSN) == "" {
+		return fmt.Errorf("WORKBENCH_POSTGRES_DSN is required when WORKBENCH_STORE=postgres")
+	}
+	switch c.EventLog {
+	case "memory", "redpanda":
+	default:
+		return fmt.Errorf("unsupported WORKBENCH_EVENT_LOG %q", c.EventLog)
+	}
+	if c.EventLog == "redpanda" {
+		if strings.TrimSpace(c.RedpandaBrokers) == "" {
+			return fmt.Errorf("WORKBENCH_REDPANDA_BROKERS is required when WORKBENCH_EVENT_LOG=redpanda")
+		}
+		for name, topic := range map[string]string{
+			"WORKBENCH_SCADA_TOPIC":      c.ScadaTopic,
+			"WORKBENCH_RESULTS_TOPIC":    c.ResultsTopic,
+			"WORKBENCH_TWIN_STATE_TOPIC": c.TwinStateTopic,
+		} {
+			if strings.TrimSpace(topic) == "" {
+				return fmt.Errorf("%s is required when WORKBENCH_EVENT_LOG=redpanda", name)
+			}
+		}
+	}
+	if strings.TrimSpace(c.InternalIngestToken) == "" {
+		return fmt.Errorf("WORKBENCH_INTERNAL_INGEST_TOKEN is required")
+	}
+	if c.IcebergBatchSize < 1 {
+		return fmt.Errorf("WORKBENCH_ICEBERG_BATCH_SIZE must be at least 1")
 	}
 	return nil
 }

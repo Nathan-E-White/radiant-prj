@@ -110,6 +110,146 @@ CREATE TABLE IF NOT EXISTS simops_consumer_offsets (
   PRIMARY KEY (consumer_name, redpanda_topic, redpanda_partition)
 );
 
+CREATE TABLE IF NOT EXISTS workbench_resident_sources (
+  source_id TEXT PRIMARY KEY,
+  declaration JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS workbench_resident_tags (
+  tag_id TEXT PRIMARY KEY,
+  source_id TEXT NOT NULL REFERENCES workbench_resident_sources(source_id) ON DELETE CASCADE,
+  asset_id TEXT NOT NULL,
+  signal_kind TEXT NOT NULL,
+  unit TEXT NOT NULL,
+  value_basis TEXT NOT NULL CHECK (value_basis = 'measured'),
+  tag JSONB NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS scada_measured_frames (
+  observed_at TIMESTAMPTZ NOT NULL,
+  sampled_at TIMESTAMPTZ NOT NULL,
+  source_id TEXT NOT NULL,
+  tag_id TEXT NOT NULL,
+  asset_id TEXT NOT NULL,
+  signal_kind TEXT NOT NULL,
+  sequence BIGINT NOT NULL,
+  unit TEXT NOT NULL,
+  quality TEXT NOT NULL,
+  value_basis TEXT NOT NULL CHECK (value_basis = 'measured'),
+  synthetic_status TEXT NOT NULL,
+  value JSONB NOT NULL,
+  frame JSONB NOT NULL,
+  redpanda_topic TEXT NOT NULL,
+  redpanda_partition INTEGER NOT NULL,
+  redpanda_offset BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+SELECT create_hypertable('scada_measured_frames', 'observed_at', if_not_exists => TRUE);
+
+CREATE INDEX IF NOT EXISTS idx_scada_measured_redpanda_coord
+  ON scada_measured_frames (redpanda_topic, redpanda_partition, redpanda_offset);
+
+CREATE INDEX IF NOT EXISTS idx_scada_measured_frames_tag_observed
+  ON scada_measured_frames (tag_id, observed_at DESC);
+
+CREATE TABLE IF NOT EXISTS simops_result_values (
+  produced_at TIMESTAMPTZ NOT NULL,
+  received_at TIMESTAMPTZ NOT NULL,
+  run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
+  scenario_id TEXT NOT NULL,
+  worker_id TEXT NOT NULL,
+  worker_kind TEXT NOT NULL,
+  sequence BIGINT NOT NULL,
+  result_type TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  input_window_start TIMESTAMPTZ NOT NULL,
+  input_window_end TIMESTAMPTZ NOT NULL,
+  value_basis TEXT NOT NULL CHECK (value_basis = 'simulated'),
+  synthetic_status TEXT NOT NULL,
+  result_id TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  value_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  unit TEXT NOT NULL,
+  value JSONB NOT NULL,
+  confidence DOUBLE PRECISION NOT NULL,
+  frame JSONB NOT NULL,
+  redpanda_topic TEXT NOT NULL,
+  redpanda_partition INTEGER NOT NULL,
+  redpanda_offset BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+SELECT create_hypertable('simops_result_values', 'produced_at', if_not_exists => TRUE);
+
+CREATE INDEX IF NOT EXISTS idx_simops_result_redpanda_coord_value
+  ON simops_result_values (redpanda_topic, redpanda_partition, redpanda_offset, value_id);
+
+CREATE INDEX IF NOT EXISTS idx_simops_result_values_run_produced
+  ON simops_result_values (run_id, produced_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_simops_result_values_basis
+  ON simops_result_values (value_basis);
+
+CREATE TABLE IF NOT EXISTS digital_twin_state_values (
+  as_of TIMESTAMPTZ NOT NULL,
+  twin_id TEXT NOT NULL,
+  entity_id TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  value_id TEXT NOT NULL,
+  label TEXT NOT NULL,
+  value_basis TEXT NOT NULL CHECK (value_basis IN ('measured', 'imputed', 'simulated')),
+  unit TEXT NOT NULL,
+  value JSONB NOT NULL,
+  confidence DOUBLE PRECISION NOT NULL,
+  freshness JSONB NOT NULL,
+  lineage_id TEXT NOT NULL,
+  source_ids JSONB NOT NULL,
+  state JSONB NOT NULL,
+  redpanda_topic TEXT NOT NULL,
+  redpanda_partition INTEGER NOT NULL,
+  redpanda_offset BIGINT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (twin_id, entity_id, value_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_digital_twin_state_values_basis
+  ON digital_twin_state_values (value_basis);
+
+CREATE INDEX IF NOT EXISTS idx_digital_twin_state_values_as_of
+  ON digital_twin_state_values (as_of DESC);
+
+CREATE TABLE IF NOT EXISTS digital_twin_lineage (
+  lineage_id TEXT PRIMARY KEY,
+  value_id TEXT NOT NULL,
+  value_basis TEXT NOT NULL,
+  lineage JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_digital_twin_lineage_value
+  ON digital_twin_lineage (value_id);
+
+CREATE TABLE IF NOT EXISTS workbench_processed_messages (
+  consumer_name TEXT NOT NULL,
+  redpanda_topic TEXT NOT NULL,
+  redpanda_partition INTEGER NOT NULL,
+  redpanda_offset BIGINT NOT NULL,
+  processed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (consumer_name, redpanda_topic, redpanda_partition, redpanda_offset)
+);
+
+CREATE TABLE IF NOT EXISTS workbench_consumer_offsets (
+  consumer_name TEXT NOT NULL,
+  redpanda_topic TEXT NOT NULL,
+  redpanda_partition INTEGER NOT NULL,
+  redpanda_offset BIGINT NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (consumer_name, redpanda_topic, redpanda_partition)
+);
+
 CREATE SCHEMA IF NOT EXISTS iceberg_catalog;
 
 CREATE TABLE IF NOT EXISTS iceberg_catalog.catalog_metadata (

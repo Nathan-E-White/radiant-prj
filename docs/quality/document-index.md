@@ -35,6 +35,7 @@
 | Software Design Description | Software | Draft for v3.0 review |
 | Interface Control Document | Software | Draft for v3.0 review |
 | Simulation Ops Telemetry Contract | Software | Contract draft |
+| Simulator Workbench Backend Dataflow Slice | Software | Implemented backend slice |
 | Verification Plan | Quality | Draft for v3.0 review |
 | Test Report Template | Quality | Template |
 | Release Checklist | Quality | Template |

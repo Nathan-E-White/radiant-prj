@@ -50,6 +50,21 @@ services:
       SIMOPS_ICEBERG_FLUSH_INTERVAL: "5s"
       SIMOPS_ICEBERG_RUST_CMD: ""
       SIMOPS_ICEBERG_MANIFEST_DIR: "/tmp/simops-iceberg-manifests"
+      WORKBENCH_STORE: "postgres"
+      WORKBENCH_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      WORKBENCH_EVENT_LOG: "redpanda"
+      WORKBENCH_REDPANDA_BROKERS: "redpanda:9092"
+      WORKBENCH_SCADA_TOPIC: "scada.telemetry.v1"
+      WORKBENCH_RESULTS_TOPIC: "simops.results.v1"
+      WORKBENCH_TWIN_STATE_TOPIC: "digital-twin.state.v1"
+      WORKBENCH_INTERNAL_INGEST_TOKEN: "workbench-local-token"
+      WORKBENCH_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      WORKBENCH_ICEBERG_WAREHOUSE: "s3://radiant-simops/warehouse"
+      WORKBENCH_ICEBERG_S3_ENDPOINT: "http://minio:9000"
+      WORKBENCH_ICEBERG_S3_BUCKET: "radiant-simops"
+      WORKBENCH_ICEBERG_S3_REGION: "local"
+      WORKBENCH_ICEBERG_S3_ACCESS_KEY_ID: "radiant"
+      WORKBENCH_ICEBERG_S3_SECRET_ACCESS_KEY: "radiant-password"
     user: "0:0"
     read_only: true
     tmpfs:
@@ -193,6 +208,151 @@ services:
       org.opencontainers.image.title: "Kaleidos SimOps Iceberg Writer"
       org.opencontainers.image.description: "Iceberg Rust telemetry artifact writer boundary"
 
+  workbench-projection-writer:
+    build:
+      context: ..
+      dockerfile: deploy/slurm-gateway.Dockerfile
+      args:
+        SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
+        SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
+    command: ["/app/workbench-projection-writer"]
+    ports:
+      - "9470:9470"
+    environment:
+      WORKBENCH_PROJECTION_WRITER_ADDR: ":9470"
+      SIMOPS_ENABLED: "false"
+      SIMOPS_CONTROL_STORE: "postgres"
+      SIMOPS_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      SIMOPS_TELEMETRY_LOG: "redpanda"
+      SIMOPS_REDPANDA_BROKERS: "redpanda:9092"
+      SIMOPS_REDPANDA_TOPIC: "simops.telemetry.v1"
+      WORKBENCH_STORE: "postgres"
+      WORKBENCH_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      WORKBENCH_EVENT_LOG: "redpanda"
+      WORKBENCH_REDPANDA_BROKERS: "redpanda:9092"
+      WORKBENCH_SCADA_TOPIC: "scada.telemetry.v1"
+      WORKBENCH_RESULTS_TOPIC: "simops.results.v1"
+      WORKBENCH_TWIN_STATE_TOPIC: "digital-twin.state.v1"
+      WORKBENCH_INTERNAL_INGEST_TOKEN: "workbench-local-token"
+      WORKBENCH_SCADA_PROJECTION_CONSUMER_GROUP: "workbench-scada-projection-writer"
+      WORKBENCH_RESULT_PROJECTION_CONSUMER_GROUP: "workbench-result-projection-writer"
+      WORKBENCH_TWIN_PROJECTION_CONSUMER_GROUP: "workbench-twin-projection-writer"
+      WORKBENCH_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      WORKBENCH_ICEBERG_S3_REGION: "local"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9470/healthz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+    depends_on:
+      - postgres
+      - redpanda
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      org.opencontainers.image.title: "Kaleidos Workbench Projection Writer"
+      org.opencontainers.image.description: "Workbench Redpanda consumer projecting measured, simulated, and twin-state frames into Postgres"
+
+  twin-projector:
+    build:
+      context: ..
+      dockerfile: deploy/slurm-gateway.Dockerfile
+      args:
+        SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
+        SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
+    command: ["/app/twin-projector"]
+    ports:
+      - "9480:9480"
+    environment:
+      TWIN_PROJECTOR_ADDR: ":9480"
+      SIMOPS_ENABLED: "false"
+      SIMOPS_CONTROL_STORE: "postgres"
+      SIMOPS_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      SIMOPS_TELEMETRY_LOG: "redpanda"
+      SIMOPS_REDPANDA_BROKERS: "redpanda:9092"
+      SIMOPS_REDPANDA_TOPIC: "simops.telemetry.v1"
+      WORKBENCH_STORE: "postgres"
+      WORKBENCH_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      WORKBENCH_EVENT_LOG: "redpanda"
+      WORKBENCH_REDPANDA_BROKERS: "redpanda:9092"
+      WORKBENCH_SCADA_TOPIC: "scada.telemetry.v1"
+      WORKBENCH_RESULTS_TOPIC: "simops.results.v1"
+      WORKBENCH_TWIN_STATE_TOPIC: "digital-twin.state.v1"
+      WORKBENCH_INTERNAL_INGEST_TOKEN: "workbench-local-token"
+      WORKBENCH_TWIN_PROJECTOR_SCADA_GROUP: "workbench-twin-projector-scada"
+      WORKBENCH_TWIN_PROJECTOR_RESULT_GROUP: "workbench-twin-projector-results"
+      WORKBENCH_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      WORKBENCH_ICEBERG_S3_REGION: "local"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9480/healthz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+    depends_on:
+      - postgres
+      - redpanda
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      org.opencontainers.image.title: "Kaleidos Twin Projector"
+      org.opencontainers.image.description: "Projects measured and simulated backend dataflow units into imputed digital-twin state"
+
+  workbench-iceberg-writer:
+    build:
+      context: ..
+      dockerfile: deploy/slurm-gateway.Dockerfile
+      args:
+        SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
+        SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
+    command: ["/app/workbench-iceberg-writer"]
+    ports:
+      - "9490:9490"
+    environment:
+      WORKBENCH_ICEBERG_WRITER_ADDR: ":9490"
+      SIMOPS_ENABLED: "false"
+      SIMOPS_CONTROL_STORE: "postgres"
+      SIMOPS_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      SIMOPS_TELEMETRY_LOG: "redpanda"
+      SIMOPS_REDPANDA_BROKERS: "redpanda:9092"
+      SIMOPS_REDPANDA_TOPIC: "simops.telemetry.v1"
+      WORKBENCH_STORE: "postgres"
+      WORKBENCH_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      WORKBENCH_EVENT_LOG: "redpanda"
+      WORKBENCH_REDPANDA_BROKERS: "redpanda:9092"
+      WORKBENCH_SCADA_TOPIC: "scada.telemetry.v1"
+      WORKBENCH_RESULTS_TOPIC: "simops.results.v1"
+      WORKBENCH_TWIN_STATE_TOPIC: "digital-twin.state.v1"
+      WORKBENCH_INTERNAL_INGEST_TOKEN: "workbench-local-token"
+      WORKBENCH_ICEBERG_CONSUMER_GROUP: "workbench-iceberg-writer"
+      WORKBENCH_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      WORKBENCH_ICEBERG_WAREHOUSE: "s3://radiant-simops/warehouse"
+      WORKBENCH_ICEBERG_S3_ENDPOINT: "http://minio:9000"
+      WORKBENCH_ICEBERG_S3_BUCKET: "radiant-simops"
+      WORKBENCH_ICEBERG_S3_REGION: "local"
+      WORKBENCH_ICEBERG_S3_ACCESS_KEY_ID: "radiant"
+      WORKBENCH_ICEBERG_S3_SECRET_ACCESS_KEY: "radiant-password"
+      AWS_REGION: "local"
+      AWS_DEFAULT_REGION: "local"
+      AWS_S3_ENDPOINT: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "radiant"
+      AWS_SECRET_ACCESS_KEY: "radiant-password"
+      AWS_EC2_METADATA_DISABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9490/healthz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+    depends_on:
+      - postgres
+      - redpanda
+      - minio
+      - minio-init
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      org.opencontainers.image.title: "Kaleidos Workbench Iceberg Writer"
+      org.opencontainers.image.description: "Appends Workbench measured, simulated, and twin-state streams into Iceberg tables"
+
   redpanda:
     image: "${SIMOPS_REDPANDA_IMAGE:-docker.redpanda.com/redpandadata/redpanda:latest}"
     command:
@@ -259,6 +419,24 @@ services:
     command:
       - "mc alias set local http://minio:9000 radiant radiant-password && mc mb --ignore-existing local/radiant-simops"
 
+  scada-standins:
+    image: radiant-scada-standins:latest
+    build:
+      context: ..
+      dockerfile: deploy/scada-standins.Dockerfile
+      args:
+        SCADA_RUST_BUILDER_IMAGE: "${SCADA_RUST_BUILDER_IMAGE:-rust:1-alpine}"
+        SCADA_STANDINS_RUNTIME_IMAGE: "${SCADA_STANDINS_RUNTIME_IMAGE:-gcr.io/distroless/static-debian13:nonroot}"
+    command: ["--source-id", "SRC-MIXED-STANDIN-001", "--ingest-base-url", "http://slurm-gateway:8080", "--ingest-token", "workbench-local-token", "--interval-ms", "1000"]
+    restart: on-failure
+    depends_on:
+      - slurm-gateway
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      org.opencontainers.image.title: "Kaleidos SCADA Stand-Ins"
+      org.opencontainers.image.description: "Resident public-safe source declaration and measured telemetry frame emitter"
+
   prometheus:
     image: "${SIMOPS_PROMETHEUS_IMAGE:-prom/prometheus:v2.55.1}"
     ports:
@@ -270,6 +448,9 @@ services:
       - simops-moq-gateway
       - simops-timescale-writer
       - simops-iceberg-writer
+      - workbench-projection-writer
+      - twin-projector
+      - workbench-iceberg-writer
 
   simops-bucket-scheduler:
     image: radiant-simops-generator:latest

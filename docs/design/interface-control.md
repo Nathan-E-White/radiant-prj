@@ -35,6 +35,7 @@ This document identifies internal and operational interfaces that are controlled
 | `scripts/check-quality-docs.mjs` | Controlled markdown docs | Pass/fail documentation structure check |
 | `scripts/check-simops-contract.mjs` | Simulation Ops schemas and examples | Pass/fail contract example validation |
 | `scripts/check-simulator-workbench-contract.mjs` | Simulator Workbench, SCADA stand-in, and digital twin schemas/examples | Pass/fail scaffold contract validation |
+| `scripts/simulator-workbench-dataflow-smoke.sh` | Local Docker/OrbStack compose platform | Pass/fail backend dataflow proof for measured, telemetry, simulated, and imputed units |
 | `scripts/checkpoint-wip.sh` | Git worktree state | WIP checkpoint commit and optional push |
 | `scripts/fold-branch.sh` | Source and target branches | No-fast-forward merge into target branch |
 | `scripts/checkpoint-version.sh` | Release candidate branch and version tag | Version checkpoint commit/tag and optional push |
@@ -56,6 +57,13 @@ This document identifies internal and operational interfaces that are controlled
 | `/api/simops/runs/{run_id}/events` | GET | Run id path segment | Persisted lifecycle, telemetry, and artifact-ready events | mTLS identity check, event store, and Go tests |
 | `/api/simops/runs/{run_id}/stop` | POST | Run id path segment | Controlled stop lifecycle update | mTLS identity check and Go tests |
 | `/internal/simops/runs/{run_id}/ingest` | POST | Token-gated telemetry frame batch | Validated ingest count and lifecycle/telemetry event append | Internal token validation and Go tests |
+| `/internal/simops/runs/{run_id}/results` | POST | Token-gated simulated result batch | Validated simulated result count and Workbench event publication | Internal token validation and Go tests |
+| `/internal/scada/sources` | POST | Workbench token-gated resident source declaration | Accepted source id and resident tag registration | Internal token validation and Go tests |
+| `/internal/scada/telemetry` | POST | Workbench token-gated measured frame batch | Accepted measured frame count and Workbench event publication | Internal token validation and Go tests |
+| `/api/simulator-workbench/state` | GET | Authorized client request | Compact Workbench state summary | mTLS identity check and Go tests |
+| `/api/simulator-workbench/measured` | GET | Authorized client request | Latest measured frames | mTLS identity check and Go tests |
+| `/api/simulator-workbench/twin` | GET | Authorized client request | Current digital twin state | mTLS identity check and Go tests |
+| `/api/simulator-workbench/lineage/{value_id}` | GET | Authorized client request | Selected value lineage | mTLS identity check and Go tests |
 
 Submit and status handlers require an authorized client certificate common name unless `SLURM_GATEWAY_REQUIRE_CLIENT_CERT=false` is explicitly set for local development. Default mode is `mock`; `sbatch` mode is enabled only through `SLURM_GATEWAY_MODE=sbatch`, `SLURM_GATEWAY_SCRIPT_ROOT`, and allowlist configuration.
 
@@ -69,6 +77,7 @@ Simulation Ops public handlers use the same backend trust boundary. Browser-loca
 | Telemetry envelope | Worker frame with sequence, timestamps, payload type, and payload | Transport-agnostic telemetry frame | `simops-telemetry-envelope.v1` schema |
 | Payload schemas | Scheduler, storage, elastic bursting, and fabric profiler metrics | Panel-ready metric structures | Payload schemas and example NDJSON |
 | Run summary | Completed telemetry stream and scenario events | Reviewable run artifact for future evidence handoff | `simops-run-summary.v1` schema |
+| Simulated result envelope | Run-scoped synthetic engineering result values | `simops.result.v1` frames with `valueBasis=simulated` | `simops-result-envelope.v1` schema |
 
 The contract uses NDJSON as the canonical example and local fixture format. Live browser transport for v1 is WebTransport with a MoQ-compatible SimOps namespace/track envelope; `GET /api/simops/runs/{run_id}/events` is recovery/inspection only and is not the live telemetry stream.
 
@@ -89,19 +98,23 @@ The contract uses NDJSON as the canonical example and local fixture format. Live
 | Timescale writer | Redpanda consumer projecting telemetry frames into `simops_telemetry_frames` idempotently | `backend/slurm-gateway/cmd/simops-timescale-writer` |
 | Iceberg-Go writer | Redpanda consumer appending telemetry frames to `simops.telemetry_frames` and updating artifact status | `backend/slurm-gateway/cmd/simops-iceberg-writer` |
 | WebTransport gateway | Redpanda consumer routing lifecycle, telemetry, quality, and artifact tracks to actual WebTransport subscribers | `backend/slurm-gateway/cmd/simops-stream-gateway`, `backend/slurm-gateway/cmd/simops-webtransport-probe` |
+| Workbench projection writer | Redpanda consumer projecting `scada.telemetry.v1`, `simops.results.v1`, and `digital-twin.state.v1` into Workbench read models | `backend/slurm-gateway/cmd/workbench-projection-writer` |
+| Twin projector | Redpanda consumer producing imputed twin state and lineage from measured and simulated streams | `backend/slurm-gateway/cmd/twin-projector` |
+| Workbench Iceberg writer | Redpanda consumer appending `scada.measured_frames`, `simops.simulated_results`, and `digital_twin.state_values` | `backend/slurm-gateway/cmd/workbench-iceberg-writer` |
 
-## Simulator Workbench Frontend Projection Interface
+## Simulator Workbench Backend Dataflow Interface
 
 | Interface | Input | Output | Control |
 | --- | --- | --- | --- |
 | Value basis | Displayed value basis | `measured`, `imputed`, or `simulated` | `value-basis.v1` schema and contract check |
 | Resident source declaration | Mixed public-safe source set | Declared measured tags for flux, temperature, pressure, actuator, electrical, and comms stand-ins | SCADA source schema and `workers/scada-standins` tests |
 | Measured telemetry | Resident stand-in frame | `scada.telemetry.v1` measured frame | SCADA telemetry schema and contract check |
-| Digital twin state | Measured tags, imputed model state, and simulation references | `digital-twin.state.v1` values with lineage ids | Digital twin schema and contract check |
+| Simulated result | Synthetic worker result batch | `simops.result.v1` values with `valueBasis=simulated` | Result schema, contract check, and backend tests |
+| Digital twin state | Measured tags, simulated result state, imputed model state, and simulation references | `digital-twin.state.v1` values with lineage ids | Digital twin schema, backend tests, and dataflow smoke |
 | Workbench state | Contract refs and panel summaries | `simulator-workbench.state.v1` state summary | Workbench schema and contract check |
 | Workbench projection | Workbench state, measured frames, twin state, and lineage records | Grouped measured/imputed/simulated values, selected lineage, and compact simulation health summary | TypeScript projection tests |
 
-The frontend projection slice is fixture-backed and visible as a top-level Simulator Workbench tab. It does not register backend handlers under `/api/simulator-workbench/*`; those paths remain typed/documented future read APIs. The simulation health output in this slice is summary-only and does not expose detailed worker, Redpanda, Timescale, Iceberg, or WebTransport diagnostics.
+The frontend projection slice remains read-only. The backend dataflow slice now registers read-only `/api/simulator-workbench/*` APIs for the follow-up frontend-control thread. The simulation health output remains summary-only and does not expose detailed worker, Redpanda, Timescale, Iceberg, or WebTransport diagnostics.
 
 ## Infrastructure Interface
 

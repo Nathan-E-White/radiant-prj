@@ -20,6 +20,7 @@
     "simulator-workbench:contract:check": "node scripts/check-simulator-workbench-contract.mjs",
     "scada:standins:test": "cd workers/scada-standins && cargo test",
     "simops:smoke:local": "scripts/simops-local-smoke.sh",
+    "simulator-workbench:dataflow:smoke": "scripts/simulator-workbench-dataflow-smoke.sh",
     "backend:test": "cd backend/slurm-gateway && PATH=/opt/homebrew/bin:/usr/local/bin:$PATH env GOCACHE=/tmp/radiant-go-cache GOMODCACHE=/tmp/radiant-go-mod-cache go test ./...",
     "backend:run": "cd backend/slurm-gateway && go run ./cmd/server",
     "certs:local": "scripts/create-local-gateway-certs.sh",

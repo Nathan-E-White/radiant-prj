@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "simops-result-envelope.v1",
+  "title": "Simulation Ops Simulated Result Envelope v1",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "runId",
+    "scenarioId",
+    "workerId",
+    "workerKind",
+    "sequence",
+    "producedAt",
+    "resultType",
+    "modelId",
+    "inputWindow",
+    "valueBasis",
+    "syntheticStatus",
+    "values"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "type": "string", "enum": ["simops.result.v1"] },
+    "runId": { "type": "string", "pattern": "^RUN-[A-Z0-9-]+$" },
+    "scenarioId": {
+      "type": "string",
+      "enum": ["nominal", "scheduler-drift", "checkpoint-pressure", "cloud-burst", "fabric-warning"]
+    },
+    "workerId": { "type": "string" },
+    "workerKind": { "type": "string", "enum": ["scheduler", "storage", "burst", "fabric"] },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "producedAt": { "type": "string", "format": "date-time" },
+    "receivedAt": { "type": "string", "format": "date-time" },
+    "resultType": {
+      "type": "string",
+      "enum": ["syntheticEngineeringState", "syntheticPhysicsState"]
+    },
+    "modelId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+    "inputWindow": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": { "type": "string", "format": "date-time" },
+        "end": { "type": "string", "format": "date-time" }
+      }
+    },
+    "valueBasis": { "type": "string", "enum": ["simulated"] },
+    "syntheticStatus": { "type": "string", "enum": ["public-safe-standin"] },
+    "values": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["resultId", "entityId", "valueId", "label", "unit", "value", "confidence"],
+        "properties": {
+          "resultId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+          "entityId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+          "valueId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+          "label": { "type": "string" },
+          "unit": { "type": "string" },
+          "value": { "type": "object" },
+          "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+        }
+      }
+    },
+    "lineageInputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sourceKind", "sourceId", "valueBasis"],
+        "properties": {
+          "sourceKind": {
+            "type": "string",
+            "enum": ["scada-tag", "simulation-run", "artifact", "digital-twin-model"]
+          },
+          "sourceId": { "type": "string" },
+          "valueBasis": { "type": "string", "enum": ["measured", "imputed", "simulated"] }
+        }
+      }
+    }
+  }
+}

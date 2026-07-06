@@ -57,6 +57,33 @@ Required fields are `schemaVersion`, `runId`, `scenarioId`, `workerId`, `workerK
 
 `streamQuality` is optional but recommended for live streaming. It gives later transports enough metadata to show lag, dropped frames, replay gaps, or collector delay without making the UI infer transport behavior from chart values.
 
+## Simulated Result Envelope
+
+Operational telemetry and simulated result state are separate contracts. A worker telemetry frame describes what the run-scoped worker is doing. A simulated result frame describes synthetic engineering or physics-like result state for the Simulator Workbench. Simulated result frames use `schemaVersion=simops.result.v1`, publish to `simops.results.v1`, and shall carry `valueBasis=simulated`.
+
+Workers must not emit `valueBasis=imputed`. Imputed state is produced only by the twin projector after it consumes measured inputs, simulated result values, model identity, and lineage inputs.
+
+```json
+{
+  "schemaVersion": "simops.result.v1",
+  "runId": "RUN-SCHED-DRIFT-001",
+  "scenarioId": "scheduler-drift",
+  "workerId": "burst-01",
+  "workerKind": "burst",
+  "sequence": 1,
+  "producedAt": "2026-07-04T18:00:01.000Z",
+  "resultType": "syntheticEngineeringState",
+  "modelId": "MODEL-TWIN-THERMAL-V0",
+  "inputWindow": {
+    "start": "2026-07-04T18:00:00.000Z",
+    "end": "2026-07-04T18:00:01.000Z"
+  },
+  "valueBasis": "simulated",
+  "syntheticStatus": "public-safe-standin",
+  "values": []
+}
+```
+
 ## Scenario Manifest
 
 A run starts from a manifest with:
@@ -104,7 +131,7 @@ Repeatability is optional in this revision. `randomSeed` may appear in a manifes
 
 NDJSON is the canonical example format for this slice. Each line is one telemetry envelope.
 
-The implemented live data-plane path is worker HTTP ingest into the Go control plane, validated Redpanda publication on `simops.telemetry.v1`, and Redpanda consumers for WebTransport track routing, Timescale projection, and Iceberg-Go appends. The public `/api/simops/runs/{run_id}/events` endpoint is retained for recovery and inspection only; live telemetry clients must not poll it as the primary stream. The Go control plane returns short-lived WebTransport subscription metadata for a run, but the browser does not receive Redpanda credentials or bucket container authority. The pre-workbench data-plane gates for Iceberg readback, WebTransport subscriber proof, and Docker image metadata/content preflight are closed in `docs/design/simops-data-plane-todo-stubs.md`.
+The implemented live data-plane path is worker HTTP ingest into the Go control plane, validated Redpanda publication on `simops.telemetry.v1`, and Redpanda consumers for WebTransport track routing, Timescale projection, and Iceberg-Go appends. The Simulator Workbench backend dataflow adds separate worker result ingest into `simops.results.v1`; result frames are consumed by Workbench projection writers, Workbench Iceberg writers, and the twin projector. The public `/api/simops/runs/{run_id}/events` endpoint is retained for recovery and inspection only; live telemetry clients must not poll it as the primary stream. The Go control plane returns short-lived WebTransport subscription metadata for a run, but the browser does not receive Redpanda credentials or bucket container authority. The pre-workbench data-plane gates for Iceberg readback, WebTransport subscriber proof, and Docker image metadata/content preflight are closed in `docs/design/simops-data-plane-todo-stubs.md`.
 
 The controlled track layout is:
 
@@ -119,7 +146,7 @@ RoQ is not selected for v1 because the current plan needs browser-facing publish
 
 ## Persistence and Artifact Handoff
 
-The v1 deployment contract assigns Timescale/Postgres to control-plane records for runs, workers, idempotency keys, ingest tokens, spool commands, lifecycle state, recovery event polling, artifact references, telemetry hypertables, consumer offsets, and local Iceberg SQL-catalog metadata. It assigns Redpanda to the hot durable telemetry log keyed by run and worker, MinIO to S3-compatible object storage, and the Iceberg-Go writer to Parquet-backed `simops.telemetry_frames` appends. Manifest mode remains available for deterministic unit tests only.
+The v1 deployment contract assigns Timescale/Postgres to control-plane records for runs, workers, idempotency keys, ingest tokens, spool commands, lifecycle state, recovery event polling, artifact references, telemetry hypertables, Workbench projections, consumer offsets, and local Iceberg SQL-catalog metadata. It assigns Redpanda to hot durable telemetry, result, SCADA, and twin-state logs, MinIO to S3-compatible object storage, the Iceberg-Go writer to Parquet-backed `simops.telemetry_frames` appends, and the Workbench Iceberg writer to `scada.measured_frames`, `simops.simulated_results`, and `digital_twin.state_values`.
 
 Iceberg manages analytic telemetry artifacts and table metadata. It does not replace Postgres for command, run, or authorization state.
 
@@ -129,6 +156,7 @@ Iceberg manages analytic telemetry artifacts and table metadata. It does not rep
 | --- | --- |
 | `docs/schemas/simulation-ops/simops-run-manifest.v1.schema.json` | Manifest schema. |
 | `docs/schemas/simulation-ops/simops-telemetry-envelope.v1.schema.json` | Shared telemetry envelope schema. |
+| `docs/schemas/simulation-ops/simops-result-envelope.v1.schema.json` | Synthetic simulated result envelope schema. |
 | `docs/schemas/simulation-ops/simops-run-summary.v1.schema.json` | Completed run summary schema. |
 | `docs/schemas/simulation-ops/payload.scheduler-co-scheduling.v1.schema.json` | Scheduler co-scheduling payload schema. |
 | `docs/schemas/simulation-ops/payload.checkpoint-storage.v1.schema.json` | Storage and checkpoint payload schema. |
@@ -136,8 +164,9 @@ Iceberg manages analytic telemetry artifacts and table metadata. It does not rep
 | `docs/schemas/simulation-ops/payload.fabric-profiler.v1.schema.json` | Fabric profiler payload schema. |
 | `examples/simulation-ops/run-manifest.scheduler-drift.json` | Coherent scheduler-drift manifest example. |
 | `examples/simulation-ops/telemetry.scheduler-drift.ndjson` | Example telemetry stream. |
+| `examples/simulation-ops/results.scheduler-drift.ndjson` | Example synthetic simulated result stream. |
 | `examples/simulation-ops/run-summary.scheduler-drift.json` | Example completed summary. |
 
 ## Verification
 
-`bun run simops:contract:check` validates the example manifest, NDJSON telemetry frames, payload selection, per-worker sequence monotonicity, timestamp parsing, and summary references.
+`bun run simops:contract:check` validates the example manifest, NDJSON telemetry frames, simulated result frames, payload selection, value-basis separation, per-worker sequence monotonicity, timestamp parsing, and summary references.

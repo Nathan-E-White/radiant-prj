@@ -14,6 +14,7 @@ const requiredDocs = [
   "docs/quality/document-index.md",
   "docs/design/software-design-description.md",
   "docs/design/interface-control.md",
+  "docs/design/simulator-workbench-backend-dataflow-slice.md",
   "docs/verification/verification-plan.md",
   "docs/verification/test-procedure.md",
   "docs/verification/test-report-template.md",
@@ -54,6 +55,7 @@ requireContent("docs/quality/document-index.md", [
   "QP-001",
   "QP-010",
   "Software Design Description",
+  "Simulator Workbench Backend Dataflow Slice",
   "Release Checklist"
 ]);
 requireContent("docs/requirements/verification-matrix.md", [
@@ -67,7 +69,12 @@ requireContent("docs/requirements/verification-matrix.md", [
   "bun run quality:check",
   "bun run backend:test",
   "bun run simops:contract:check",
-  "REL-TOOL-001"
+  "REL-TOOL-001",
+  "SW-013",
+  "SW-014",
+  "SW-015",
+  "WORKBENCH-DATAFLOW-001",
+  "bun run simulator-workbench:dataflow:smoke"
 ]);
 requireContent("docs/release/release-checklist.md", [
   "checkpoint-wip.sh",
@@ -79,6 +86,7 @@ requireContent("README.md", [
   "quality:check",
   "backend:test",
   "simops:contract:check",
+  "simulator-workbench:dataflow:smoke",
   "slurm-gateway",
   "simops-moq-gateway",
   "checkpoint-version.sh"
@@ -90,6 +98,7 @@ requireContent("package.json", [
   "\"fold:branch\"",
   "\"cleanup:version\"",
   "\"quality:check\"",
+  "\"simulator-workbench:dataflow:smoke\"",
   "\"checkpoint:v2\"",
   "\"fold:v2\""
 ]);

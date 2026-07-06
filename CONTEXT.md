@@ -18,10 +18,12 @@ _Avoid_: Simulated reading, model output
 
 **Imputed State**:
 Digital-twin state inferred from measured inputs, model state, and lineage. It is model-derived state, not a raw observation.
+Only the twin projector emits imputed state; Slurm/SimOps workers must never label their output as imputed.
 _Avoid_: Measurement, sensor value
 
 **Simulated Result State**:
 Run-scoped scientific or compute result state produced by simulation workers and tied to a run, model, or artifact.
+SimOps workers produce simulated result state separately from operational telemetry; the twin may consume it to create imputed state.
 _Avoid_: Measurement, SCADA value
 
 **Resident Source**:

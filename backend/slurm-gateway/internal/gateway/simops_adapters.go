@@ -142,7 +142,8 @@ func (s DockerSimopsSpooler) StartRun(ctx context.Context, run SimopsRunRecord, 
 		containerName := fmt.Sprintf("simops-%s-%s", run.RunID, workerID)
 		manifest := path.Join(s.ManifestRoot, fmt.Sprintf("run-manifest.%s.json", run.ScenarioID))
 		ingestURL := s.ingestURL(run.RunID)
-		containerID, err := s.startWorker(ctx, run.RunID, containerName, workerID, worker, manifest, ingestURL, run.IngestToken)
+		resultIngestURL := s.resultIngestURL(run.RunID)
+		containerID, err := s.startWorker(ctx, run.RunID, containerName, workerID, worker, manifest, ingestURL, resultIngestURL, run.IngestToken)
 		if err != nil {
 			s.tryStopRunWorkers(ctx, run.RunID)
 			return nil, nil, err
@@ -188,7 +189,7 @@ func (s DockerSimopsSpooler) StopRun(ctx context.Context, runID string) error {
 	}
 }
 
-func (s DockerSimopsSpooler) startWorker(ctx context.Context, runID, containerName, workerID string, worker SimopsWorkerKind, manifestPath string, ingestURL string, ingestToken string) (string, error) {
+func (s DockerSimopsSpooler) startWorker(ctx context.Context, runID, containerName, workerID string, worker SimopsWorkerKind, manifestPath string, ingestURL string, resultIngestURL string, ingestToken string) (string, error) {
 	args := []string{"run", "-d", "--name", containerName, "--label", "simops.run_id=" + runID, "--label", "simops.worker_id=" + workerID, "--label", "simops.worker_kind=" + string(worker)}
 	if s.Network != "" {
 		args = append(args, "--network", s.Network)
@@ -196,7 +197,7 @@ func (s DockerSimopsSpooler) startWorker(ctx context.Context, runID, containerNa
 	if s.AutoRemove {
 		args = append(args, "--rm")
 	}
-	args = append(args, s.Image, "--manifest", manifestPath, "--worker", string(worker), "--run-id", runID, "--ingest-url", ingestURL, "--ingest-token", ingestToken, "--output", "-")
+	args = append(args, s.Image, "--manifest", manifestPath, "--worker", string(worker), "--run-id", runID, "--ingest-url", ingestURL, "--ingest-token", ingestToken, "--result-ingest-url", resultIngestURL, "--result-ingest-token", ingestToken, "--output", "-")
 	if s.FrameOverride > 0 {
 		args = append(args, "--frames", fmt.Sprintf("%d", s.FrameOverride))
 	}
@@ -215,6 +216,11 @@ func (s DockerSimopsSpooler) startWorker(ctx context.Context, runID, containerNa
 func (s DockerSimopsSpooler) ingestURL(runID string) string {
 	base := strings.TrimRight(strings.TrimSpace(s.IngestBaseURL), "/")
 	return base + "/internal/simops/runs/" + strings.TrimSpace(runID) + "/ingest"
+}
+
+func (s DockerSimopsSpooler) resultIngestURL(runID string) string {
+	base := strings.TrimRight(strings.TrimSpace(s.IngestBaseURL), "/")
+	return base + "/internal/simops/runs/" + strings.TrimSpace(runID) + "/results"
 }
 
 func (s DockerSimopsSpooler) ensureImage(ctx context.Context) error {

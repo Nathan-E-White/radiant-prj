@@ -11,11 +11,13 @@ use time::format_description::well_known::Rfc3339;
 use time::{Duration, OffsetDateTime};
 
 use crate::envelope::{
-    AggregateMetric, DegradedInterval, GeneratedRun, GeneratedWorkerStats, RunSummary,
-    StreamQualityStatus, SummaryArtifact, SummaryLifecycle, SummaryProvenance, WorkerSummary,
+    AggregateMetric, DegradedInterval, GeneratedRun, GeneratedWorkerStats, ResultInputWindow,
+    ResultLineageInput, RunSummary, SimulatedResultFrame, SimulatedResultType,
+    SimulatedResultValue, StreamQualityStatus, SummaryArtifact, SummaryLifecycle,
+    SummaryProvenance, WorkerSummary,
 };
 use crate::generators::round1;
-use crate::manifest::{MetricBound, RunManifest, WorkerDeclaration};
+use crate::manifest::{MetricBound, RunManifest, WorkerDeclaration, WorkerKind};
 use crate::{Result, SimopsError};
 
 const AGGREGATE_PATHS: &[&str] = &[
@@ -40,6 +42,16 @@ pub fn write_summary(summary: &RunSummary, path: &str) -> Result<()> {
     let mut writer = writer_for_path(path)?;
     serde_json::to_writer_pretty(&mut writer, summary)?;
     writer.write_all(b"\n")?;
+    writer.flush()?;
+    Ok(())
+}
+
+pub fn write_results(results: &[SimulatedResultFrame], path: &str) -> Result<()> {
+    let mut writer = writer_for_path(path)?;
+    for result in results {
+        serde_json::to_writer(&mut writer, result)?;
+        writer.write_all(b"\n")?;
+    }
     writer.flush()?;
     Ok(())
 }
@@ -77,6 +89,100 @@ pub fn post_ingest(run: &GeneratedRun, url: &str, token: &str) -> Result<()> {
         )));
     }
     Ok(())
+}
+
+pub fn post_results(results: &[SimulatedResultFrame], url: &str, token: &str) -> Result<()> {
+    let payload = serde_json::to_vec(&json!({ "results": results }))?;
+    post_json(payload, url, "X-Simops-Ingest-Token", token)
+}
+
+fn post_json(payload: Vec<u8>, url: &str, token_header: &str, token: &str) -> Result<()> {
+    let target = HttpTarget::parse(url)?;
+    let mut stream = TcpStream::connect(&target.connect_addr)?;
+    stream.set_read_timeout(Some(StdDuration::from_secs(10)))?;
+    stream.set_write_timeout(Some(StdDuration::from_secs(10)))?;
+
+    let request = format!(
+        "POST {} HTTP/1.1\r\nHost: {}\r\nContent-Type: application/json\r\nAccept: application/json\r\n{}: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+        target.path,
+        target.host_header,
+        token_header,
+        token,
+        payload.len()
+    );
+    stream.write_all(request.as_bytes())?;
+    stream.write_all(&payload)?;
+    stream.flush()?;
+
+    let mut response = String::new();
+    stream.read_to_string(&mut response)?;
+    let status_line = response.lines().next().unwrap_or_default();
+    if !status_line.starts_with("HTTP/1.1 2") && !status_line.starts_with("HTTP/1.0 2") {
+        return Err(SimopsError::new(format!(
+            "ingest endpoint returned non-success status: {}",
+            status_line
+        )));
+    }
+    Ok(())
+}
+
+pub fn build_simulated_results(run: &GeneratedRun) -> Vec<SimulatedResultFrame> {
+    let first_emitted = run
+        .frames
+        .first()
+        .map(|generated| generated.frame.emitted_at.clone());
+
+    run.frames
+        .iter()
+        .filter(|generated| generated.frame.worker_kind == WorkerKind::Burst)
+        .map(|generated| {
+            let frame = &generated.frame;
+            let intensity = numeric_path(&frame.payload, "mesh.hotspot.intensity").unwrap_or(0.35);
+            let thermal_proxy = numeric_path(&frame.payload, "mesh.cells.1.thermalProxy").unwrap_or(intensity);
+            let margin = round1((24.0 - intensity * 10.0 - thermal_proxy * 2.0).clamp(0.0, 100.0));
+            SimulatedResultFrame {
+                schema_version: "simops.result.v1".to_string(),
+                run_id: frame.run_id.clone(),
+                scenario_id: frame.scenario_id,
+                worker_id: frame.worker_id.clone(),
+                worker_kind: frame.worker_kind,
+                sequence: frame.sequence,
+                produced_at: frame.emitted_at.clone(),
+                received_at: frame.received_at.clone(),
+                result_type: SimulatedResultType::SyntheticEngineeringState,
+                model_id: "MODEL-TWIN-THERMAL-V0".to_string(),
+                input_window: ResultInputWindow {
+                    start: first_emitted
+                        .clone()
+                        .unwrap_or_else(|| frame.emitted_at.clone()),
+                    end: frame.emitted_at.clone(),
+                },
+                value_basis: "simulated".to_string(),
+                synthetic_status: "public-safe-standin".to_string(),
+                values: vec![SimulatedResultValue {
+                    result_id: "SIM-RESULT-CORE-MARGIN".to_string(),
+                    entity_id: "ASSET-CORE-A".to_string(),
+                    value_id: "VAL-SIMULATED-FORECAST-MARGIN".to_string(),
+                    label: "Simulated forecast margin".to_string(),
+                    unit: "percent".to_string(),
+                    value: json!({ "scalar": margin }),
+                    confidence: round1((0.82 - intensity * 0.16).clamp(0.0, 1.0)),
+                }],
+                lineage_inputs: vec![
+                    ResultLineageInput {
+                        source_kind: "simulation-run".to_string(),
+                        source_id: frame.run_id.clone(),
+                        value_basis: "simulated".to_string(),
+                    },
+                    ResultLineageInput {
+                        source_kind: "artifact".to_string(),
+                        source_id: "simops-telemetry.scheduler-drift".to_string(),
+                        value_basis: "simulated".to_string(),
+                    },
+                ],
+            }
+        })
+        .collect()
 }
 
 pub fn build_summary(manifest: &RunManifest, run: &GeneratedRun) -> Result<RunSummary> {

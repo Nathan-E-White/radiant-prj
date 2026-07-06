@@ -5,9 +5,11 @@ const exampleRoot = "examples/simulation-ops";
 
 const manifestPath = `${exampleRoot}/run-manifest.scheduler-drift.json`;
 const telemetryPath = `${exampleRoot}/telemetry.scheduler-drift.ndjson`;
+const resultsPath = `${exampleRoot}/results.scheduler-drift.ndjson`;
 const summaryPath = `${exampleRoot}/run-summary.scheduler-drift.json`;
 
 const envelopeSchemaPath = `${schemaRoot}/simops-telemetry-envelope.v1.schema.json`;
+const resultSchemaPath = `${schemaRoot}/simops-result-envelope.v1.schema.json`;
 const manifestSchemaPath = `${schemaRoot}/simops-run-manifest.v1.schema.json`;
 const summarySchemaPath = `${schemaRoot}/simops-run-summary.v1.schema.json`;
 
@@ -29,6 +31,7 @@ const problems = [];
 
 const manifestSchema = readJson(manifestSchemaPath);
 const envelopeSchema = readJson(envelopeSchemaPath);
+const resultSchema = readJson(resultSchemaPath);
 const summarySchema = readJson(summarySchemaPath);
 const payloadSchemas = Object.fromEntries(
   Object.entries(payloadSchemaPaths).map(([payloadType, path]) => [payloadType, readJson(path)])
@@ -36,6 +39,7 @@ const payloadSchemas = Object.fromEntries(
 
 const manifest = readJson(manifestPath);
 const telemetry = readNdjson(telemetryPath);
+const results = readNdjson(resultsPath);
 const summary = readJson(summaryPath);
 
 validateAgainstSchema(manifest, manifestSchema, "manifest");
@@ -53,9 +57,14 @@ for (const [index, frame] of telemetry.entries()) {
 
   validateAgainstSchema(frame.payload, payloadSchema, `${label}.payload`);
 }
+for (const [index, result] of results.entries()) {
+  const label = `result line ${index + 1}`;
+  validateAgainstSchema(result, resultSchema, label);
+}
 
 validateManifestSemantics(manifest);
 validateTelemetrySemantics(manifest, telemetry);
+validateResultSemantics(manifest, telemetry, results);
 validateSummarySemantics(manifest, telemetry, summary);
 
 if (problems.length) {
@@ -67,7 +76,7 @@ if (problems.length) {
 }
 
 console.log(
-  `Simulation Ops contract check passed: ${telemetry.length} telemetry frames, ${Object.keys(payloadSchemas).length} payload schemas.`
+  `Simulation Ops contract check passed: ${telemetry.length} telemetry frames, ${results.length} simulated result frames, ${Object.keys(payloadSchemas).length} payload schemas.`
 );
 
 function readJson(path) {
@@ -313,6 +322,67 @@ function validateTelemetrySemantics(candidate, frames) {
       }
       if (value < bound.min || value > bound.max) {
         problems.push(`${label}.${bound.metricPath}: ${value} is outside manifest bounds ${bound.min}..${bound.max}`);
+      }
+    }
+  }
+}
+
+function validateResultSemantics(candidate, telemetryFrames, results) {
+  const telemetryWorkers = new Map((candidate.workers ?? []).map((worker) => [worker.workerId, worker]));
+  const telemetryWorkerSequences = new Map();
+  for (const frame of telemetryFrames) {
+    const sequences = telemetryWorkerSequences.get(frame.workerId) ?? new Set();
+    sequences.add(frame.sequence);
+    telemetryWorkerSequences.set(frame.workerId, sequences);
+  }
+
+  const lastSequenceByWorker = new Map();
+  for (const [index, result] of results.entries()) {
+    const label = `result line ${index + 1}`;
+    if (result.schemaVersion !== "simops.result.v1") {
+      problems.push(`${label}: simulated result must use simops.result.v1, not telemetry`);
+    }
+    if (result.valueBasis !== "simulated") {
+      problems.push(`${label}: worker-produced result must stay valueBasis=simulated`);
+    }
+    if (result.valueBasis === "imputed") {
+      problems.push(`${label}: imputed state must be produced by the digital twin projector, not a SimOps worker`);
+    }
+    if (result.runId !== candidate.runId) {
+      problems.push(`${label}: runId ${result.runId} does not match manifest ${candidate.runId}`);
+    }
+    if (result.scenarioId !== candidate.scenarioId) {
+      problems.push(`${label}: scenarioId ${result.scenarioId} does not match manifest ${candidate.scenarioId}`);
+    }
+
+    const worker = telemetryWorkers.get(result.workerId);
+    if (!worker) {
+      problems.push(`${label}: unknown workerId ${result.workerId}`);
+    } else if (result.workerKind !== worker.workerKind) {
+      problems.push(`${label}: workerKind ${result.workerKind} does not match manifest ${worker.workerKind}`);
+    }
+
+    const lastSequence = lastSequenceByWorker.get(result.workerId) ?? 0;
+    if (result.sequence <= lastSequence) {
+      problems.push(`${label}: sequence ${result.sequence} is not greater than previous ${lastSequence}`);
+    }
+    lastSequenceByWorker.set(result.workerId, result.sequence);
+
+    const telemetrySequences = telemetryWorkerSequences.get(result.workerId);
+    if (telemetrySequences && !telemetrySequences.has(result.sequence)) {
+      problems.push(`${label}: no matching telemetry unit for worker ${result.workerId} sequence ${result.sequence}`);
+    }
+
+    if (Date.parse(result.inputWindow.start) > Date.parse(result.inputWindow.end)) {
+      problems.push(`${label}: inputWindow.start is after inputWindow.end`);
+    }
+    if (result.receivedAt && Date.parse(result.receivedAt) < Date.parse(result.producedAt)) {
+      problems.push(`${label}: receivedAt is before producedAt`);
+    }
+
+    for (const value of result.values ?? []) {
+      if (!value.valueId || !value.resultId) {
+        problems.push(`${label}: result values must carry resultId and valueId`);
       }
     }
   }
