@@ -13,6 +13,7 @@ const requiredFiles = [
   "deploy/simops-generator.Dockerfile",
   "deploy/postgres-init/001_simops.sql",
   "deploy/prometheus.yml",
+  "scripts/simops-smoke-json.mjs",
   "scripts/create-local-gateway-certs.sh",
   "infra/terraform/main.tf",
   "infra/terraform/variables.tf",
@@ -53,13 +54,18 @@ if (existsSync("infra/ansible/site.yml")) {
 if (existsSync("deploy/slurm-gateway.Dockerfile")) {
   const dockerfile = readFileSync("deploy/slurm-gateway.Dockerfile", "utf8");
   for (const token of [
+    "ARG SIMOPS_GO_BUILDER_IMAGE",
+    "ARG SIMOPS_GATEWAY_RUNTIME_IMAGE",
     "backend/slurm-gateway",
     "go test ./...",
     "simops-stream-gateway",
+    "simops-timescale-writer",
     "simops-iceberg-writer",
+    "simops-webtransport-probe",
     "docker-cli",
     "USER appuser",
-    "SLURM_GATEWAY_MODE=mock"
+    "SLURM_GATEWAY_MODE=mock",
+    "CMD [\"/app/slurm-gateway\"]"
   ]) {
     if (!dockerfile.includes(token)) {
       problems.push(`Slurm gateway Dockerfile missing ${token}`);
@@ -75,15 +81,48 @@ if (existsSync("deploy/slurm-gateway.compose.yml")) {
     "SIMOPS_TELEMETRY_LOG",
     "SIMOPS_WORKER_RUNTIME",
     "SIMOPS_WORKER_INGEST_BASE_URL",
+    "SIMOPS_WORKER_NETWORK",
+    "SIMOPS_WORKER_FRAME_OVERRIDE",
+    "SIMOPS_GO_BUILDER_IMAGE",
+    "SIMOPS_GATEWAY_RUNTIME_IMAGE",
+    "SIMOPS_RUST_BUILDER_IMAGE",
+    "SIMOPS_GENERATOR_RUNTIME_IMAGE",
+    "SIMOPS_REDPANDA_IMAGE",
+    "SIMOPS_TIMESCALE_IMAGE",
+    "SIMOPS_MINIO_IMAGE",
+    "SIMOPS_MINIO_MC_IMAGE",
+    "SIMOPS_PROMETHEUS_IMAGE",
     "SIMOPS_MOQ_WEBTRANSPORT_URL",
     "SIMOPS_ICEBERG_WRITER_MODE",
+    "iceberg-go",
+    "SIMOPS_TIMESCALE_CONSUMER_GROUP",
+    "SIMOPS_ICEBERG_CONSUMER_GROUP",
+    "SIMOPS_MOQ_CONSUMER_GROUP",
+    "SIMOPS_ICEBERG_BATCH_SIZE",
+    "SIMOPS_ICEBERG_FLUSH_INTERVAL",
+    "SIMOPS_ICEBERG_S3_ACCESS_KEY_ID",
+    "SIMOPS_ICEBERG_S3_SECRET_ACCESS_KEY",
+    "AWS_REGION",
+    "AWS_DEFAULT_REGION",
+    "AWS_S3_ENDPOINT",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_EC2_METADATA_DISABLED",
+    "simops-moq-gateway",
     "simops-stream-gateway",
+    "simops-timescale-writer",
     "simops-iceberg-writer",
+    "http://slurm-gateway:8080",
+    "http://127.0.0.1:9443/healthz",
+    "http://127.0.0.1:9450/healthz",
+    "http://127.0.0.1:9460/healthz",
     "redpanda",
     "postgres",
+    "timescale/timescaledb",
     "minio",
     "simops-bucket-scheduler",
     "radiant-simops-generator:latest",
+    "radiant-simops-local",
     "/var/run/docker.sock",
     "SLURM_GATEWAY_ALLOWED_CLIENTS",
     "no-new-privileges:true",
@@ -98,6 +137,8 @@ if (existsSync("deploy/slurm-gateway.compose.yml")) {
 if (existsSync("deploy/simops-generator.Dockerfile")) {
   const dockerfile = readFileSync("deploy/simops-generator.Dockerfile", "utf8");
   for (const token of [
+    "ARG SIMOPS_RUST_BUILDER_IMAGE",
+    "ARG SIMOPS_GENERATOR_RUNTIME_IMAGE",
     "workers/simops-generator",
     "cargo test --locked",
     "gcr.io/distroless/static-debian13:nonroot",
@@ -115,7 +156,7 @@ if (existsSync("deploy/prometheus.yml")) {
   if (!prometheus.includes("slurm-gateway:8080")) {
     problems.push("Prometheus config must scrape slurm-gateway:8080");
   }
-  for (const token of ["simops-stream-gateway:9443", "simops-iceberg-writer:9460", "redpanda:9644"]) {
+  for (const token of ["simops-moq-gateway:9443", "simops-timescale-writer:9450", "simops-iceberg-writer:9460", "redpanda:9644"]) {
     if (!prometheus.includes(token)) {
       problems.push(`Prometheus config missing ${token}`);
     }
@@ -124,7 +165,7 @@ if (existsSync("deploy/prometheus.yml")) {
 
 if (existsSync("deploy/postgres-init/001_simops.sql")) {
   const sql = readFileSync("deploy/postgres-init/001_simops.sql", "utf8");
-  for (const token of ["simops_runs", "ingest_token", "simops_workers", "simops_events", "simops_artifacts", "iceberg_catalog"]) {
+  for (const token of ["timescaledb", "create_hypertable", "simops_runs", "ingest_token", "simops_workers", "simops_events", "simops_artifacts", "simops_telemetry_frames", "simops_consumer_offsets", "simops_processed_messages", "iceberg_catalog", "iceberg_tables", "iceberg_namespace_properties"]) {
     if (!sql.includes(token)) {
       problems.push(`SimOps Postgres init SQL missing ${token}`);
     }
@@ -169,14 +210,22 @@ optionalCheck("ansible-playbook", ["--syntax-check", "-i", "infra/ansible/invent
 console.log("Infrastructure artifact check passed.");
 
 function optionalCheck(command, args) {
-  const version = spawnSync(command, ["--version"], { stdio: "ignore" });
+  const version = trySpawn(command, ["--version"], { stdio: "ignore" });
   if (version.error || version.status !== 0) {
     console.log(`${command} not available; static artifact checks already passed.`);
     return;
   }
 
-  const result = spawnSync(command, args, { stdio: "inherit" });
+  const result = trySpawn(command, args, { stdio: "inherit" });
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
+  }
+}
+
+function trySpawn(command, args, options) {
+  try {
+    return spawnSync(command, args, options);
+  } catch (error) {
+    return { error, status: null };
   }
 }

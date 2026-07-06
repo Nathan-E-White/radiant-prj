@@ -3,6 +3,9 @@ services:
     build:
       context: ..
       dockerfile: deploy/slurm-gateway.Dockerfile
+      args:
+        SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
+        SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
     ports:
       - "8081:8080"
     environment:
@@ -17,10 +20,15 @@ services:
       SIMOPS_TELEMETRY_LOG: "redpanda"
       SIMOPS_REDPANDA_BROKERS: "redpanda:9092"
       SIMOPS_REDPANDA_TOPIC: "simops.telemetry.v1"
+      SIMOPS_TIMESCALE_CONSUMER_GROUP: "simops-timescale-writer"
+      SIMOPS_ICEBERG_CONSUMER_GROUP: "simops-iceberg-writer"
+      SIMOPS_MOQ_CONSUMER_GROUP: "simops-moq-gateway"
       SIMOPS_LAUNCH_MODE: "auto"
       SIMOPS_WORKER_RUNTIME: "docker"
       SIMOPS_WORKER_IMAGE: "radiant-simops-generator:latest"
-      SIMOPS_WORKER_INGEST_BASE_URL: "http://host.docker.internal:8081"
+      SIMOPS_WORKER_INGEST_BASE_URL: "http://slurm-gateway:8080"
+      SIMOPS_WORKER_NETWORK: "radiant-simops-local"
+      SIMOPS_WORKER_FRAME_OVERRIDE: "2"
       SIMOPS_WORKER_AUTO_REMOVE: "true"
       SIMOPS_MOQ_WEBTRANSPORT_URL: "https://127.0.0.1:9443/moq/simops"
       SIMOPS_ICEBERG_CATALOG: "postgres-sql"
@@ -28,7 +36,18 @@ services:
       SIMOPS_ICEBERG_WAREHOUSE: "s3://radiant-simops/warehouse"
       SIMOPS_ICEBERG_S3_ENDPOINT: "http://minio:9000"
       SIMOPS_ICEBERG_S3_BUCKET: "radiant-simops"
-      SIMOPS_ICEBERG_WRITER_MODE: "manifest"
+      SIMOPS_ICEBERG_S3_REGION: "local"
+      SIMOPS_ICEBERG_S3_ACCESS_KEY_ID: "radiant"
+      SIMOPS_ICEBERG_S3_SECRET_ACCESS_KEY: "radiant-password"
+      AWS_REGION: "local"
+      AWS_DEFAULT_REGION: "local"
+      AWS_S3_ENDPOINT: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "radiant"
+      AWS_SECRET_ACCESS_KEY: "radiant-password"
+      AWS_EC2_METADATA_DISABLED: "true"
+      SIMOPS_ICEBERG_WRITER_MODE: "iceberg-go"
+      SIMOPS_ICEBERG_BATCH_SIZE: "1"
+      SIMOPS_ICEBERG_FLUSH_INTERVAL: "5s"
       SIMOPS_ICEBERG_RUST_CMD: ""
       SIMOPS_ICEBERG_MANIFEST_DIR: "/tmp/simops-iceberg-manifests"
     user: "0:0"
@@ -47,10 +66,13 @@ services:
       org.opencontainers.image.title: "Kaleidos Slurm Gateway"
       org.opencontainers.image.description: "Public-safe mock-first backend handler gateway"
 
-  simops-stream-gateway:
+  simops-moq-gateway:
     build:
       context: ..
       dockerfile: deploy/slurm-gateway.Dockerfile
+      args:
+        SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
+        SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
     command: ["/app/simops-stream-gateway"]
     ports:
       - "9443:9443/tcp"
@@ -62,20 +84,68 @@ services:
       SIMOPS_TELEMETRY_LOG: "redpanda"
       SIMOPS_REDPANDA_BROKERS: "redpanda:9092"
       SIMOPS_REDPANDA_TOPIC: "simops.telemetry.v1"
+      SIMOPS_TIMESCALE_CONSUMER_GROUP: "simops-timescale-writer"
+      SIMOPS_ICEBERG_CONSUMER_GROUP: "simops-iceberg-writer"
+      SIMOPS_MOQ_CONSUMER_GROUP: "simops-moq-gateway"
       SIMOPS_MOQ_WEBTRANSPORT_URL: "https://127.0.0.1:9443/moq/simops"
       SIMOPS_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      SIMOPS_ICEBERG_S3_REGION: "local"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9443/healthz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
     depends_on:
       - redpanda
     security_opt:
       - no-new-privileges:true
     labels:
-      org.opencontainers.image.title: "Kaleidos SimOps Stream Gateway"
-      org.opencontainers.image.description: "MoQ over WebTransport telemetry publication boundary"
+      org.opencontainers.image.title: "Kaleidos SimOps MoQ Gateway"
+      org.opencontainers.image.description: "Redpanda-backed WebTransport telemetry track gateway"
+
+  simops-timescale-writer:
+    build:
+      context: ..
+      dockerfile: deploy/slurm-gateway.Dockerfile
+      args:
+        SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
+        SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
+    command: ["/app/simops-timescale-writer"]
+    ports:
+      - "9450:9450"
+    environment:
+      SIMOPS_TIMESCALE_WRITER_ADDR: ":9450"
+      SIMOPS_CONTROL_STORE: "postgres"
+      SIMOPS_POSTGRES_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      SIMOPS_TELEMETRY_LOG: "redpanda"
+      SIMOPS_REDPANDA_BROKERS: "redpanda:9092"
+      SIMOPS_REDPANDA_TOPIC: "simops.telemetry.v1"
+      SIMOPS_TIMESCALE_CONSUMER_GROUP: "simops-timescale-writer"
+      SIMOPS_ICEBERG_CONSUMER_GROUP: "simops-iceberg-writer"
+      SIMOPS_MOQ_CONSUMER_GROUP: "simops-moq-gateway"
+      SIMOPS_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
+      SIMOPS_ICEBERG_S3_REGION: "local"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9450/healthz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+    depends_on:
+      - postgres
+      - redpanda
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      org.opencontainers.image.title: "Kaleidos SimOps Timescale Writer"
+      org.opencontainers.image.description: "Redpanda consumer projecting telemetry frames into Timescale hypertables"
 
   simops-iceberg-writer:
     build:
       context: ..
       dockerfile: deploy/slurm-gateway.Dockerfile
+      args:
+        SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
+        SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
     command: ["/app/simops-iceberg-writer"]
     ports:
       - "9460:9460"
@@ -86,14 +156,33 @@ services:
       SIMOPS_TELEMETRY_LOG: "redpanda"
       SIMOPS_REDPANDA_BROKERS: "redpanda:9092"
       SIMOPS_REDPANDA_TOPIC: "simops.telemetry.v1"
+      SIMOPS_TIMESCALE_CONSUMER_GROUP: "simops-timescale-writer"
+      SIMOPS_ICEBERG_CONSUMER_GROUP: "simops-iceberg-writer"
+      SIMOPS_MOQ_CONSUMER_GROUP: "simops-moq-gateway"
       SIMOPS_ICEBERG_CATALOG: "postgres-sql"
       SIMOPS_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
       SIMOPS_ICEBERG_WAREHOUSE: "s3://radiant-simops/warehouse"
       SIMOPS_ICEBERG_S3_ENDPOINT: "http://minio:9000"
       SIMOPS_ICEBERG_S3_BUCKET: "radiant-simops"
-      SIMOPS_ICEBERG_WRITER_MODE: "manifest"
+      SIMOPS_ICEBERG_S3_REGION: "local"
+      SIMOPS_ICEBERG_S3_ACCESS_KEY_ID: "radiant"
+      SIMOPS_ICEBERG_S3_SECRET_ACCESS_KEY: "radiant-password"
+      AWS_REGION: "local"
+      AWS_DEFAULT_REGION: "local"
+      AWS_S3_ENDPOINT: "http://minio:9000"
+      AWS_ACCESS_KEY_ID: "radiant"
+      AWS_SECRET_ACCESS_KEY: "radiant-password"
+      AWS_EC2_METADATA_DISABLED: "true"
+      SIMOPS_ICEBERG_WRITER_MODE: "iceberg-go"
+      SIMOPS_ICEBERG_BATCH_SIZE: "1"
+      SIMOPS_ICEBERG_FLUSH_INTERVAL: "5s"
       SIMOPS_ICEBERG_RUST_CMD: ""
       SIMOPS_ICEBERG_MANIFEST_DIR: "/tmp/simops-iceberg-manifests"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9460/healthz"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
     depends_on:
       - postgres
       - redpanda
@@ -105,7 +194,7 @@ services:
       org.opencontainers.image.description: "Iceberg Rust telemetry artifact writer boundary"
 
   redpanda:
-    image: docker.redpanda.com/redpandadata/redpanda:latest
+    image: "${SIMOPS_REDPANDA_IMAGE:-docker.redpanda.com/redpandadata/redpanda:latest}"
     command:
       - redpanda
       - start
@@ -133,7 +222,7 @@ services:
       org.opencontainers.image.description: "Hot durable telemetry log for Simulation Ops"
 
   postgres:
-    image: postgres:17-alpine
+    image: "${SIMOPS_TIMESCALE_IMAGE:-timescale/timescaledb:latest-pg17}"
     environment:
       POSTGRES_DB: "radiant"
       POSTGRES_USER: "radiant"
@@ -144,11 +233,11 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d:ro
     labels:
-      org.opencontainers.image.title: "Kaleidos SimOps Postgres"
-      org.opencontainers.image.description: "Control-plane state and Iceberg SQL catalog metadata"
+      org.opencontainers.image.title: "Kaleidos SimOps Timescale Postgres"
+      org.opencontainers.image.description: "Control-plane state, Timescale telemetry projection, and Iceberg SQL catalog metadata"
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: "${SIMOPS_MINIO_IMAGE:-quay.io/minio/minio:latest}"
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: "radiant"
@@ -163,7 +252,7 @@ services:
       org.opencontainers.image.description: "S3-compatible local warehouse storage for Iceberg telemetry artifacts"
 
   minio-init:
-    image: quay.io/minio/mc:latest
+    image: "${SIMOPS_MINIO_MC_IMAGE:-quay.io/minio/mc:latest}"
     depends_on:
       - minio
     entrypoint: ["/bin/sh", "-c"]
@@ -171,14 +260,15 @@ services:
       - "mc alias set local http://minio:9000 radiant radiant-password && mc mb --ignore-existing local/radiant-simops"
 
   prometheus:
-    image: prom/prometheus:v2.55.1
+    image: "${SIMOPS_PROMETHEUS_IMAGE:-prom/prometheus:v2.55.1}"
     ports:
       - "9090:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
     depends_on:
       - slurm-gateway
-      - simops-stream-gateway
+      - simops-moq-gateway
+      - simops-timescale-writer
       - simops-iceberg-writer
 
   simops-bucket-scheduler:
@@ -186,6 +276,9 @@ services:
     build:
       context: ..
       dockerfile: deploy/simops-generator.Dockerfile
+      args:
+        SIMOPS_RUST_BUILDER_IMAGE: "${SIMOPS_RUST_BUILDER_IMAGE:-rust:1-alpine}"
+        SIMOPS_GENERATOR_RUNTIME_IMAGE: "${SIMOPS_GENERATOR_RUNTIME_IMAGE:-gcr.io/distroless/static-debian13:nonroot}"
     command: ["--manifest", "/examples/simulation-ops/run-manifest.scheduler-drift.json", "--worker", "scheduler", "--frames", "2", "--output", "-"]
     profiles: ["simops-buckets"]
     labels:
@@ -196,6 +289,9 @@ services:
     build:
       context: ..
       dockerfile: deploy/simops-generator.Dockerfile
+      args:
+        SIMOPS_RUST_BUILDER_IMAGE: "${SIMOPS_RUST_BUILDER_IMAGE:-rust:1-alpine}"
+        SIMOPS_GENERATOR_RUNTIME_IMAGE: "${SIMOPS_GENERATOR_RUNTIME_IMAGE:-gcr.io/distroless/static-debian13:nonroot}"
     command: ["--manifest", "/examples/simulation-ops/run-manifest.scheduler-drift.json", "--worker", "storage", "--frames", "2", "--output", "-"]
     profiles: ["simops-buckets"]
     labels:
@@ -206,6 +302,9 @@ services:
     build:
       context: ..
       dockerfile: deploy/simops-generator.Dockerfile
+      args:
+        SIMOPS_RUST_BUILDER_IMAGE: "${SIMOPS_RUST_BUILDER_IMAGE:-rust:1-alpine}"
+        SIMOPS_GENERATOR_RUNTIME_IMAGE: "${SIMOPS_GENERATOR_RUNTIME_IMAGE:-gcr.io/distroless/static-debian13:nonroot}"
     command: ["--manifest", "/examples/simulation-ops/run-manifest.scheduler-drift.json", "--worker", "burst", "--frames", "2", "--output", "-"]
     profiles: ["simops-buckets"]
     labels:
@@ -216,6 +315,9 @@ services:
     build:
       context: ..
       dockerfile: deploy/simops-generator.Dockerfile
+      args:
+        SIMOPS_RUST_BUILDER_IMAGE: "${SIMOPS_RUST_BUILDER_IMAGE:-rust:1-alpine}"
+        SIMOPS_GENERATOR_RUNTIME_IMAGE: "${SIMOPS_GENERATOR_RUNTIME_IMAGE:-gcr.io/distroless/static-debian13:nonroot}"
     command: ["--manifest", "/examples/simulation-ops/run-manifest.scheduler-drift.json", "--worker", "fabric", "--frames", "2", "--output", "-"]
     profiles: ["simops-buckets"]
     labels:
@@ -225,3 +327,7 @@ volumes:
   postgres-data:
   redpanda-data:
   minio-data:
+
+networks:
+  default:
+    name: "radiant-simops-local"

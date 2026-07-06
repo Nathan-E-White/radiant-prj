@@ -10,9 +10,9 @@
 
 ## Purpose
 
-This document defines the first Simulation Ops telemetry contract for the Kaleidos Compute Readiness Console. It gives local workers, backend collectors, chart panels, and evidence artifacts a shared event shape while the backend adds bounded run orchestration, MoQ/WebTransport subscription metadata, and durable telemetry handoff seams.
+This document defines the first Simulation Ops telemetry contract for the Kaleidos Compute Readiness Console. It gives local workers, backend collectors, chart panels, and evidence artifacts a shared event shape while the backend adds bounded run orchestration, WebTransport subscription metadata, and durable telemetry handoff seams.
 
-The telemetry envelope remains transport-stable. A frame that appears in the canonical NDJSON examples must also be usable over MoQ/WebTransport, WebSocket, backend-local TCP, HTTP batching, or a future container collector without changing the payload shape. The v1 live browser path is MoQ over WebTransport; RoQ is deferred.
+The telemetry envelope remains transport-stable. A frame that appears in the canonical NDJSON examples must also be usable over WebTransport, WebSocket, backend-local TCP, HTTP batching, or a future container collector without changing the payload shape. The v1 live browser path is WebTransport with a MoQ-compatible namespace/track envelope; RoQ is deferred.
 
 ## Run Lifecycle
 
@@ -102,9 +102,9 @@ Repeatability is optional in this revision. `randomSeed` may appear in a manifes
 
 ## Transport Binding
 
-NDJSON is the canonical storage and example format for this slice. Each line is one telemetry envelope.
+NDJSON is the canonical example format for this slice. Each line is one telemetry envelope.
 
-The implemented frontend delivery path for this slice is API polling of run state and persisted run events. The Go control plane also returns short-lived MoQ/WebTransport subscription metadata for a run so the track contract remains stable, but the browser does not receive Redpanda credentials or bucket container authority.
+The implemented live data-plane path is worker HTTP ingest into the Go control plane, validated Redpanda publication on `simops.telemetry.v1`, and Redpanda consumers for WebTransport track routing, Timescale projection, and Iceberg-Go appends. The public `/api/simops/runs/{run_id}/events` endpoint is retained for recovery and inspection only; live telemetry clients must not poll it as the primary stream. The Go control plane returns short-lived WebTransport subscription metadata for a run, but the browser does not receive Redpanda credentials or bucket container authority. The pre-workbench data-plane gates for Iceberg readback, WebTransport subscriber proof, and Docker image metadata/content preflight are closed in `docs/design/simops-data-plane-todo-stubs.md`.
 
 The controlled track layout is:
 
@@ -119,7 +119,7 @@ RoQ is not selected for v1 because the current plan needs browser-facing publish
 
 ## Persistence and Artifact Handoff
 
-The v1 deployment contract assigns Postgres to control-plane records for runs, workers, idempotency keys, ingest tokens, spool commands, lifecycle state, event polling, artifact references, and local Iceberg SQL-catalog metadata. It assigns Redpanda to the hot durable telemetry log keyed by run and worker, MinIO to S3-compatible object storage, and the local manifest writer to validated artifact-intent commits. External Iceberg Rust commits remain opt-in while memory-backed adapters stay available for deterministic tests.
+The v1 deployment contract assigns Timescale/Postgres to control-plane records for runs, workers, idempotency keys, ingest tokens, spool commands, lifecycle state, recovery event polling, artifact references, telemetry hypertables, consumer offsets, and local Iceberg SQL-catalog metadata. It assigns Redpanda to the hot durable telemetry log keyed by run and worker, MinIO to S3-compatible object storage, and the Iceberg-Go writer to Parquet-backed `simops.telemetry_frames` appends. Manifest mode remains available for deterministic unit tests only.
 
 Iceberg manages analytic telemetry artifacts and table metadata. It does not replace Postgres for command, run, or authorization state.
 

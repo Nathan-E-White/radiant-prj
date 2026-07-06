@@ -144,10 +144,13 @@ type SimopsTelemetryBatch struct {
 }
 
 type SimopsEvent struct {
-	RunID      string          `json:"run_id"`
-	WorkerID   string          `json:"worker_id,omitempty"`
-	EventType  string          `json:"event_type"`
-	Lifecycle  SimopsLifecycle `json:"lifecycle,omitempty"`
-	Frame      json.RawMessage `json:"frame,omitempty"`
-	OccurredAt time.Time       `json:"occurred_at"`
+	RunID             string          `json:"run_id"`
+	WorkerID          string          `json:"worker_id,omitempty"`
+	EventType         string          `json:"event_type"`
+	Lifecycle         SimopsLifecycle `json:"lifecycle,omitempty"`
+	Frame             json.RawMessage `json:"frame,omitempty"`
+	OccurredAt        time.Time       `json:"occurred_at"`
+	RedpandaTopic     string          `json:"-"`
+	RedpandaPartition int             `json:"-"`
+	RedpandaOffset    int64           `json:"-"`
 }

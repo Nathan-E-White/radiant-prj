@@ -313,8 +313,8 @@
     {
       "id": "SW-011",
       "kind": "software",
-      "text": "The Simulation Ops live telemetry interface shall return MoQ/WebTransport subscription metadata and controlled track names instead of exposing an SSE endpoint or broker credentials.",
-      "rationale": "Browser-facing telemetry should match the selected MoQ v1 direction while preserving backend-only Redpanda access.",
+      "text": "The Simulation Ops live telemetry interface shall return WebTransport subscription metadata and controlled track names instead of exposing an SSE endpoint or broker credentials.",
+      "rationale": "Browser-facing telemetry should use a WebTransport session with MoQ-compatible namespace/track envelopes while preserving backend-only Redpanda access.",
       "source": "Simulation Ops telemetry transport objective",
       "verificationMethod": "test",
       "linkedJobs": [],
@@ -613,6 +613,8 @@
       "artifacts": [
         "backend/slurm-gateway/internal/gateway/simops_*.go",
         "backend/slurm-gateway/cmd/simops-stream-gateway/",
+        "backend/slurm-gateway/cmd/simops-webtransport-probe/",
+        "backend/slurm-gateway/cmd/simops-timescale-writer/",
         "backend/slurm-gateway/cmd/simops-iceberg-writer/",
         "deploy/postgres-init/001_simops.sql",
         "deploy/slurm-gateway.compose.yml",
@@ -620,8 +622,8 @@
         "scripts/check-infra.mjs",
         "scripts/check-simops-contract.mjs"
       ],
-      "summary": "The Simulation Ops backend slice provides bounded run control, idempotent launch records, token-gated telemetry ingest, MoQ/WebTransport subscription metadata, and local deployment seams for Redpanda, Postgres, MinIO, Iceberg, stream publication, and Rust bucket containers.",
-      "limitations": "Controlled local backend slice only; production MoQ, Redpanda, Docker launcher, and Iceberg client modules remain explicit integration seams.",
+      "summary": "The Simulation Ops backend slice provides bounded run control, idempotent launch records, token-gated telemetry ingest, Redpanda-backed fanout, WebTransport live-track delivery, Timescale projection, Iceberg-Go append/readback mode, Docker metadata/content smoke preflights, and Rust bucket container topology.",
+      "limitations": "Controlled local backend slice only; full moq-dev relay/CDN semantics and production Docker launcher hardening remain future expansion seams.",
       "approver": "Software reviewer",
       "generatedAt": "2026-07-04T12:00:00-05:00"
     }

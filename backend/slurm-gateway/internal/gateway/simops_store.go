@@ -12,6 +12,7 @@ var ErrSimopsConflict = errors.New("simops conflict")
 
 type SimopsStore interface {
 	CreateRun(record SimopsRunRecord, workers []SimopsWorkerRecord, commands []SimopsSpoolCommand) (SimopsRunRecord, bool, error)
+	SaveLaunch(runID string, workers []SimopsWorkerRecord, commands []SimopsSpoolCommand) error
 	GetRunByIdempotency(identity string, key string) (SimopsRunRecord, error)
 	GetRun(runID string) (SimopsRunRecord, error)
 	ListWorkers(runID string) ([]SimopsWorkerRecord, error)
@@ -72,11 +73,36 @@ func (s *InMemorySimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 
 	workerMap := make(map[string]SimopsWorkerRecord, len(workers))
 	for _, worker := range workers {
+		if existing, ok := workerMap[worker.WorkerID]; ok && existing.Frames > worker.Frames {
+			worker.Frames = existing.Frames
+			worker.Lifecycle = existing.Lifecycle
+			worker.UpdatedAt = existing.UpdatedAt
+		}
 		workerMap[worker.WorkerID] = worker
 	}
 	s.workersByRun[record.RunID] = workerMap
 	s.commandsByRun[record.RunID] = append([]SimopsSpoolCommand(nil), commands...)
 	return record, true, nil
+}
+
+func (s *InMemorySimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRecord, commands []SimopsSpoolCommand) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if _, ok := s.runs[runID]; !ok {
+		return ErrSimopsRunNotFound
+	}
+
+	workerMap := s.workersByRun[runID]
+	if workerMap == nil {
+		workerMap = make(map[string]SimopsWorkerRecord, len(workers))
+	}
+	for _, worker := range workers {
+		workerMap[worker.WorkerID] = worker
+	}
+	s.workersByRun[runID] = workerMap
+	s.commandsByRun[runID] = append(s.commandsByRun[runID], commands...)
+	return nil
 }
 
 func (s *InMemorySimopsStore) GetRunByIdempotency(identity string, key string) (SimopsRunRecord, error) {

@@ -300,7 +300,7 @@ mod ingest_tests {
     use crate::generators::{WorkerSelection, generate_run};
     use crate::manifest::RunManifest;
     use std::io::{Read, Write};
-    use std::net::TcpListener;
+    use std::net::{TcpListener, TcpStream};
     use std::sync::mpsc;
     use std::thread;
 
@@ -365,9 +365,7 @@ mod ingest_tests {
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept");
-            let mut buffer = [0u8; 8192];
-            let count = stream.read(&mut buffer).expect("read");
-            let request = String::from_utf8_lossy(&buffer[..count]).to_string();
+            let request = read_http_request(&mut stream);
             stream
                 .write_all(b"HTTP/1.1 202 Accepted\r\nContent-Length: 2\r\n\r\n{}")
                 .expect("write");
@@ -405,8 +403,7 @@ mod ingest_tests {
         let addr = listener.local_addr().expect("addr");
         thread::spawn(move || {
             let (mut stream, _) = listener.accept().expect("accept");
-            let mut buffer = [0u8; 1024];
-            let _ = stream.read(&mut buffer);
+            let _ = read_http_request(&mut stream);
             stream
                 .write_all(b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n")
                 .expect("write");
@@ -425,5 +422,45 @@ mod ingest_tests {
         )
         .expect_err("bad status should fail");
         assert!(error.to_string().contains("non-success status"));
+    }
+
+    fn read_http_request(stream: &mut TcpStream) -> String {
+        let mut bytes = Vec::new();
+        let mut buffer = [0u8; 1024];
+        let header_end = loop {
+            let count = stream.read(&mut buffer).expect("read");
+            assert!(count > 0, "connection closed before HTTP headers completed");
+            bytes.extend_from_slice(&buffer[..count]);
+            if let Some(index) = find_header_end(&bytes) {
+                break index;
+            }
+        };
+
+        let headers = String::from_utf8_lossy(&bytes[..header_end]).to_string();
+        let content_length = content_length(&headers);
+        let body_start = header_end + 4;
+        while bytes.len().saturating_sub(body_start) < content_length {
+            let count = stream.read(&mut buffer).expect("read body");
+            assert!(count > 0, "connection closed before HTTP body completed");
+            bytes.extend_from_slice(&buffer[..count]);
+        }
+        String::from_utf8_lossy(&bytes).to_string()
+    }
+
+    fn find_header_end(bytes: &[u8]) -> Option<usize> {
+        bytes.windows(4).position(|window| window == b"\r\n\r\n")
+    }
+
+    fn content_length(headers: &str) -> usize {
+        headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                if name.eq_ignore_ascii_case("content-length") {
+                    return value.trim().parse().ok();
+                }
+                None
+            })
+            .unwrap_or(0)
     }
 }

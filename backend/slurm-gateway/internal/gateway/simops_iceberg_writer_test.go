@@ -18,7 +18,7 @@ func TestSimopsArtifactWriterExternalModeCanResolveConfiguredBinary(t *testing.T
 
 	cfg := DefaultConfig().Simops
 	cfg.IcebergWriterMode = "external"
-	cfg.IcebergRustCommand = visibleIcebergRustCommandForTest(t)
+	cfg.IcebergRustCommand = testExecutable(t)
 	cfg.IcebergManifestDir = t.TempDir()
 
 	if _, err := NewSimopsArtifactWriter(cfg, NewInMemorySimopsStore(), time.Now); err != nil {
@@ -26,47 +26,14 @@ func TestSimopsArtifactWriterExternalModeCanResolveConfiguredBinary(t *testing.T
 	}
 }
 
-func visibleIcebergRustCommandForTest(t *testing.T) string {
+func testExecutable(t *testing.T) string {
 	t.Helper()
 
-	candidates := []string{
-		strings.TrimSpace(os.Getenv("SIMOPS_ICEBERG_RUST_CMD")),
-		"iceberg-playground",
-		"iceberg",
-		"/usr/local/bin/iceberg-playground",
+	path := filepath.Join(t.TempDir(), "iceberg-writer-test")
+	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("write fake iceberg executable: %v", err)
 	}
-
-	if gopath := strings.TrimSpace(os.Getenv("GOPATH")); gopath != "" {
-		candidates = append(candidates, filepath.Join(gopath, "bin", "iceberg"))
-	}
-	if home := strings.TrimSpace(os.Getenv("HOME")); home != "" {
-		candidates = append(candidates, filepath.Join(home, "go", "bin", "iceberg"))
-	}
-
-	seen := map[string]struct{}{}
-	for _, candidate := range candidates {
-		candidate = strings.TrimSpace(candidate)
-		if candidate == "" {
-			continue
-		}
-		if _, ok := seen[candidate]; ok {
-			continue
-		}
-		seen[candidate] = struct{}{}
-
-		fields := strings.Fields(candidate)
-		if len(fields) == 0 {
-			continue
-		}
-		if _, err := exec.LookPath(fields[0]); err == nil {
-			return candidate
-		} else {
-			t.Logf("iceberg command probe failed: %q (%v)", fields[0], err)
-		}
-	}
-
-	t.Fatalf("no visible iceberg binary found. set SIMOPS_ICEBERG_RUST_CMD to an install path or put the binary on PATH")
-	return ""
+	return path
 }
 
 func TestSimopsArtifactWriterRejectsExternalWithoutCommand(t *testing.T) {

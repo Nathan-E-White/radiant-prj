@@ -136,6 +136,87 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 	return record, true, nil
 }
 
+func (s *PostgresSimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRecord, commands []SimopsSpoolCommand) error {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	var existingRunID string
+	if err := tx.QueryRowContext(ctx, `SELECT run_id FROM simops_runs WHERE run_id = $1`, runID).Scan(&existingRunID); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrSimopsRunNotFound
+		}
+		return err
+	}
+
+	for _, worker := range workers {
+		labels, err := marshalLabels(worker.Labels)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO simops_workers (
+				run_id, worker_id, worker_kind, lifecycle, launch_mode,
+				endpoint, frames, labels, updated_at
+			)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
+			ON CONFLICT (run_id, worker_id) DO UPDATE
+			SET worker_kind = EXCLUDED.worker_kind,
+			    lifecycle = CASE
+			      WHEN simops_workers.frames > EXCLUDED.frames THEN simops_workers.lifecycle
+			      ELSE EXCLUDED.lifecycle
+			    END,
+			    launch_mode = EXCLUDED.launch_mode,
+			    endpoint = EXCLUDED.endpoint,
+			    labels = EXCLUDED.labels,
+			    updated_at = GREATEST(simops_workers.updated_at, EXCLUDED.updated_at)
+		`,
+			runID,
+			worker.WorkerID,
+			string(worker.WorkerKind),
+			string(worker.Lifecycle),
+			worker.LaunchMode,
+			nullableString(worker.Endpoint),
+			worker.Frames,
+			labels,
+			worker.UpdatedAt,
+		); err != nil {
+			return err
+		}
+	}
+
+	for _, command := range commands {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO simops_spool_commands (
+				command_id, run_id, worker_id, mode, state, message, created_at, updated_at
+			)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			ON CONFLICT (command_id) DO UPDATE
+			SET state = EXCLUDED.state,
+			    message = EXCLUDED.message,
+			    updated_at = EXCLUDED.updated_at
+		`,
+			command.CommandID,
+			runID,
+			command.WorkerID,
+			command.Mode,
+			string(command.State),
+			command.Message,
+			command.CreatedAt,
+			command.UpdatedAt,
+		); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 func (s *PostgresSimopsStore) GetRunByIdempotency(identity string, key string) (SimopsRunRecord, error) {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()

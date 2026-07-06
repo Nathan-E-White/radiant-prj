@@ -49,7 +49,7 @@ This document identifies internal and operational interfaces that are controlled
 | `/metrics` | GET | In-memory counters | Prometheus text metrics | Handler test and infra check |
 | `/api/jobs/submit` | POST | `script_name`, `partition`, `node_count`, optional `rank_count` | Queued job id, state, and mode | mTLS identity check, allowlists, Go tests |
 | `/api/jobs/{job_id}` | GET | Job id path segment | Recorded job status | mTLS identity check and Go tests |
-| `/api/simops/runs` | POST | Scenario id, optional work script, worker kinds, launch mode, runtime, idempotency key | Run id, lifecycle state, workers, spool commands, artifact refs, MoQ/WebTransport subscription metadata | mTLS identity check, allowlists, idempotency tests, Go tests |
+| `/api/simops/runs` | POST | Scenario id, optional work script, worker kinds, launch mode, runtime, idempotency key | Run id, lifecycle state, workers, spool commands, artifact refs, WebTransport subscription metadata | mTLS identity check, allowlists, idempotency tests, Go tests |
 | `/api/simops/runs/{run_id}` | GET | Run id path segment | Run, worker, spool-command, lifecycle, and artifact-reference state | mTLS identity check and Go tests |
 | `/api/simops/runs/{run_id}/events` | GET | Run id path segment | Persisted lifecycle, telemetry, and artifact-ready events | mTLS identity check, event store, and Go tests |
 | `/api/simops/runs/{run_id}/stop` | POST | Run id path segment | Controlled stop lifecycle update | mTLS identity check and Go tests |
@@ -57,7 +57,7 @@ This document identifies internal and operational interfaces that are controlled
 
 Submit and status handlers require an authorized client certificate common name unless `SLURM_GATEWAY_REQUIRE_CLIENT_CERT=false` is explicitly set for local development. Default mode is `mock`; `sbatch` mode is enabled only through `SLURM_GATEWAY_MODE=sbatch`, `SLURM_GATEWAY_SCRIPT_ROOT`, and allowlist configuration.
 
-Simulation Ops public handlers use the same backend trust boundary. Browser-local development may explicitly disable client certificate enforcement at the gateway while relying on the Vite/API proxy path; non-browser gateway use keeps mTLS as the controlled boundary. The frontend polls run and event endpoints and receives short-lived MoQ/WebTransport subscription metadata, not Redpanda, Postgres, MinIO, Docker, or Iceberg catalog credentials.
+Simulation Ops public handlers use the same backend trust boundary. Browser-local development may explicitly disable client certificate enforcement at the gateway while relying on the Vite/API proxy path; non-browser gateway use keeps mTLS as the controlled boundary. The frontend uses run/status endpoints for control and recovery inspection, receives short-lived WebTransport subscription metadata for live tracks, and never receives Redpanda, Timescale/Postgres, MinIO, Docker, or Iceberg catalog credentials.
 
 ## Simulation Ops Contract Interface
 
@@ -68,7 +68,7 @@ Simulation Ops public handlers use the same backend trust boundary. Browser-loca
 | Payload schemas | Scheduler, storage, elastic bursting, and fabric profiler metrics | Panel-ready metric structures | Payload schemas and example NDJSON |
 | Run summary | Completed telemetry stream and scenario events | Reviewable run artifact for future evidence handoff | `simops-run-summary.v1` schema |
 
-The contract uses NDJSON as the canonical example and local fixture format. Live browser transport for v1 is MoQ over WebTransport; the SSE events endpoint is not part of the controlled v1 interface.
+The contract uses NDJSON as the canonical example and local fixture format. Live browser transport for v1 is WebTransport with a MoQ-compatible SimOps namespace/track envelope; `GET /api/simops/runs/{run_id}/events` is recovery/inspection only and is not the live telemetry stream.
 
 | MoQ Namespace | Track | Payload |
 | --- | --- | --- |
@@ -81,12 +81,12 @@ The contract uses NDJSON as the canonical example and local fixture format. Live
 
 | Layer | Controlled Responsibility | Local Artifact |
 | --- | --- | --- |
-| Postgres | Runs, workers, spool commands, idempotency keys, launch records, artifact refs, and Iceberg SQL-catalog metadata | `deploy/postgres-init/001_simops.sql` |
+| Timescale/Postgres | Runs, workers, spool commands, idempotency keys, launch records, artifact refs, telemetry hypertable projection, consumer offsets, and Iceberg SQL-catalog metadata | `deploy/postgres-init/001_simops.sql` |
 | Redpanda | Hot durable telemetry and lifecycle log keyed by run and worker | `deploy/slurm-gateway.compose.yml` |
 | MinIO | S3-compatible object storage for local Parquet-backed Iceberg table data | `deploy/slurm-gateway.compose.yml` |
-| Manifest artifact writer | Local micro-batch intent files and artifact status transitions | `backend/slurm-gateway/internal/gateway/simops_iceberg_writer.go` |
-| Iceberg Rust writer boundary | External-mode Parquet write planning, Iceberg commit handoff, and artifact-reference registration | `backend/slurm-gateway/cmd/simops-iceberg-writer` |
-| MoQ stream gateway boundary | Future Redpanda consumption and MoQ/WebTransport track publication | `backend/slurm-gateway/cmd/simops-stream-gateway` |
+| Timescale writer | Redpanda consumer projecting telemetry frames into `simops_telemetry_frames` idempotently | `backend/slurm-gateway/cmd/simops-timescale-writer` |
+| Iceberg-Go writer | Redpanda consumer appending telemetry frames to `simops.telemetry_frames` and updating artifact status | `backend/slurm-gateway/cmd/simops-iceberg-writer` |
+| WebTransport gateway | Redpanda consumer routing lifecycle, telemetry, quality, and artifact tracks to actual WebTransport subscribers | `backend/slurm-gateway/cmd/simops-stream-gateway`, `backend/slurm-gateway/cmd/simops-webtransport-probe` |
 
 ## Infrastructure Interface
 

@@ -151,18 +151,26 @@ func (c *SimopsController) CreateRun(ctx context.Context, req SimopsRunRequest, 
 		UpdatedAt:       now,
 	}
 
-	workerRecords, commands, err := c.spooler.StartRun(ctx, record, workers)
-	if err != nil {
-		return SimopsRunResponse{}, http.StatusBadGateway, fmt.Errorf("failed to start SimOps workers: %w", err)
-	}
-
-	record, created, err := c.store.CreateRun(record, workerRecords, commands)
+	record, created, err := c.store.CreateRun(record, nil, nil)
 	if err != nil {
 		return SimopsRunResponse{}, http.StatusInternalServerError, err
 	}
 	if !created {
 		resp, _, err := c.responseFor(record, false)
 		return resp, http.StatusOK, err
+	}
+	if err := c.store.SaveLaunch(record.RunID, plannedWorkerRecords(record, workers, now), nil); err != nil {
+		return SimopsRunResponse{}, http.StatusInternalServerError, err
+	}
+
+	workerRecords, commands, err := c.spooler.StartRun(ctx, record, workers)
+	if err != nil {
+		_, _ = c.store.UpdateRunLifecycle(record.RunID, SimopsFailed)
+		return SimopsRunResponse{}, http.StatusBadGateway, fmt.Errorf("failed to start SimOps workers: %w", err)
+	}
+	if err := c.store.SaveLaunch(record.RunID, workerRecords, commands); err != nil {
+		_ = c.spooler.StopRun(ctx, record.RunID)
+		return SimopsRunResponse{}, http.StatusInternalServerError, err
 	}
 
 	if _, err := c.store.UpdateRunLifecycle(record.RunID, SimopsStreaming); err != nil {
@@ -252,6 +260,25 @@ func (c *SimopsController) StopRun(ctx context.Context, runID string) (SimopsRun
 	return resp, http.StatusOK, err
 }
 
+func plannedWorkerRecords(record SimopsRunRecord, workers []SimopsWorkerKind, now time.Time) []SimopsWorkerRecord {
+	records := make([]SimopsWorkerRecord, 0, len(workers))
+	mode := strings.TrimSpace(record.LaunchMode)
+	if mode == "" {
+		mode = "resident"
+	}
+	for _, worker := range workers {
+		records = append(records, SimopsWorkerRecord{
+			RunID:      record.RunID,
+			WorkerID:   fmt.Sprintf("%s-01", worker),
+			WorkerKind: worker,
+			Lifecycle:  SimopsStarting,
+			LaunchMode: mode,
+			UpdatedAt:  now.UTC(),
+		})
+	}
+	return records
+}
+
 func (c *SimopsController) Ingest(ctx context.Context, runID string, token string, body io.Reader) (int, int, error) {
 	record, status, err := c.getRecordForWrite(runID)
 	if err != nil {
@@ -285,17 +312,6 @@ func (c *SimopsController) Ingest(ctx context.Context, runID string, token strin
 		}
 		if err := c.store.UpdateWorkerFrames(runID, frame.WorkerID, SimopsStreaming, 1); err != nil {
 			return 0, http.StatusUnprocessableEntity, err
-		}
-		if c.intent != nil {
-			if _, err := c.intent.ProcessEvent(ctx, SimopsEvent{
-				RunID:      runID,
-				WorkerID:   frame.WorkerID,
-				EventType:  "worker.telemetry",
-				Frame:      raw,
-				OccurredAt: c.now().UTC(),
-			}); err != nil {
-				return 0, http.StatusBadGateway, err
-			}
 		}
 	}
 

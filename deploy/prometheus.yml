@@ -5,9 +5,12 @@ scrape_configs:
   - job_name: "slurm-gateway"
     static_configs:
       - targets: ["slurm-gateway:8080"]
-  - job_name: "simops-stream-gateway"
+  - job_name: "simops-moq-gateway"
     static_configs:
-      - targets: ["simops-stream-gateway:9443"]
+      - targets: ["simops-moq-gateway:9443"]
+  - job_name: "simops-timescale-writer"
+    static_configs:
+      - targets: ["simops-timescale-writer:9450"]
   - job_name: "simops-iceberg-writer"
     static_configs:
       - targets: ["simops-iceberg-writer:9460"]

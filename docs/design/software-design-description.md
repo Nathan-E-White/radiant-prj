@@ -29,7 +29,7 @@ The console is a local React and TypeScript application with an optional Go back
 | Infrastructure checks | `scripts/check-infra.mjs` | Verifies local-safe infrastructure artifact completeness |
 | Simulation Ops contract | `docs/design/simulation-ops-telemetry-contract.md`, `docs/schemas/simulation-ops/`, `examples/simulation-ops/` | Defines transport-agnostic scenario telemetry frames, payload schemas, and example run artifacts |
 | Slurm gateway | `backend/slurm-gateway/` | Provides health, readiness, metrics, submit, and status handlers with mTLS identity checks and mock/`sbatch` spooler modes |
-| SimOps control plane | `backend/slurm-gateway/internal/gateway/simops_*.go` | Provides run creation, status, stop, event polling, token-gated ingest, idempotency, MoQ subscription metadata, Postgres/Redpanda adapters, Docker worker launch, and artifact status transitions |
+| SimOps control plane | `backend/slurm-gateway/internal/gateway/simops_*.go` | Provides run creation, status, stop, event polling, token-gated ingest, idempotency, WebTransport subscription metadata, Postgres/Redpanda adapters, Docker worker launch, and artifact status transitions |
 | SimOps deployment | `deploy/slurm-gateway.compose.yml`, `deploy/postgres-init/001_simops.sql` | Defines local Redpanda, Postgres, MinIO, stream-gateway, Iceberg-writer, Docker-launch access, and Rust bucket smoke services |
 
 ## Design Constraints
@@ -40,7 +40,7 @@ The console is a local React and TypeScript application with an optional Go back
 - Release scripts shall default to excluding generated output, build output, local environment files, and `JD.mhtml`.
 - The application shall run locally with controlled fixtures and may run an optional backend gateway; mock mode remains the default and real `sbatch` mode is opt-in only.
 - The frontend shall not hold client private keys for backend gateway authentication.
-- The frontend shall not hold Redpanda, Postgres, MinIO, Docker, or Iceberg catalog credentials; it polls gateway run/event endpoints and receives short-lived MoQ/WebTransport subscription metadata from the control plane.
+- The frontend shall not hold Redpanda, Postgres, MinIO, Docker, or Iceberg catalog credentials; it polls gateway run/event endpoints and receives short-lived WebTransport subscription metadata from the control plane.
 - Iceberg artifact management shall not replace Postgres control-plane state; the deployment contract keeps Postgres as the run, spooler, idempotency, ingest-token, event, and artifact-reference source of truth while memory adapters remain available for deterministic local tests.
 
 ## Data Flow
@@ -52,8 +52,8 @@ The console is a local React and TypeScript application with an optional Go back
 5. Evidence generation writes a reproducible derived index under `generated/`.
 6. The optional Slurm gateway validates authorized client identity and request bounds before recording a synthetic mock job or delegating to configured `sbatch`.
 7. Simulation Ops run requests enter the Go control plane through `POST /api/simops/runs`, which validates scenario, work-script, worker-kind, runtime, and idempotency bounds.
-8. The control plane records run state, launches or plans worker spool commands, returns MoQ/WebTransport subscription metadata, exposes persisted events at `/api/simops/runs/{run_id}/events`, and accepts token-gated telemetry at `/internal/simops/runs/{run_id}/ingest`.
-9. Redpanda is the hot telemetry log boundary, Postgres is the control-plane and Iceberg SQL-catalog boundary, MinIO is the local S3-compatible warehouse, and the manifest writer is the default local artifact-management path for validated telemetry batches. External Iceberg Rust commits remain opt-in.
+8. The control plane records run state, launches or plans worker spool commands, returns WebTransport subscription metadata, exposes persisted events at `/api/simops/runs/{run_id}/events` for recovery/inspection, and accepts token-gated telemetry at `/internal/simops/runs/{run_id}/ingest`.
+9. Ingest validates frames, publishes them to Redpanda, and updates lightweight worker counters. Redpanda is the durable fanout source for `simops-moq-gateway`, `simops-timescale-writer`, and `simops-iceberg-writer`; Timescale/Postgres stores control state and hypertable projections, MinIO stores the Parquet-backed Iceberg warehouse, and Iceberg-Go commits `simops.telemetry_frames` only after fresh readback succeeds.
 
 ## Design Outputs
 

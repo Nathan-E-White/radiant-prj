@@ -8,7 +8,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH vitest run",
     "validate:fixtures": "node scripts/validate-fixtures.mjs",
     "evidence:generate": "node scripts/generate-evidence.mjs",
     "infra:check": "node scripts/check-infra.mjs",
@@ -18,7 +18,7 @@
     "simops:contract:check": "node scripts/check-simops-contract.mjs",
     "simops:generator:test": "cd workers/simops-generator && cargo test",
     "simops:smoke:local": "scripts/simops-local-smoke.sh",
-    "backend:test": "cd backend/slurm-gateway && env GOCACHE=/tmp/radiant-go-cache go test ./...",
+    "backend:test": "cd backend/slurm-gateway && PATH=/opt/homebrew/bin:/usr/local/bin:$PATH env GOCACHE=/tmp/radiant-go-cache GOMODCACHE=/tmp/radiant-go-mod-cache go test ./...",
     "backend:run": "cd backend/slurm-gateway && go run ./cmd/server",
     "certs:local": "scripts/create-local-gateway-certs.sh",
     "docker:up": "scripts/docker-up.sh",
@@ -31,8 +31,8 @@
     "fold:v2": "scripts/archive/fold-v2-to-main.sh",
     "checkpoint:v2": "scripts/archive/checkpoint-v2.sh",
     "cleanup:v2": "scripts/archive/cleanup-v2-hygiene.sh",
-    "ci": "bun run typecheck && bun run test && bun run backend:test && bun run validate:fixtures && bun run evidence:generate && bun run infra:check && bun run quality:check && bun run adr:check && bun run simops:contract:check && bun run simops:generator:test",
-    "ci:full": "bun run ci && bun run compose:smoke"
+    "ci": "\"$npm_execpath\" run typecheck && \"$npm_execpath\" run test && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run infra:check && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run simops:contract:check && \"$npm_execpath\" run simops:generator:test",
+    "ci:full": "\"$npm_execpath\" run ci && \"$npm_execpath\" run compose:smoke"
   },
   "dependencies": {
     "@storybook/react-vite": "^10.4.6",

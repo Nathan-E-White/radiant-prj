@@ -34,6 +34,7 @@ type SimopsArtifactWritePlan struct {
 	Partition  string
 	Sequence   uint64
 	EventCount int
+	Events     []SimopsEvent
 }
 
 // SimopsArtifactCommitIntent is the payload emitted to both writer backends and
@@ -77,6 +78,8 @@ func NewSimopsArtifactWriter(cfg SimopsConfig, store SimopsStore, now func() tim
 	switch mode {
 	case "", "manifest", "stub":
 		return &ManifestSimopsArtifactWriter{base: base}, nil
+	case "iceberg-go":
+		return NewIcebergGoSimopsArtifactWriter(cfg, base)
 	case "disabled":
 		return &DisabledSimopsArtifactWriter{base: base}, nil
 	case "external":
@@ -362,10 +365,11 @@ func artifactPartition(runID string) string {
 }
 
 type simopsArtifactIntentRunState struct {
-	artifact  SimopsArtifactRecord
-	sequence  uint64
-	pending   int
-	partition string
+	artifact      SimopsArtifactRecord
+	sequence      uint64
+	pending       int
+	partition     string
+	pendingEvents []SimopsEvent
 }
 
 type SimopsArtifactIntentProcessor struct {
@@ -408,6 +412,7 @@ func (p *SimopsArtifactIntentProcessor) ProcessEvent(ctx context.Context, event 
 	p.mu.Lock()
 	state := p.ensureRunState(event.RunID)
 	state.pending++
+	state.pendingEvents = append(state.pendingEvents, event)
 	if state.pending < p.batchSize {
 		p.mu.Unlock()
 		return 0, nil
@@ -417,6 +422,7 @@ func (p *SimopsArtifactIntentProcessor) ProcessEvent(ctx context.Context, event 
 	sequence := state.sequence
 	eventCount := state.pending
 	partition := state.partition
+	events := append([]SimopsEvent(nil), state.pendingEvents...)
 	p.mu.Unlock()
 
 	plan := SimopsArtifactWritePlan{
@@ -425,6 +431,7 @@ func (p *SimopsArtifactIntentProcessor) ProcessEvent(ctx context.Context, event 
 		Partition:  partition,
 		Sequence:   sequence,
 		EventCount: eventCount,
+		Events:     events,
 	}
 	prepared, err := p.writer.Prepare(plan)
 	if err != nil {
@@ -440,6 +447,7 @@ func (p *SimopsArtifactIntentProcessor) ProcessEvent(ctx context.Context, event 
 	p.mu.Lock()
 	if state = p.states[event.RunID]; state != nil {
 		state.pending = 0
+		state.pendingEvents = nil
 		state.artifact = prepared.Artifact
 	}
 	p.mu.Unlock()

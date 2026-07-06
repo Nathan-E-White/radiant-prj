@@ -80,7 +80,7 @@ requireContent("README.md", [
   "backend:test",
   "simops:contract:check",
   "slurm-gateway",
-  "simops-stream-gateway",
+  "simops-moq-gateway",
   "checkpoint-version.sh"
 ]);
 requireContent("package.json", [

@@ -22,8 +22,8 @@ This document defines software and deployment requirements for the interview dem
 | SW-008 | The Slurm gateway shall expose health, readiness, submit, job-status, and Prometheus-format metrics handlers. | Operations need a minimal handler surface before other backend processes are added. | Test | Verified |
 | SW-009 | The Slurm gateway shall support mock mode by default and opt-in `sbatch` mode through validated configuration. | The demo must remain deterministic while preserving a real integration seam. | Test | Verified |
 | SW-010 | The Simulation Ops API shall create, inspect, stop, and ingest bounded runs with idempotency, authorization, worker-count limits, and spool-command records. | Button mashing and scripted launch flows need one backend authority for run state and worker dispatch. | Test | Verified |
-| SW-011 | The Simulation Ops live telemetry interface shall return MoQ/WebTransport subscription metadata and controlled track names instead of exposing an SSE endpoint or broker credentials. | Browser-facing telemetry should match the selected MoQ v1 direction while preserving backend-only Redpanda access. | Test | Verified |
-| SW-012 | The Simulation Ops persistence model shall separate Postgres control/catalog state, Redpanda hot telemetry logging, MinIO object storage, and Iceberg artifact-writer boundaries. | Control-plane state, live replay, object storage, and analytic artifacts have different durability and query needs. | Configuration audit | Verified |
+| SW-011 | The Simulation Ops live telemetry interface shall return WebTransport subscription metadata and controlled track names backed by Redpanda consumption instead of exposing an SSE endpoint or broker credentials. | Browser-facing telemetry uses a WebTransport session with MoQ-compatible namespace/track envelopes while preserving backend-only Redpanda access. | Test | Verified |
+| SW-012 | The Simulation Ops persistence model shall separate Timescale/Postgres control/catalog/projection state, Redpanda hot telemetry logging, MinIO object storage, and Iceberg-Go artifact-writer boundaries. | Control-plane state, live replay, object storage, and analytic artifacts have different durability and query needs. | Configuration audit | Verified |
 
 ## Interface Summary
 
@@ -43,6 +43,6 @@ This document defines software and deployment requirements for the interview dem
 - `infra/terraform/` declares infrastructure intent only.
 - `infra/ansible/` targets a local dry-run root under `/tmp/kaleidos-readiness`.
 - `backend/slurm-gateway/` contains the mock-first Go Slurm gateway.
-- `backend/slurm-gateway/internal/gateway/simops_*.go` contains the Simulation Ops control-plane, spooler, ingest, MoQ metadata, and persistence-boundary contracts.
-- `deploy/slurm-gateway.compose.yml` defines local SimOps services for the Go control plane, stream gateway, Iceberg writer, Redpanda, Postgres, MinIO, Prometheus, and Rust bucket containers.
+- `backend/slurm-gateway/internal/gateway/simops_*.go` contains the Simulation Ops control-plane, spooler, ingest, Redpanda consumers, WebTransport track routing, Timescale projection, and Iceberg-Go append/readback contracts.
+- `deploy/slurm-gateway.compose.yml` defines local SimOps services for the Go control plane, WebTransport gateway, Timescale writer, Iceberg writer, Redpanda, Timescale/Postgres, MinIO, Prometheus, and Rust bucket containers.
 - `docs/` contains controlled requirements, design, quality, verification, and release records.

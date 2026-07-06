@@ -28,8 +28,8 @@
 | SW-008 | Test | Health, readiness, submit, status, and metrics handlers | `bun run backend:test` | SLURM-GATEWAY-001 |
 | SW-009 | Test | Mock spooler and `sbatch` adapter tests, including output parsing and timeout behavior | `bun run backend:test` | SLURM-GATEWAY-001 |
 | SW-010 | Test | SimOps run creation, idempotency, stop, and token-gated ingest handler tests | `bun run backend:test` | SIMOPS-BACKEND-001 |
-| SW-011 | Test | MoQ/WebTransport subscription metadata and track layout tests | `bun run backend:test`, `bun run simops:contract:check` | SIMOPS-BACKEND-001 |
-| SW-012 | Configuration audit | Compose, Postgres init SQL, Redpanda, MinIO, stream-gateway, and Iceberg-writer artifacts | `bun run infra:check` | SIMOPS-BACKEND-001 |
+| SW-011 | Test | WebTransport subscription metadata, Redpanda-backed lifecycle/telemetry/quality/artifact track routing tests, and the containerized WebTransport smoke probe | `bun run backend:test`, `bun run simops:contract:check`, `bun run simops:smoke:local` | SIMOPS-BACKEND-001 |
+| SW-012 | Configuration audit | Compose, Timescale init SQL, Redpanda, MinIO, WebTransport gateway, Timescale writer, Iceberg-Go writer, and Docker metadata/content preflight artifacts | `bun run infra:check`, `bun run simops:smoke:local` | SIMOPS-BACKEND-001 |
 
 ## Acceptance Scenario
 
@@ -40,5 +40,5 @@
 5. Confirm the failed job has logs, diagnosis, next action, and preventative control.
 6. Open the Evidence Matrix and confirm requirements link to jobs, evidence packs, hashes, and deployment checks.
 7. Run `bun run backend:test` and confirm the Slurm gateway rejects unauthorized requests and records mock jobs.
-8. Create a Simulation Ops run through `POST /api/simops/runs` and confirm the response contains MoQ/WebTransport subscription metadata, worker tracks, and artifact references.
+8. Create a Simulation Ops run through `POST /api/simops/runs` and confirm the response contains WebTransport subscription metadata, worker tracks, and artifact references.
 9. Run `bun run quality:check` and confirm the v3.0 controlled document and traceability package is complete.
