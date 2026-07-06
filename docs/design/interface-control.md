@@ -18,6 +18,7 @@ This document identifies internal and operational interfaces that are controlled
 | --- | --- | --- | --- |
 | Kaleidos Brief | Public facts and milestones | Source-linked fact cards and boundaries | Fixture validation |
 | Compute Workbench | Synthetic compute jobs | Job status, logs, outputs, diagnosis | Unit tests and fixture validation |
+| Simulator Workbench | Fixture-backed measured, imputed, simulated, and lineage examples | Value-basis grouped workbench, selected value lineage, and compact simulation health summary | Projection tests and Simulator Workbench contract check |
 | Evidence Matrix | Requirements, compute evidence packs, controlled evidence records, deployment checks | Traceability and evidence views | Verification matrix and generated evidence |
 
 ## Fixture Interface
@@ -89,7 +90,7 @@ The contract uses NDJSON as the canonical example and local fixture format. Live
 | Iceberg-Go writer | Redpanda consumer appending telemetry frames to `simops.telemetry_frames` and updating artifact status | `backend/slurm-gateway/cmd/simops-iceberg-writer` |
 | WebTransport gateway | Redpanda consumer routing lifecycle, telemetry, quality, and artifact tracks to actual WebTransport subscribers | `backend/slurm-gateway/cmd/simops-stream-gateway`, `backend/slurm-gateway/cmd/simops-webtransport-probe` |
 
-## Simulator Workbench Scaffold Interface
+## Simulator Workbench Frontend Projection Interface
 
 | Interface | Input | Output | Control |
 | --- | --- | --- | --- |
@@ -98,8 +99,9 @@ The contract uses NDJSON as the canonical example and local fixture format. Live
 | Measured telemetry | Resident stand-in frame | `scada.telemetry.v1` measured frame | SCADA telemetry schema and contract check |
 | Digital twin state | Measured tags, imputed model state, and simulation references | `digital-twin.state.v1` values with lineage ids | Digital twin schema and contract check |
 | Workbench state | Contract refs and panel summaries | `simulator-workbench.state.v1` state summary | Workbench schema and contract check |
+| Workbench projection | Workbench state, measured frames, twin state, and lineage records | Grouped measured/imputed/simulated values, selected lineage, and compact simulation health summary | TypeScript projection tests |
 
-The scaffold defines intended future API paths under `/api/simulator-workbench/*`, but no handlers are registered in this pass. The first implementation path remains HTTP-polled read APIs; live streaming can be added later without replacing the recovery/inspection contracts.
+The frontend projection slice is fixture-backed and visible as a top-level Simulator Workbench tab. It does not register backend handlers under `/api/simulator-workbench/*`; those paths remain typed/documented future read APIs. The simulation health output in this slice is summary-only and does not expose detailed worker, Redpanda, Timescale, Iceberg, or WebTransport diagnostics.
 
 ## Infrastructure Interface
 

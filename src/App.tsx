@@ -32,6 +32,7 @@ import type {
   SimopsRunResponse,
   SimopsWorkerKind
 } from "./api/simops";
+import { SimulatorWorkbenchSurface } from "./components/simulator-workbench";
 import {
   deploymentScore,
   diagnoseJob,
@@ -51,14 +52,16 @@ import type {
   Requirement,
   SchedulerState
 } from "./domain/types";
+import { buildWorkbenchProjection, loadFixtureWorkbenchData } from "./domain/simulator-workbench";
 
 type StatusPillState = SchedulerState | BundleState | SimopsLifecycle | "complete";
-type TabId = "brief" | "workbench" | "evidence" | "simops";
+type TabId = "brief" | "workbench" | "simulator-workbench" | "evidence" | "simops";
 type BundleState = "ready" | "running" | "complete";
 
 const tabItems: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
   { id: "brief", label: "Kaleidos Brief", icon: Boxes },
   { id: "workbench", label: "Compute Workbench", icon: TerminalSquare },
+  { id: "simulator-workbench", label: "Simulator Workbench", icon: Activity },
   { id: "evidence", label: "Evidence Matrix", icon: ClipboardCheck },
   { id: "simops", label: "SimOps Control", icon: ServerCog }
 ];
@@ -87,6 +90,7 @@ export default function App() {
   const [simopsMessage, setSimopsMessage] = useState("No run selected.");
   const [simopsError, setSimopsError] = useState("");
   const [isSubmittingSimops, setIsSubmittingSimops] = useState(false);
+  const [selectedWorkbenchValueId, setSelectedWorkbenchValueId] = useState<string | undefined>();
 
   useEffect(() => {
     if (bundleState !== "running") {
@@ -129,6 +133,11 @@ export default function App() {
     packetLossPct: 0.7,
     missingPacketLimitPct: 1.5
   });
+  const simulatorWorkbenchData = useMemo(() => loadFixtureWorkbenchData(), []);
+  const simulatorWorkbenchProjection = useMemo(
+    () => buildWorkbenchProjection(simulatorWorkbenchData, selectedWorkbenchValueId),
+    [selectedWorkbenchValueId, simulatorWorkbenchData]
+  );
   useEffect(() => {
     if (!simopsRun || !isSimopsRunActive(simopsRun.lifecycle)) {
       return;
@@ -288,6 +297,13 @@ export default function App() {
           setScenario={setScenario}
           setSelectedJobId={setSelectedJobId}
           onRunBundle={runBundle}
+        />
+      )}
+
+      {activeTab === "simulator-workbench" && (
+        <SimulatorWorkbenchSurface
+          projection={simulatorWorkbenchProjection}
+          onSelectValue={setSelectedWorkbenchValueId}
         />
       )}
 

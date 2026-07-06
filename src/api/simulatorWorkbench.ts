@@ -1,3 +1,5 @@
+import type { WorkbenchDataAdapter } from "../domain/simulator-workbench/projection";
+
 export type WorkbenchValueBasis = "measured" | "imputed" | "simulated";
 
 export type WorkbenchFreshness = {
@@ -126,6 +128,24 @@ export async function getWorkbenchLineage(valueId: string): Promise<WorkbenchLin
     })
   );
 }
+
+export const httpWorkbenchDataAdapter: WorkbenchDataAdapter = {
+  async load() {
+    const [state, measured, twin] = await Promise.all([
+      getSimulatorWorkbenchState(),
+      getMeasuredState(),
+      getTwinState()
+    ]);
+    const values = twin.entities.flatMap((entity) => entity.values);
+    const lineageResults = await Promise.allSettled(values.map((value) => getWorkbenchLineage(value.valueId)));
+    return {
+      state,
+      measured,
+      twin,
+      lineages: lineageResults.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
+    };
+  }
+};
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const raw = await response.text();
