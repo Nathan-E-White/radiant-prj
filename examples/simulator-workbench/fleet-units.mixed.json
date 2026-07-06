@@ -1,0 +1,76 @@
+{
+  "schemaVersion": "simulator-workbench.fleet-units.v1",
+  "generatedAt": "2026-07-06T15:00:05Z",
+  "units": [
+    {
+      "unitId": "KAL-01",
+      "displayName": "Kaleidos Unit 01",
+      "availabilityPhase": "online generation",
+      "commercialMode": "PPA electric",
+      "breakerToBreakerLabel": "B2B 184d",
+      "electricOutputMwe": 0.94,
+      "usefulThermalOutputMwt": 2.6,
+      "residualHeatMwth": null,
+      "accruedDisplayValue": { "compactLabel": "$18.4k (est)", "amountKUsd": 18.4, "estimate": true },
+      "freshness": { "status": "fresh", "ageSec": 42 },
+      "commercialBasisId": "CDB-KAL-01-PPA",
+      "emphasis": "electric output and display value"
+    },
+    {
+      "unitId": "KAL-02",
+      "displayName": "Kaleidos Unit 02",
+      "availabilityPhase": "ramping",
+      "commercialMode": "facility heat",
+      "breakerToBreakerLabel": "B2B 92d",
+      "electricOutputMwe": 0.52,
+      "usefulThermalOutputMwt": 1.8,
+      "residualHeatMwth": null,
+      "accruedDisplayValue": { "compactLabel": "$9.7k (est)", "amountKUsd": 9.7, "estimate": true },
+      "freshness": { "status": "late", "ageSec": 240 },
+      "commercialBasisId": "CDB-KAL-02-FACILITY-HEAT",
+      "emphasis": "partial electric and thermal output"
+    },
+    {
+      "unitId": "KAL-03",
+      "displayName": "Kaleidos Unit 03",
+      "availabilityPhase": "online generation",
+      "commercialMode": "desalination heat",
+      "breakerToBreakerLabel": "B2B 184d",
+      "electricOutputMwe": 0.94,
+      "usefulThermalOutputMwt": 2.6,
+      "residualHeatMwth": null,
+      "accruedDisplayValue": { "compactLabel": "$18.4k (est)", "amountKUsd": 18.4, "estimate": true },
+      "freshness": { "status": "fresh", "ageSec": 58 },
+      "commercialBasisId": "CDB-KAL-03-DESALINATION",
+      "emphasis": "thermal service and display value"
+    },
+    {
+      "unitId": "KAL-04",
+      "displayName": "Kaleidos Unit 04",
+      "availabilityPhase": "cooldown",
+      "commercialMode": "resilience backup",
+      "breakerToBreakerLabel": "B2B reset",
+      "electricOutputMwe": 0,
+      "usefulThermalOutputMwt": 0,
+      "residualHeatMwth": 0.18,
+      "accruedDisplayValue": { "compactLabel": "no commercial output", "amountKUsd": null, "estimate": false },
+      "freshness": { "status": "stale", "ageSec": 1080 },
+      "commercialBasisId": "CDB-KAL-04-RESILIENCE",
+      "emphasis": "residual heat and reactor-state context"
+    },
+    {
+      "unitId": "KAL-05",
+      "displayName": "Kaleidos Unit 05",
+      "availabilityPhase": "refueling outage",
+      "commercialMode": "direct unit sale",
+      "breakerToBreakerLabel": "B2B reset",
+      "electricOutputMwe": 0,
+      "usefulThermalOutputMwt": 0,
+      "residualHeatMwth": 0,
+      "accruedDisplayValue": { "compactLabel": "display paused", "amountKUsd": null, "estimate": false },
+      "freshness": { "status": "fresh", "ageSec": 90 },
+      "commercialBasisId": "CDB-KAL-05-DIRECT-UNIT",
+      "emphasis": "outage context and breaker-to-breaker reset"
+    }
+  ]
+}

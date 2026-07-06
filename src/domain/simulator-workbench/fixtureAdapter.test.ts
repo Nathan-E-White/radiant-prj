@@ -7,8 +7,10 @@ describe("simulator workbench fixture adapter", () => {
 
     expect(data.state.schemaVersion).toBe("simulator-workbench.state.v1");
     expect(data.twin.schemaVersion).toBe("digital-twin.state.v1");
-    expect(data.measured).toHaveLength(6);
-    expect(data.lineages).toHaveLength(1);
+    expect(data.measured).toHaveLength(22);
+    expect(data.lineages).toHaveLength(3);
+    expect(data.fleetUnits).toHaveLength(5);
+    expect(data.commercialDisplayBasis).toHaveLength(5);
     expect(data.measured.every((frame) => frame.valueBasis === "measured")).toBe(true);
   });
 

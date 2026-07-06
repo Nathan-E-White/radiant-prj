@@ -1,6 +1,30 @@
 import type { WorkbenchDataAdapter } from "../domain/simulator-workbench/projection";
 
 export type WorkbenchValueBasis = "measured" | "imputed" | "simulated";
+export type AvailabilityPhase =
+  | "online generation"
+  | "ramping"
+  | "cooldown"
+  | "planned maintenance outage"
+  | "unplanned maintenance outage"
+  | "refueling outage";
+export type CommercialMode =
+  | "PPA electric"
+  | "direct unit sale"
+  | "facility heat"
+  | "desalination heat"
+  | "resilience backup";
+export type TwinViewportEntity =
+  | "core"
+  | "controlDrums"
+  | "primaryLoop"
+  | "heatExchangers"
+  | "circulators"
+  | "vessel"
+  | "shielding"
+  | "containerBoundary"
+  | "secondaryHeatUse"
+  | "powerConversion";
 
 export type WorkbenchFreshness = {
   ageSec: number;
@@ -41,7 +65,9 @@ export type DigitalTwinState = {
   asOf: string;
   entities: Array<{
     entityId: string;
+    unitId: string;
     displayName: string;
+    viewportEntity: TwinViewportEntity;
     values: WorkbenchValue[];
   }>;
 };
@@ -68,10 +94,13 @@ export type SimulatorWorkbenchState = {
   schemaVersion: "simulator-workbench.state.v1";
   generatedAt: string;
   scenarioId: string;
+  selectedUnitId: string;
   valueBasisSummary: Record<WorkbenchValueBasis, number>;
   measuredStateRefs: string[];
   twinStateRef: string;
   lineageRefs: string[];
+  fleetUnitRefs: string[];
+  commercialDisplayBasisRefs: string[];
   activeSimulationRuns: Array<{
     runId: string;
     scenarioId: string;
@@ -85,6 +114,46 @@ export type SimulatorWorkbenchState = {
     title: string;
     valueBasis: WorkbenchValueBasis;
   }>;
+};
+
+export type FleetFreshness = {
+  status: "fresh" | "late" | "stale";
+  ageSec: number;
+};
+
+export type AccruedDisplayValue = {
+  compactLabel: string;
+  amountKUsd: number | null;
+  estimate: boolean;
+};
+
+export type KaleidosUnitSummary = {
+  unitId: string;
+  displayName: string;
+  availabilityPhase: AvailabilityPhase;
+  commercialMode: CommercialMode;
+  breakerToBreakerLabel: string;
+  electricOutputMwe: number;
+  usefulThermalOutputMwt: number;
+  residualHeatMwth: number | null;
+  accruedDisplayValue: AccruedDisplayValue;
+  freshness: FleetFreshness;
+  commercialBasisId: string;
+  emphasis: string;
+};
+
+export type CommercialDisplayBasis = {
+  basisId: string;
+  unitId: string;
+  commercialMode: CommercialMode;
+  displayLabel: "Accrued Display Value";
+  displayValue: string;
+  outputWindow: string;
+  deliveredEnergyMwh: number;
+  deliveredHeatMwh: number;
+  rateAssumptionLabel: string;
+  freshnessTimestamp: string;
+  exclusions: string[];
 };
 
 const WORKBENCH_API_BASE = (import.meta.env.VITE_SIMULATOR_WORKBENCH_API_BASE ?? "").replace(/\/$/, "");
@@ -131,19 +200,7 @@ export async function getWorkbenchLineage(valueId: string): Promise<WorkbenchLin
 
 export const httpWorkbenchDataAdapter: WorkbenchDataAdapter = {
   async load() {
-    const [state, measured, twin] = await Promise.all([
-      getSimulatorWorkbenchState(),
-      getMeasuredState(),
-      getTwinState()
-    ]);
-    const values = twin.entities.flatMap((entity) => entity.values);
-    const lineageResults = await Promise.allSettled(values.map((value) => getWorkbenchLineage(value.valueId)));
-    return {
-      state,
-      measured,
-      twin,
-      lineages: lineageResults.flatMap((result) => (result.status === "fulfilled" ? [result.value] : []))
-    };
+    throw new Error("HTTP Simulator Workbench data adapter is parked for this presentational slice.");
   }
 };
 

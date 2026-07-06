@@ -1,34 +1,34 @@
 {
   "schemaVersion": "digital-twin.lineage.v1",
-  "lineageId": "LIN-KAL-01-CORE-MARGIN",
-  "valueId": "VAL-KAL-01-IMPUTED-CORE-MARGIN",
+  "lineageId": "LIN-KAL-04-COOLDOWN-HEAT",
+  "valueId": "VAL-KAL-04-IMPUTED-COOLDOWN-HEAT",
   "valueBasis": "imputed",
   "inputs": [
     {
       "sourceKind": "scada-tag",
-      "sourceId": "TAG-KAL-01-FLUX-MID",
+      "sourceId": "TAG-KAL-04-BOUNDARY-TEMP",
       "valueBasis": "measured"
     },
     {
       "sourceKind": "scada-tag",
-      "sourceId": "TAG-KAL-01-HELIUM-OUTLET",
+      "sourceId": "TAG-KAL-04-RESIDUAL-HEAT",
       "valueBasis": "measured"
     },
     {
       "sourceKind": "digital-twin-model",
-      "sourceId": "MODEL-KALEIDOS-PRISMATIC-V0",
+      "sourceId": "MODEL-KALEIDOS-COOLDOWN-V0",
       "valueBasis": "imputed"
     },
     {
       "sourceKind": "simulation-run",
-      "sourceId": "RUN-KAL-01-SCHED-DRIFT",
+      "sourceId": "RUN-KAL-04-COOLDOWN-CONTEXT",
       "valueBasis": "simulated"
     }
   ],
   "processingSteps": [
-    "Read recent measured stand-in tags",
-    "Apply public-safe local margin projection",
-    "Attach simulated forecast context without converting it into measurement truth"
+    "Treat residual heat as reactor-state context",
+    "Do not convert cooldown heat into delivered commercial output",
+    "Keep the display basis public-safe and read-only"
   ],
   "artifacts": [
     {

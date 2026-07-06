@@ -1,83 +1,423 @@
 {
   "schemaVersion": "digital-twin.state.v1",
-  "twinId": "TWIN-PUBLIC-SAFE-001",
+  "twinId": "TWIN-KALEIDOS-PUBLIC-SAFE-001",
   "asOf": "2026-07-06T15:00:05Z",
   "entities": [
     {
-      "entityId": "ASSET-CORE-A",
-      "displayName": "Synthetic core region A",
+      "entityId": "KAL-01-CORE",
+      "unitId": "KAL-01",
+      "displayName": "KAL-01 core region",
+      "viewportEntity": "core",
       "values": [
         {
-          "valueId": "VAL-MEASURED-FLUX-A",
-          "label": "Relative flux stand-in",
+          "valueId": "VAL-KAL-01-MEASURED-FLUX-LOW",
+          "label": "Flux Axial Low",
           "valueBasis": "measured",
           "unit": "relative-flux",
-          "value": { "scalar": 0.82 },
+          "value": { "scalar": 0.76 },
           "confidence": 0.92,
           "freshness": { "ageSec": 5, "status": "fresh" },
-          "lineageId": "LIN-FLUX-A",
-          "sourceIds": ["TAG-FLUX-CORE-A"]
+          "lineageId": "LIN-KAL-01-FLUX-LOW",
+          "sourceIds": ["TAG-KAL-01-FLUX-LOW"]
         },
         {
-          "valueId": "VAL-IMPUTED-CORE-MARGIN",
-          "label": "Imputed local margin",
+          "valueId": "VAL-KAL-01-MEASURED-FLUX-MID",
+          "label": "Flux Axial Mid",
+          "valueBasis": "measured",
+          "unit": "relative-flux",
+          "value": { "scalar": 0.88 },
+          "confidence": 0.92,
+          "freshness": { "ageSec": 5, "status": "fresh" },
+          "lineageId": "LIN-KAL-01-FLUX-MID",
+          "sourceIds": ["TAG-KAL-01-FLUX-MID"]
+        },
+        {
+          "valueId": "VAL-KAL-01-MEASURED-FLUX-HIGH",
+          "label": "Flux Axial High",
+          "valueBasis": "measured",
+          "unit": "relative-flux",
+          "value": { "scalar": 0.81 },
+          "confidence": 0.92,
+          "freshness": { "ageSec": 5, "status": "fresh" },
+          "lineageId": "LIN-KAL-01-FLUX-HIGH",
+          "sourceIds": ["TAG-KAL-01-FLUX-HIGH"]
+        },
+        {
+          "valueId": "VAL-KAL-01-IMPUTED-CORE-DISTRIBUTION",
+          "label": "Core Power Distribution Estimate",
+          "valueBasis": "imputed",
+          "unit": "coarse map",
+          "value": { "state": "axial mid-biased" },
+          "confidence": 0.76,
+          "freshness": { "ageSec": 6, "status": "degraded" },
+          "lineageId": "LIN-KAL-01-CORE-DISTRIBUTION",
+          "sourceIds": [
+            "TAG-KAL-01-FLUX-LOW",
+            "TAG-KAL-01-FLUX-MID",
+            "TAG-KAL-01-FLUX-HIGH",
+            "TAG-KAL-01-FLUX-RADIAL-N",
+            "TAG-KAL-01-FLUX-RADIAL-S",
+            "TAG-KAL-01-DRUM-POSITION",
+            "MODEL-KALEIDOS-PRISMATIC-V0"
+          ]
+        },
+        {
+          "valueId": "VAL-KAL-01-IMPUTED-BLOCK-TEMP",
+          "label": "Unmeasured Fuel/Block Temperature Estimate",
+          "valueBasis": "imputed",
+          "unit": "degC",
+          "value": { "scalar": 688.5 },
+          "confidence": 0.72,
+          "freshness": { "ageSec": 7, "status": "degraded" },
+          "lineageId": "LIN-KAL-01-BLOCK-TEMP",
+          "sourceIds": ["TAG-KAL-01-FLUX-MID", "TAG-KAL-01-HELIUM-FLOW", "TAG-KAL-01-BOUNDARY-TEMP", "MODEL-KALEIDOS-PRISMATIC-V0"]
+        },
+        {
+          "valueId": "VAL-KAL-01-IMPUTED-CORE-MARGIN",
+          "label": "Local Thermal Margin",
           "valueBasis": "imputed",
           "unit": "percent",
           "value": { "scalar": 18.6 },
           "confidence": 0.78,
           "freshness": { "ageSec": 6, "status": "degraded" },
-          "lineageId": "LIN-CORE-MARGIN",
-          "sourceIds": ["TAG-FLUX-CORE-A", "TAG-TEMP-LOOP-A", "MODEL-TWIN-THERMAL-V0"]
+          "lineageId": "LIN-KAL-01-CORE-MARGIN",
+          "sourceIds": ["TAG-KAL-01-FLUX-MID", "TAG-KAL-01-HELIUM-OUTLET", "MODEL-KALEIDOS-PRISMATIC-V0", "RUN-KAL-01-SCHED-DRIFT"]
         },
         {
-          "valueId": "VAL-SIMULATED-FORECAST-MARGIN",
-          "label": "Simulated forecast margin",
+          "valueId": "VAL-KAL-01-SIMULATED-FORECAST-MARGIN",
+          "label": "Simulated Forecast Margin",
           "valueBasis": "simulated",
           "unit": "percent",
           "value": { "scalar": 16.1 },
           "confidence": 0.71,
           "freshness": { "ageSec": 30, "status": "unknown" },
-          "lineageId": "LIN-SIM-MARGIN",
-          "sourceIds": ["RUN-SIMOPS-SCHED-DRIFT", "ARTIFACT-SIMOPS-FORECAST-001"]
+          "lineageId": "LIN-KAL-01-SIM-MARGIN",
+          "sourceIds": ["RUN-KAL-01-SCHED-DRIFT", "ARTIFACT-SIMOPS-FORECAST-001"]
         }
       ]
     },
     {
-      "entityId": "ASSET-THERMAL-LOOP-A",
-      "displayName": "Synthetic thermal loop A",
+      "entityId": "KAL-01-PRIMARY-LOOP",
+      "unitId": "KAL-01",
+      "displayName": "KAL-01 primary helium loop",
+      "viewportEntity": "primaryLoop",
       "values": [
         {
-          "valueId": "VAL-MEASURED-TEMP-A",
-          "label": "Loop temperature stand-in",
+          "valueId": "VAL-KAL-01-MEASURED-OUTLET-TEMP",
+          "label": "Core Outlet Helium Temp",
           "valueBasis": "measured",
           "unit": "degC",
           "value": { "scalar": 612.4 },
           "confidence": 0.9,
           "freshness": { "ageSec": 5, "status": "fresh" },
-          "lineageId": "LIN-TEMP-A",
-          "sourceIds": ["TAG-TEMP-LOOP-A"]
+          "lineageId": "LIN-KAL-01-OUTLET-TEMP",
+          "sourceIds": ["TAG-KAL-01-HELIUM-OUTLET"]
         },
         {
-          "valueId": "VAL-MEASURED-PRESSURE-A",
-          "label": "Loop pressure stand-in",
+          "valueId": "VAL-KAL-01-MEASURED-PRESSURE",
+          "label": "Primary Helium Pressure",
           "valueBasis": "measured",
           "unit": "MPa",
           "value": { "scalar": 15.2 },
           "confidence": 0.9,
           "freshness": { "ageSec": 5, "status": "fresh" },
-          "lineageId": "LIN-PRESSURE-A",
-          "sourceIds": ["TAG-PRESSURE-LOOP-A"]
+          "lineageId": "LIN-KAL-01-PRESSURE",
+          "sourceIds": ["TAG-KAL-01-PRIMARY-PRESSURE"]
         },
         {
-          "valueId": "VAL-IMPUTED-THERMAL-STRESS",
-          "label": "Imputed thermal stress band",
+          "valueId": "VAL-KAL-01-IMPUTED-HEAT-BALANCE",
+          "label": "Helium-Loop Heat Balance",
           "valueBasis": "imputed",
-          "unit": "band",
-          "value": { "band": "moderate" },
-          "confidence": 0.73,
+          "unit": "MWt proxy",
+          "value": { "scalar": 2.48 },
+          "confidence": 0.8,
+          "freshness": { "ageSec": 7, "status": "degraded" },
+          "lineageId": "LIN-KAL-01-HEAT-BALANCE",
+          "sourceIds": ["TAG-KAL-01-HELIUM-INLET", "TAG-KAL-01-HELIUM-OUTLET", "TAG-KAL-01-PRIMARY-PRESSURE", "TAG-KAL-01-HELIUM-FLOW"]
+        },
+        {
+          "valueId": "VAL-KAL-01-IMPUTED-CIRCULATOR-MARGIN",
+          "label": "Circulator Operating Margin",
+          "valueBasis": "imputed",
+          "unit": "percent",
+          "value": { "scalar": 22.5 },
+          "confidence": 0.74,
           "freshness": { "ageSec": 8, "status": "degraded" },
-          "lineageId": "LIN-THERMAL-STRESS",
-          "sourceIds": ["TAG-TEMP-LOOP-A", "TAG-PRESSURE-LOOP-A", "MODEL-TWIN-THERMAL-V0"]
+          "lineageId": "LIN-KAL-01-CIRCULATOR-MARGIN",
+          "sourceIds": ["TAG-KAL-01-PRIMARY-PRESSURE", "TAG-KAL-01-HELIUM-FLOW", "TAG-KAL-01-HELIUM-OUTLET"]
+        }
+      ]
+    },
+    {
+      "entityId": "KAL-01-HEAT-EXCHANGERS",
+      "unitId": "KAL-01",
+      "displayName": "KAL-01 heat exchangers",
+      "viewportEntity": "heatExchangers",
+      "values": [
+        {
+          "valueId": "VAL-KAL-01-IMPUTED-HX-DUTY",
+          "label": "Heat-Exchanger Duty Proxy",
+          "valueBasis": "imputed",
+          "unit": "MWt proxy",
+          "value": { "scalar": 2.53 },
+          "confidence": 0.77,
+          "freshness": { "ageSec": 7, "status": "degraded" },
+          "lineageId": "LIN-KAL-01-HX-DUTY",
+          "sourceIds": ["TAG-KAL-01-HX-HOT", "TAG-KAL-01-HX-COLD", "TAG-KAL-01-THERMAL-OUTPUT"]
+        }
+      ]
+    },
+    {
+      "entityId": "KAL-01-POWER-CONVERSION",
+      "unitId": "KAL-01",
+      "displayName": "KAL-01 power conversion",
+      "viewportEntity": "powerConversion",
+      "values": [
+        {
+          "valueId": "VAL-KAL-01-MEASURED-ELECTRIC-OUTPUT",
+          "label": "Electric Output",
+          "valueBasis": "measured",
+          "unit": "MWe",
+          "value": { "scalar": 0.94 },
+          "confidence": 0.9,
+          "freshness": { "ageSec": 5, "status": "fresh" },
+          "lineageId": "LIN-KAL-01-ELECTRIC-OUTPUT",
+          "sourceIds": ["TAG-KAL-01-ELECTRIC-OUTPUT"]
+        }
+      ]
+    },
+    {
+      "entityId": "KAL-01-SECONDARY-HEAT-USE",
+      "unitId": "KAL-01",
+      "displayName": "KAL-01 secondary heat use",
+      "viewportEntity": "secondaryHeatUse",
+      "values": [
+        {
+          "valueId": "VAL-KAL-01-MEASURED-THERMAL-OUTPUT",
+          "label": "Useful Thermal Output",
+          "valueBasis": "measured",
+          "unit": "MWt",
+          "value": { "scalar": 2.6 },
+          "confidence": 0.9,
+          "freshness": { "ageSec": 5, "status": "fresh" },
+          "lineageId": "LIN-KAL-01-THERMAL-OUTPUT",
+          "sourceIds": ["TAG-KAL-01-THERMAL-OUTPUT"]
+        },
+        {
+          "valueId": "VAL-KAL-01-SIMULATED-SERVICE-WINDOW",
+          "label": "Simulated Service Window",
+          "valueBasis": "simulated",
+          "unit": "hours",
+          "value": { "scalar": 23.4 },
+          "confidence": 0.68,
+          "freshness": { "ageSec": 30, "status": "unknown" },
+          "lineageId": "LIN-KAL-01-SERVICE-WINDOW",
+          "sourceIds": ["RUN-KAL-01-SCHED-DRIFT", "ARTIFACT-SIMOPS-FORECAST-001"]
+        }
+      ]
+    },
+    {
+      "entityId": "KAL-01-VESSEL",
+      "unitId": "KAL-01",
+      "displayName": "KAL-01 vessel context",
+      "viewportEntity": "vessel",
+      "values": [
+        {
+          "valueId": "VAL-KAL-01-IMPUTED-CONFIDENCE",
+          "label": "Imputed Confidence",
+          "valueBasis": "imputed",
+          "unit": "percent",
+          "value": { "scalar": 81 },
+          "confidence": 0.81,
+          "freshness": { "ageSec": 8, "status": "degraded" },
+          "lineageId": "LIN-KAL-01-IMPUTED-CONFIDENCE",
+          "sourceIds": ["TAG-KAL-01-FLUX-LOW", "TAG-KAL-01-FLUX-MID", "TAG-KAL-01-FLUX-HIGH", "TAG-KAL-01-HELIUM-OUTLET"]
+        }
+      ]
+    },
+    {
+      "entityId": "KAL-02-OUTPUT",
+      "unitId": "KAL-02",
+      "displayName": "KAL-02 ramping output",
+      "viewportEntity": "powerConversion",
+      "values": [
+        {
+          "valueId": "VAL-KAL-02-MEASURED-ELECTRIC-OUTPUT",
+          "label": "Electric Output",
+          "valueBasis": "measured",
+          "unit": "MWe",
+          "value": { "scalar": 0.52 },
+          "confidence": 0.74,
+          "freshness": { "ageSec": 240, "status": "stale" },
+          "lineageId": "LIN-KAL-02-ELECTRIC-OUTPUT",
+          "sourceIds": ["TAG-KAL-02-ELECTRIC-OUTPUT"]
+        },
+        {
+          "valueId": "VAL-KAL-02-MEASURED-THERMAL-OUTPUT",
+          "label": "Useful Thermal Output",
+          "valueBasis": "measured",
+          "unit": "MWt",
+          "value": { "scalar": 1.8 },
+          "confidence": 0.74,
+          "freshness": { "ageSec": 240, "status": "stale" },
+          "lineageId": "LIN-KAL-02-THERMAL-OUTPUT",
+          "sourceIds": ["TAG-KAL-02-THERMAL-OUTPUT"]
+        },
+        {
+          "valueId": "VAL-KAL-02-IMPUTED-RAMP-MARGIN",
+          "label": "Local Thermal Margin",
+          "valueBasis": "imputed",
+          "unit": "percent",
+          "value": { "scalar": 14.2 },
+          "confidence": 0.67,
+          "freshness": { "ageSec": 245, "status": "degraded" },
+          "lineageId": "LIN-KAL-02-RAMP-MARGIN",
+          "sourceIds": ["TAG-KAL-02-ELECTRIC-OUTPUT", "TAG-KAL-02-THERMAL-OUTPUT", "MODEL-KALEIDOS-PRISMATIC-V0"]
+        },
+        {
+          "valueId": "VAL-KAL-02-SIMULATED-RAMP-COMPLETION",
+          "label": "Simulated Ramp Completion",
+          "valueBasis": "simulated",
+          "unit": "minutes",
+          "value": { "scalar": 36 },
+          "confidence": 0.64,
+          "freshness": { "ageSec": 245, "status": "unknown" },
+          "lineageId": "LIN-KAL-02-RAMP-COMPLETION",
+          "sourceIds": ["RUN-KAL-02-RAMP-CONTEXT"]
+        }
+      ]
+    },
+    {
+      "entityId": "KAL-03-SECONDARY-HEAT-USE",
+      "unitId": "KAL-03",
+      "displayName": "KAL-03 desalination heat service",
+      "viewportEntity": "secondaryHeatUse",
+      "values": [
+        {
+          "valueId": "VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT",
+          "label": "Electric Output",
+          "valueBasis": "measured",
+          "unit": "MWe",
+          "value": { "scalar": 0.94 },
+          "confidence": 0.9,
+          "freshness": { "ageSec": 5, "status": "fresh" },
+          "lineageId": "LIN-KAL-03-ELECTRIC-OUTPUT",
+          "sourceIds": ["TAG-KAL-03-ELECTRIC-OUTPUT"]
+        },
+        {
+          "valueId": "VAL-KAL-03-MEASURED-THERMAL-OUTPUT",
+          "label": "Useful Thermal Output",
+          "valueBasis": "measured",
+          "unit": "MWt",
+          "value": { "scalar": 2.6 },
+          "confidence": 0.9,
+          "freshness": { "ageSec": 5, "status": "fresh" },
+          "lineageId": "LIN-KAL-03-THERMAL-OUTPUT",
+          "sourceIds": ["TAG-KAL-03-THERMAL-OUTPUT"]
+        },
+        {
+          "valueId": "VAL-KAL-03-IMPUTED-HX-DUTY",
+          "label": "Heat-Exchanger Duty Proxy",
+          "valueBasis": "imputed",
+          "unit": "MWt proxy",
+          "value": { "scalar": 2.54 },
+          "confidence": 0.79,
+          "freshness": { "ageSec": 7, "status": "degraded" },
+          "lineageId": "LIN-KAL-03-HX-DUTY",
+          "sourceIds": ["TAG-KAL-03-THERMAL-OUTPUT", "MODEL-KALEIDOS-PRISMATIC-V0"]
+        },
+        {
+          "valueId": "VAL-KAL-03-IMPUTED-THERMAL-MARGIN",
+          "label": "Local Thermal Margin",
+          "valueBasis": "imputed",
+          "unit": "percent",
+          "value": { "scalar": 19.3 },
+          "confidence": 0.75,
+          "freshness": { "ageSec": 7, "status": "degraded" },
+          "lineageId": "LIN-KAL-03-THERMAL-MARGIN",
+          "sourceIds": ["TAG-KAL-03-THERMAL-OUTPUT", "MODEL-KALEIDOS-PRISMATIC-V0", "RUN-KAL-03-THERMAL-SWEEP"]
+        },
+        {
+          "valueId": "VAL-KAL-03-SIMULATED-DESALINATION-HEAT",
+          "label": "Simulated Desalination Heat Sweep",
+          "valueBasis": "simulated",
+          "unit": "MWhth",
+          "value": { "scalar": 18.7 },
+          "confidence": 0.69,
+          "freshness": { "ageSec": 30, "status": "unknown" },
+          "lineageId": "LIN-KAL-03-DESALINATION-HEAT",
+          "sourceIds": ["RUN-KAL-03-THERMAL-SWEEP"]
+        }
+      ]
+    },
+    {
+      "entityId": "KAL-04-COOLDOWN",
+      "unitId": "KAL-04",
+      "displayName": "KAL-04 cooldown context",
+      "viewportEntity": "containerBoundary",
+      "values": [
+        {
+          "valueId": "VAL-KAL-04-MEASURED-BOUNDARY-TEMP",
+          "label": "Boundary Temperature",
+          "valueBasis": "measured",
+          "unit": "degC",
+          "value": { "scalar": 118.4 },
+          "confidence": 0.66,
+          "freshness": { "ageSec": 1080, "status": "stale" },
+          "lineageId": "LIN-KAL-04-BOUNDARY-TEMP",
+          "sourceIds": ["TAG-KAL-04-BOUNDARY-TEMP"]
+        },
+        {
+          "valueId": "VAL-KAL-04-MEASURED-RESIDUAL-HEAT",
+          "label": "Residual Heat Stand-In",
+          "valueBasis": "measured",
+          "unit": "MWth",
+          "value": { "scalar": 0.18 },
+          "confidence": 0.66,
+          "freshness": { "ageSec": 1080, "status": "stale" },
+          "lineageId": "LIN-KAL-04-RESIDUAL-HEAT",
+          "sourceIds": ["TAG-KAL-04-RESIDUAL-HEAT"]
+        },
+        {
+          "valueId": "VAL-KAL-04-IMPUTED-COOLDOWN-HEAT",
+          "label": "Cooldown Heat",
+          "valueBasis": "imputed",
+          "unit": "MWth context",
+          "value": { "scalar": 0.18 },
+          "confidence": 0.62,
+          "freshness": { "ageSec": 1080, "status": "degraded" },
+          "lineageId": "LIN-KAL-04-COOLDOWN-HEAT",
+          "sourceIds": ["TAG-KAL-04-BOUNDARY-TEMP", "TAG-KAL-04-RESIDUAL-HEAT", "MODEL-KALEIDOS-COOLDOWN-V0"]
+        }
+      ]
+    },
+    {
+      "entityId": "KAL-05-OUTAGE",
+      "unitId": "KAL-05",
+      "displayName": "KAL-05 refueling outage context",
+      "viewportEntity": "powerConversion",
+      "values": [
+        {
+          "valueId": "VAL-KAL-05-MEASURED-BREAKER-STATE",
+          "label": "Breaker-To-Breaker Reset",
+          "valueBasis": "measured",
+          "unit": "state",
+          "value": { "state": "reset" },
+          "confidence": 0.8,
+          "freshness": { "ageSec": 90, "status": "fresh" },
+          "lineageId": "LIN-KAL-05-BREAKER-STATE",
+          "sourceIds": ["TAG-KAL-05-BREAKER-STATE"]
+        },
+        {
+          "valueId": "VAL-KAL-05-IMPUTED-OUTAGE-CONTEXT",
+          "label": "Outage Context",
+          "valueBasis": "imputed",
+          "unit": "state",
+          "value": { "state": "refueling outage" },
+          "confidence": 0.7,
+          "freshness": { "ageSec": 90, "status": "degraded" },
+          "lineageId": "LIN-KAL-05-OUTAGE-CONTEXT",
+          "sourceIds": ["TAG-KAL-05-BREAKER-STATE", "MODEL-KALEIDOS-OUTAGE-V0"]
         }
       ]
     }

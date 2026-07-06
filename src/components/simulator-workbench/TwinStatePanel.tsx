@@ -1,10 +1,29 @@
-import type { DigitalTwinState } from "../../api/simulatorWorkbench";
+import { Activity } from "lucide-react";
+import type { WorkbenchBasisGroup } from "../../domain/simulator-workbench";
+import { WorkbenchValueList } from "./ValueList";
 
-export function TwinStatePanel({ twin }: { twin: DigitalTwinState }) {
+export function TwinStatePanel({
+  group,
+  selectedValueId,
+  onSelectValue
+}: {
+  group: WorkbenchBasisGroup;
+  selectedValueId: string;
+  onSelectValue: (valueId: string) => void;
+}) {
   return (
-    <section aria-label="Digital twin state scaffold">
-      <h2>Imputed</h2>
-      <p>{twin.twinId}</p>
+    <section className={`simwb-card basis-${group.basis}`} aria-label={group.panelTitle}>
+      <div className="simwb-card-heading">
+        <div>
+          <p className="eyebrow">{group.label}</p>
+          <h3>{group.panelTitle}</h3>
+        </div>
+        <span className={`simwb-count ${group.basis}`}>
+          <Activity size={17} />
+          {group.count}
+        </span>
+      </div>
+      <WorkbenchValueList selectedValueId={selectedValueId} values={group.values} onSelectValue={onSelectValue} />
     </section>
   );
 }

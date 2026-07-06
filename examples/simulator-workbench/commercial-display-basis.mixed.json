@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "simulator-workbench.commercial-display-basis.v1",
+  "generatedAt": "2026-07-06T15:00:05Z",
+  "basis": [
+    {
+      "basisId": "CDB-KAL-01-PPA",
+      "unitId": "KAL-01",
+      "commercialMode": "PPA electric",
+      "displayLabel": "Accrued Display Value",
+      "displayValue": "$18.4k (est)",
+      "outputWindow": "last 24h fixture window",
+      "deliveredEnergyMwh": 22.6,
+      "deliveredHeatMwh": 0,
+      "rateAssumptionLabel": "display-only electric service estimate",
+      "freshnessTimestamp": "2026-07-06T15:00:05Z",
+      "exclusions": ["not billing", "not settlement", "not tariff", "not market-cleared", "not dispatch"]
+    },
+    {
+      "basisId": "CDB-KAL-02-FACILITY-HEAT",
+      "unitId": "KAL-02",
+      "commercialMode": "facility heat",
+      "displayLabel": "Accrued Display Value",
+      "displayValue": "$9.7k (est)",
+      "outputWindow": "last 24h fixture window",
+      "deliveredEnergyMwh": 10.8,
+      "deliveredHeatMwh": 13.2,
+      "rateAssumptionLabel": "display-only facility heat service estimate",
+      "freshnessTimestamp": "2026-07-06T14:56:05Z",
+      "exclusions": ["not billing", "not settlement", "not tariff", "not market-cleared", "not dispatch"]
+    },
+    {
+      "basisId": "CDB-KAL-03-DESALINATION",
+      "unitId": "KAL-03",
+      "commercialMode": "desalination heat",
+      "displayLabel": "Accrued Display Value",
+      "displayValue": "$18.4k (est)",
+      "outputWindow": "last 24h fixture window",
+      "deliveredEnergyMwh": 22.6,
+      "deliveredHeatMwh": 18.7,
+      "rateAssumptionLabel": "display-only desalination heat service estimate",
+      "freshnessTimestamp": "2026-07-06T15:00:05Z",
+      "exclusions": ["not billing", "not settlement", "not tariff", "not market-cleared", "not dispatch"]
+    },
+    {
+      "basisId": "CDB-KAL-04-RESILIENCE",
+      "unitId": "KAL-04",
+      "commercialMode": "resilience backup",
+      "displayLabel": "Accrued Display Value",
+      "displayValue": "no commercial output",
+      "outputWindow": "cooldown fixture context",
+      "deliveredEnergyMwh": 0,
+      "deliveredHeatMwh": 0,
+      "rateAssumptionLabel": "residual heat is reactor-state context only",
+      "freshnessTimestamp": "2026-07-06T14:42:05Z",
+      "exclusions": ["not billing", "not settlement", "not tariff", "not market-cleared", "not dispatch"]
+    },
+    {
+      "basisId": "CDB-KAL-05-DIRECT-UNIT",
+      "unitId": "KAL-05",
+      "commercialMode": "direct unit sale",
+      "displayLabel": "Accrued Display Value",
+      "displayValue": "display paused",
+      "outputWindow": "refueling outage fixture context",
+      "deliveredEnergyMwh": 0,
+      "deliveredHeatMwh": 0,
+      "rateAssumptionLabel": "direct unit context only; no operating output",
+      "freshnessTimestamp": "2026-07-06T14:58:35Z",
+      "exclusions": ["not billing", "not settlement", "not tariff", "not market-cleared", "not dispatch"]
+    }
+  ]
+}

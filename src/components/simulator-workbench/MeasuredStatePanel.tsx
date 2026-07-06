@@ -1,16 +1,29 @@
-import type { MeasuredTelemetryFrame } from "../../api/simulatorWorkbench";
+import { Waves } from "lucide-react";
+import type { WorkbenchBasisGroup } from "../../domain/simulator-workbench";
+import { WorkbenchValueList } from "./ValueList";
 
-export function MeasuredStatePanel({ frames }: { frames: MeasuredTelemetryFrame[] }) {
+export function MeasuredStatePanel({
+  group,
+  selectedValueId,
+  onSelectValue
+}: {
+  group: WorkbenchBasisGroup;
+  selectedValueId: string;
+  onSelectValue: (valueId: string) => void;
+}) {
   return (
-    <section aria-label="Measured state scaffold">
-      <h2>Measured</h2>
-      <ul>
-        {frames.map((frame) => (
-          <li key={`${frame.sourceId}-${frame.tagId}-${frame.sequence}`}>
-            {frame.tagId} {frame.quality}
-          </li>
-        ))}
-      </ul>
+    <section className={`simwb-card basis-${group.basis}`} aria-label={group.panelTitle}>
+      <div className="simwb-card-heading">
+        <div>
+          <p className="eyebrow">{group.label}</p>
+          <h3>{group.panelTitle}</h3>
+        </div>
+        <span className={`simwb-count ${group.basis}`}>
+          <Waves size={17} />
+          {group.count}
+        </span>
+      </div>
+      <WorkbenchValueList selectedValueId={selectedValueId} values={group.values} onSelectValue={onSelectValue} />
     </section>
   );
 }

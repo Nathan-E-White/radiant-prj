@@ -1,9 +1,14 @@
 {
   "schemaVersion": "digital-twin.lineage.v1",
-  "lineageId": "LIN-KAL-01-CORE-MARGIN",
-  "valueId": "VAL-KAL-01-IMPUTED-CORE-MARGIN",
+  "lineageId": "LIN-KAL-01-CORE-DISTRIBUTION",
+  "valueId": "VAL-KAL-01-IMPUTED-CORE-DISTRIBUTION",
   "valueBasis": "imputed",
   "inputs": [
+    {
+      "sourceKind": "scada-tag",
+      "sourceId": "TAG-KAL-01-FLUX-LOW",
+      "valueBasis": "measured"
+    },
     {
       "sourceKind": "scada-tag",
       "sourceId": "TAG-KAL-01-FLUX-MID",
@@ -11,7 +16,7 @@
     },
     {
       "sourceKind": "scada-tag",
-      "sourceId": "TAG-KAL-01-HELIUM-OUTLET",
+      "sourceId": "TAG-KAL-01-FLUX-HIGH",
       "valueBasis": "measured"
     },
     {
@@ -26,9 +31,9 @@
     }
   ],
   "processingSteps": [
-    "Read recent measured stand-in tags",
-    "Apply public-safe local margin projection",
-    "Attach simulated forecast context without converting it into measurement truth"
+    "Require multiple flux stand-ins before showing a coarse distribution estimate",
+    "Project a public-safe axial and radial overlay",
+    "Label the value as an estimate rather than validated neutronics"
   ],
   "artifacts": [
     {

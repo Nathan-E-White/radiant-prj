@@ -52,7 +52,7 @@ import type {
   Requirement,
   SchedulerState
 } from "./domain/types";
-import { buildWorkbenchProjection, loadFixtureWorkbenchData } from "./domain/simulator-workbench";
+import { buildWorkbenchProjection, loadFixtureWorkbenchData, type WorkbenchSelection } from "./domain/simulator-workbench";
 
 type StatusPillState = SchedulerState | BundleState | SimopsLifecycle | "complete";
 type TabId = "brief" | "workbench" | "simulator-workbench" | "evidence" | "simops";
@@ -90,7 +90,7 @@ export default function App() {
   const [simopsMessage, setSimopsMessage] = useState("No run selected.");
   const [simopsError, setSimopsError] = useState("");
   const [isSubmittingSimops, setIsSubmittingSimops] = useState(false);
-  const [selectedWorkbenchValueId, setSelectedWorkbenchValueId] = useState<string | undefined>();
+  const [simulatorWorkbenchSelection, setSimulatorWorkbenchSelection] = useState<WorkbenchSelection>({});
 
   useEffect(() => {
     if (bundleState !== "running") {
@@ -135,8 +135,8 @@ export default function App() {
   });
   const simulatorWorkbenchData = useMemo(() => loadFixtureWorkbenchData(), []);
   const simulatorWorkbenchProjection = useMemo(
-    () => buildWorkbenchProjection(simulatorWorkbenchData, selectedWorkbenchValueId),
-    [selectedWorkbenchValueId, simulatorWorkbenchData]
+    () => buildWorkbenchProjection(simulatorWorkbenchData, simulatorWorkbenchSelection),
+    [simulatorWorkbenchSelection, simulatorWorkbenchData]
   );
   useEffect(() => {
     if (!simopsRun || !isSimopsRunActive(simopsRun.lifecycle)) {
@@ -231,6 +231,17 @@ export default function App() {
     }
   }
 
+  function selectSimulatorWorkbenchUnit(unitId: string, commercialBasisId: string) {
+    setSimulatorWorkbenchSelection({ selectedUnitId: unitId, selectedCommercialBasisId: commercialBasisId });
+  }
+
+  function selectSimulatorWorkbenchValue(valueId: string) {
+    setSimulatorWorkbenchSelection((current) => ({
+      selectedUnitId: current.selectedUnitId,
+      selectedValueId: valueId
+    }));
+  }
+
   function toggleSimopsWorker(kind: SimopsWorkerKind) {
     setSimopsWorkerKinds((previous) => {
       const existing = previous.includes(kind);
@@ -303,7 +314,8 @@ export default function App() {
       {activeTab === "simulator-workbench" && (
         <SimulatorWorkbenchSurface
           projection={simulatorWorkbenchProjection}
-          onSelectValue={setSelectedWorkbenchValueId}
+          onSelectUnit={selectSimulatorWorkbenchUnit}
+          onSelectValue={selectSimulatorWorkbenchValue}
         />
       )}
 

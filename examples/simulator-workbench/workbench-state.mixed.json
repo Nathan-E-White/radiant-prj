@@ -1,39 +1,54 @@
 {
   "schemaVersion": "simulator-workbench.state.v1",
   "generatedAt": "2026-07-06T15:00:05Z",
-  "scenarioId": "mixed-public-safe-twin-demo",
+  "scenarioId": "mixed-public-safe-kaleidos-fleet-demo",
+  "selectedUnitId": "KAL-01",
   "valueBasisSummary": {
-    "measured": 3,
-    "imputed": 2,
-    "simulated": 1
+    "measured": 7,
+    "imputed": 7,
+    "simulated": 2
   },
   "measuredStateRefs": ["examples/scada/telemetry.mixed.ndjson"],
   "twinStateRef": "examples/digital-twin/twin-state.mixed.json",
-  "lineageRefs": ["examples/digital-twin/value-lineage.core-margin.json"],
+  "lineageRefs": [
+    "examples/digital-twin/value-lineage.core-distribution.json",
+    "examples/digital-twin/value-lineage.core-margin.json",
+    "examples/digital-twin/value-lineage.cooldown-heat.json"
+  ],
+  "fleetUnitRefs": ["examples/simulator-workbench/fleet-units.mixed.json"],
+  "commercialDisplayBasisRefs": ["examples/simulator-workbench/commercial-display-basis.mixed.json"],
   "activeSimulationRuns": [
     {
-      "runId": "RUN-SIMOPS-SCHED-DRIFT",
+      "runId": "RUN-KAL-01-SCHED-DRIFT",
       "scenarioId": "scheduler-drift",
       "lifecycle": "complete",
       "valueBasis": "simulated",
       "health": "nominal",
       "artifactStatus": "planned-reference"
+    },
+    {
+      "runId": "RUN-KAL-03-THERMAL-SWEEP",
+      "scenarioId": "desalination-heat-sweep",
+      "lifecycle": "complete",
+      "valueBasis": "simulated",
+      "health": "nominal",
+      "artifactStatus": "fixture-reference"
     }
   ],
   "panels": [
     {
       "panelId": "measured-state",
-      "title": "Measured stand-ins",
+      "title": "Measured State",
       "valueBasis": "measured"
     },
     {
       "panelId": "digital-twin",
-      "title": "Imputed twin state",
+      "title": "Imputed State",
       "valueBasis": "imputed"
     },
     {
       "panelId": "simulation-results",
-      "title": "Simulation results",
+      "title": "Simulated Result State",
       "valueBasis": "simulated"
     }
   ]

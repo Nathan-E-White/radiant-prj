@@ -4,6 +4,7 @@ import {
   getSimulatorWorkbenchState,
   getTwinState,
   getWorkbenchLineage,
+  httpWorkbenchDataAdapter,
   type SimulatorWorkbenchState
 } from "./simulatorWorkbench";
 
@@ -48,6 +49,13 @@ describe("simulator workbench api client", () => {
 
     await expect(getSimulatorWorkbenchState()).rejects.toThrow("not wired yet");
   });
+
+  it("keeps the HTTP data adapter parked for the presentational slice", async () => {
+    globalThis.fetch = vi.fn();
+
+    await expect(httpWorkbenchDataAdapter.load()).rejects.toThrow("parked");
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
 });
 
 function jsonResponse(payload: unknown): Response {
@@ -62,10 +70,13 @@ function sampleWorkbenchState(): SimulatorWorkbenchState {
     schemaVersion: "simulator-workbench.state.v1",
     generatedAt: "2026-07-06T15:00:05Z",
     scenarioId: "mixed-public-safe-twin-demo",
+    selectedUnitId: "KAL-01",
     valueBasisSummary: { measured: 1, imputed: 1, simulated: 1 },
     measuredStateRefs: ["examples/scada/telemetry.mixed.ndjson"],
     twinStateRef: "examples/digital-twin/twin-state.mixed.json",
     lineageRefs: ["examples/digital-twin/value-lineage.core-margin.json"],
+    fleetUnitRefs: ["examples/simulator-workbench/fleet-units.mixed.json"],
+    commercialDisplayBasisRefs: ["examples/simulator-workbench/commercial-display-basis.mixed.json"],
     activeSimulationRuns: [
       {
         runId: "RUN-SIMOPS-SCHED-DRIFT",
