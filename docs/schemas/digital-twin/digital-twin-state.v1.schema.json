@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radiant.local/schemas/digital-twin/digital-twin-state.v1.schema.json",
+  "title": "Digital Twin State v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "twinId", "asOf", "entities"],
+  "properties": {
+    "schemaVersion": { "type": "string", "enum": ["digital-twin.state.v1"] },
+    "twinId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+    "asOf": { "type": "string", "format": "date-time" },
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["entityId", "displayName", "values"],
+        "properties": {
+          "entityId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+          "displayName": { "type": "string" },
+          "values": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "valueId",
+                "label",
+                "valueBasis",
+                "unit",
+                "value",
+                "confidence",
+                "freshness",
+                "lineageId",
+                "sourceIds"
+              ],
+              "properties": {
+                "valueId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+                "label": { "type": "string" },
+                "valueBasis": { "type": "string", "enum": ["measured", "imputed", "simulated"] },
+                "unit": { "type": "string" },
+                "value": { "type": "object" },
+                "confidence": { "type": "number", "minimum": 0, "maximum": 1 },
+                "freshness": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["ageSec", "status"],
+                  "properties": {
+                    "ageSec": { "type": "integer", "minimum": 0 },
+                    "status": { "type": "string", "enum": ["fresh", "stale", "degraded", "unknown"] }
+                  }
+                },
+                "lineageId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+                "sourceIds": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

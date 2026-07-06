@@ -1,0 +1,40 @@
+{
+  "schemaVersion": "digital-twin.lineage.v1",
+  "lineageId": "LIN-CORE-MARGIN",
+  "valueId": "VAL-IMPUTED-CORE-MARGIN",
+  "valueBasis": "imputed",
+  "inputs": [
+    {
+      "sourceKind": "scada-tag",
+      "sourceId": "TAG-FLUX-CORE-A",
+      "valueBasis": "measured"
+    },
+    {
+      "sourceKind": "scada-tag",
+      "sourceId": "TAG-TEMP-LOOP-A",
+      "valueBasis": "measured"
+    },
+    {
+      "sourceKind": "digital-twin-model",
+      "sourceId": "MODEL-TWIN-THERMAL-V0",
+      "valueBasis": "imputed"
+    },
+    {
+      "sourceKind": "simulation-run",
+      "sourceId": "RUN-SIMOPS-SCHED-DRIFT",
+      "valueBasis": "simulated"
+    }
+  ],
+  "processingSteps": [
+    "Read recent measured stand-in tags",
+    "Apply public-safe twin projection model",
+    "Attach simulated forecast context without converting it into measurement truth"
+  ],
+  "artifacts": [
+    {
+      "artifactId": "SIMWB-VISUAL-DRAFT-001",
+      "path": "docs/design/simulator-workbench-visual-draft.md",
+      "mediaType": "text/markdown"
+    }
+  ]
+}

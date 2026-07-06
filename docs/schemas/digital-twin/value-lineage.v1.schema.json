@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radiant.local/schemas/digital-twin/value-lineage.v1.schema.json",
+  "title": "Digital Twin Value Lineage v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "lineageId", "valueId", "valueBasis", "inputs", "processingSteps", "artifacts"],
+  "properties": {
+    "schemaVersion": { "type": "string", "enum": ["digital-twin.lineage.v1"] },
+    "lineageId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+    "valueId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+    "valueBasis": { "type": "string", "enum": ["measured", "imputed", "simulated"] },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["sourceKind", "sourceId", "valueBasis"],
+        "properties": {
+          "sourceKind": {
+            "type": "string",
+            "enum": ["scada-tag", "digital-twin-model", "simulation-run", "artifact"]
+          },
+          "sourceId": { "type": "string" },
+          "valueBasis": { "type": "string", "enum": ["measured", "imputed", "simulated"] }
+        }
+      }
+    },
+    "processingSteps": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["artifactId", "path", "mediaType"],
+        "properties": {
+          "artifactId": { "type": "string" },
+          "path": { "type": "string" },
+          "mediaType": { "type": "string" }
+        }
+      }
+    }
+  }
+}

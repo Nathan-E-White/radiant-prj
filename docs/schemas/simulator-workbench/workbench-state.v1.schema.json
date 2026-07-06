@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radiant.local/schemas/simulator-workbench/workbench-state.v1.schema.json",
+  "title": "Simulator Workbench State v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "generatedAt",
+    "scenarioId",
+    "valueBasisSummary",
+    "measuredStateRefs",
+    "twinStateRef",
+    "lineageRefs",
+    "activeSimulationRuns",
+    "panels"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "enum": ["simulator-workbench.state.v1"] },
+    "generatedAt": { "type": "string", "format": "date-time" },
+    "scenarioId": { "type": "string" },
+    "valueBasisSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["measured", "imputed", "simulated"],
+      "properties": {
+        "measured": { "type": "integer", "minimum": 0 },
+        "imputed": { "type": "integer", "minimum": 0 },
+        "simulated": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "measuredStateRefs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "twinStateRef": { "type": "string" },
+    "lineageRefs": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string" }
+    },
+    "activeSimulationRuns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["runId", "scenarioId", "lifecycle", "valueBasis", "health", "artifactStatus"],
+        "properties": {
+          "runId": { "type": "string" },
+          "scenarioId": { "type": "string" },
+          "lifecycle": { "type": "string" },
+          "valueBasis": { "type": "string", "enum": ["simulated"] },
+          "health": { "type": "string" },
+          "artifactStatus": { "type": "string" }
+        }
+      }
+    },
+    "panels": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["panelId", "title", "valueBasis"],
+        "properties": {
+          "panelId": { "type": "string" },
+          "title": { "type": "string" },
+          "valueBasis": { "type": "string", "enum": ["measured", "imputed", "simulated"] }
+        }
+      }
+    }
+  }
+}

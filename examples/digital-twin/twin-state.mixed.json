@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "digital-twin.state.v1",
+  "twinId": "TWIN-PUBLIC-SAFE-001",
+  "asOf": "2026-07-06T15:00:05Z",
+  "entities": [
+    {
+      "entityId": "ASSET-CORE-A",
+      "displayName": "Synthetic core region A",
+      "values": [
+        {
+          "valueId": "VAL-MEASURED-FLUX-A",
+          "label": "Relative flux stand-in",
+          "valueBasis": "measured",
+          "unit": "relative-flux",
+          "value": { "scalar": 0.82 },
+          "confidence": 0.92,
+          "freshness": { "ageSec": 5, "status": "fresh" },
+          "lineageId": "LIN-FLUX-A",
+          "sourceIds": ["TAG-FLUX-CORE-A"]
+        },
+        {
+          "valueId": "VAL-IMPUTED-CORE-MARGIN",
+          "label": "Imputed local margin",
+          "valueBasis": "imputed",
+          "unit": "percent",
+          "value": { "scalar": 18.6 },
+          "confidence": 0.78,
+          "freshness": { "ageSec": 6, "status": "degraded" },
+          "lineageId": "LIN-CORE-MARGIN",
+          "sourceIds": ["TAG-FLUX-CORE-A", "TAG-TEMP-LOOP-A", "MODEL-TWIN-THERMAL-V0"]
+        },
+        {
+          "valueId": "VAL-SIMULATED-FORECAST-MARGIN",
+          "label": "Simulated forecast margin",
+          "valueBasis": "simulated",
+          "unit": "percent",
+          "value": { "scalar": 16.1 },
+          "confidence": 0.71,
+          "freshness": { "ageSec": 30, "status": "unknown" },
+          "lineageId": "LIN-SIM-MARGIN",
+          "sourceIds": ["RUN-SIMOPS-SCHED-DRIFT", "ARTIFACT-SIMOPS-FORECAST-001"]
+        }
+      ]
+    },
+    {
+      "entityId": "ASSET-THERMAL-LOOP-A",
+      "displayName": "Synthetic thermal loop A",
+      "values": [
+        {
+          "valueId": "VAL-MEASURED-TEMP-A",
+          "label": "Loop temperature stand-in",
+          "valueBasis": "measured",
+          "unit": "degC",
+          "value": { "scalar": 612.4 },
+          "confidence": 0.9,
+          "freshness": { "ageSec": 5, "status": "fresh" },
+          "lineageId": "LIN-TEMP-A",
+          "sourceIds": ["TAG-TEMP-LOOP-A"]
+        },
+        {
+          "valueId": "VAL-MEASURED-PRESSURE-A",
+          "label": "Loop pressure stand-in",
+          "valueBasis": "measured",
+          "unit": "MPa",
+          "value": { "scalar": 15.2 },
+          "confidence": 0.9,
+          "freshness": { "ageSec": 5, "status": "fresh" },
+          "lineageId": "LIN-PRESSURE-A",
+          "sourceIds": ["TAG-PRESSURE-LOOP-A"]
+        },
+        {
+          "valueId": "VAL-IMPUTED-THERMAL-STRESS",
+          "label": "Imputed thermal stress band",
+          "valueBasis": "imputed",
+          "unit": "band",
+          "value": { "band": "moderate" },
+          "confidence": 0.73,
+          "freshness": { "ageSec": 8, "status": "degraded" },
+          "lineageId": "LIN-THERMAL-STRESS",
+          "sourceIds": ["TAG-TEMP-LOOP-A", "TAG-PRESSURE-LOOP-A", "MODEL-TWIN-THERMAL-V0"]
+        }
+      ]
+    }
+  ]
+}

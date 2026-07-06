@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radiant.local/schemas/scada/scada-telemetry.v1.schema.json",
+  "title": "SCADA Stand-In Telemetry v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "sourceId",
+    "tagId",
+    "assetId",
+    "signalKind",
+    "sampledAt",
+    "observedAt",
+    "sequence",
+    "unit",
+    "value",
+    "quality",
+    "valueBasis",
+    "syntheticStatus"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "string", "enum": ["scada.telemetry.v1"] },
+    "sourceId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+    "tagId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+    "assetId": { "type": "string", "pattern": "^[A-Z0-9][A-Z0-9_-]{2,96}$" },
+    "signalKind": {
+      "type": "string",
+      "enum": ["flux", "temperature", "pressure", "flow", "actuatorState", "electricalState", "comms"]
+    },
+    "sampledAt": { "type": "string", "format": "date-time" },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "sequence": { "type": "integer", "minimum": 0 },
+    "unit": { "type": "string" },
+    "value": { "type": "object" },
+    "quality": { "type": "string", "enum": ["good", "stale", "bad", "missing", "estimated"] },
+    "valueBasis": { "type": "string", "enum": ["measured"] },
+    "syntheticStatus": { "type": "string", "enum": ["public-safe-standin"] }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radiant.local/schemas/simulator-workbench/value-basis.v1.schema.json",
+  "title": "Simulator Workbench Value Basis v1",
+  "type": "string",
+  "enum": ["measured", "imputed", "simulated"]
+}

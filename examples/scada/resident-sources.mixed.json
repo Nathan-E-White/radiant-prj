@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "scada.resident-source-declaration.v1",
+  "sourceId": "SRC-MIXED-STANDIN-001",
+  "displayName": "Mixed public-safe resident source stand-ins",
+  "lifecycle": "resident",
+  "syntheticStatus": "public-safe-standin",
+  "ingest": {
+    "topic": "scada.telemetry.v1",
+    "endpointKind": "gateway-http"
+  },
+  "tags": [
+    {
+      "tagId": "TAG-FLUX-CORE-A",
+      "assetId": "ASSET-CORE-A",
+      "signalKind": "flux",
+      "unit": "relative-flux",
+      "valueBasis": "measured"
+    },
+    {
+      "tagId": "TAG-TEMP-LOOP-A",
+      "assetId": "ASSET-THERMAL-LOOP-A",
+      "signalKind": "temperature",
+      "unit": "degC",
+      "valueBasis": "measured"
+    },
+    {
+      "tagId": "TAG-PRESSURE-LOOP-A",
+      "assetId": "ASSET-THERMAL-LOOP-A",
+      "signalKind": "pressure",
+      "unit": "MPa",
+      "valueBasis": "measured"
+    },
+    {
+      "tagId": "TAG-ACTUATOR-VALVE-A",
+      "assetId": "ASSET-ACTUATOR-A",
+      "signalKind": "actuatorState",
+      "unit": "state",
+      "valueBasis": "measured"
+    },
+    {
+      "tagId": "TAG-ELECTRICAL-BUS-A",
+      "assetId": "ASSET-POWER-BUS-A",
+      "signalKind": "electricalState",
+      "unit": "kV",
+      "valueBasis": "measured"
+    },
+    {
+      "tagId": "TAG-COMMS-LINK-A",
+      "assetId": "ASSET-COMMS-LINK-A",
+      "signalKind": "comms",
+      "unit": "ms",
+      "valueBasis": "measured"
+    }
+  ]
+}
