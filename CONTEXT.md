@@ -37,3 +37,99 @@ _Avoid_: Log, trace, breadcrumb
 **Simulation Health Summary**:
 A compact trust summary for simulation result state, covering run completion and artifact disposition at a glance.
 _Avoid_: Detailed health panel, SCADA health panel, infrastructure diagnostics
+
+**Kaleidos Unit**:
+The single standardized reactor unit represented by the Simulator Workbench: a public-safe Kaleidos-style prismatic HTGR with TRISO/prismatic graphite core, helium primary loop, control drum, turbomachinery/cooling, reactor/shielding, vessel/container boundary, and heat/electric output context.
+_Avoid_: Generic reactor, reactor zoo, pebble-bed variant
+
+**Kaleidos Fleet**:
+An ensemble view of identically produced, separately operated Kaleidos Units. Fleet views may summarize unit-level readiness, output, freshness, and lineage, but each unit remains its own reactor instance.
+_Avoid_: One giant reactor, mixed reactor family, centralized control-room simulation
+
+**Breaker-to-Breaker Run**:
+The commercial operating interval for a Kaleidos Unit between grid/output connection and the next planned or unplanned breaker separation. An unplanned outage resets the run.
+_Avoid_: Generic uptime, always-on status
+
+**Availability Phase**:
+The public-safe fleet-strip phase for a Kaleidos Unit. Initial phases are online generation, ramping, cooldown, planned maintenance outage, unplanned maintenance outage, and refueling outage.
+_Avoid_: Standby, offline, emergency, alarm state
+
+**Planned Maintenance Outage**:
+A scheduled non-refueling outage for inspection, maintenance, or service work. It interrupts breaker-to-breaker operation but is not an abnormal event.
+_Avoid_: Offline, standby, emergency
+
+**Unplanned Maintenance Outage**:
+An unplanned outage bucket for forced maintenance, unplanned trips, special excursions, or other abnormal conditions that should not become alarm-management UI in this slice.
+_Avoid_: Emergency panel, SCRAM workflow, incident command
+
+**Refueling Outage**:
+A scheduled outage specifically for fuel replacement or fuel-related maintenance. It is distinct from generic planned maintenance.
+_Avoid_: Planned maintenance only, fuel status badge
+
+**Cooldown**:
+A post-shutdown phase where the unit is not commercially generating but still has active thermal/reactor-state work to represent. Cooldown is not standby and does not imply immediate restart availability.
+_Avoid_: Standby, offline, idle
+
+**Cooldown Heat**:
+The residual heat-generation context shown for a unit in cooldown. It is usually Imputed State unless the fixture represents a direct measured thermal tag. It is reactor-state context, not commercial thermal output, delivered heat, or outage economics.
+_Avoid_: Commercial output, heat sale, lost-generation cost
+
+**Core Power Distribution Estimate**:
+A coarse Imputed State value derived from multiple public-safe neutron flux stand-ins plus reactor configuration context. It may support a simple axial/radial overlay, but it is not validated neutronics, an in-core detector map, or safety analysis.
+_Avoid_: Core power shape proof, validated flux map, safety limit
+
+**Multi-Zone Flux Stand-In**:
+A public-safe measured stand-in for relative neutron flux at a coarse core zone. Several such stand-ins are required before the UI may display a Core Power Distribution Estimate.
+_Avoid_: Single probe power shape, real in-core detector, safety instrumentation
+
+**Commercial Mode**:
+The business context used by the presentational fleet strip to explain why a Kaleidos Unit's output matters. Initial source-backed fixture modes are PPA electric, direct unit sale, facility heat, desalination heat, and resilience backup. This is display context, not billing logic.
+_Avoid_: Direct unit lease, billing engine, tariff model, financial settlement
+
+**Commercial Display Basis**:
+The visible fixture assumptions used to explain a commercial fleet-strip value, including commercial mode, output window, electric or thermal output basis, rate-assumption label, freshness, and lineage. It is presentation context only.
+_Avoid_: Invoice basis, settlement basis, tariff model, market position
+
+**Accrued Display Value**:
+A fixture-derived estimate used to show that a unit's delivered energy, delivered heat, or availability context has commercial relevance. It is not recognized revenue, an invoice amount, a receivable, or a settlement result.
+_Avoid_: Revenue, accrued revenue, bill, settlement, receivable
+
+**Delivered Energy**:
+The fixture-backed electric energy displayed for a Kaleidos Unit over a visible output window. It is a physical/presentational counter and must not imply market settlement or metered billing.
+_Avoid_: Energy settlement, cleared energy, invoice kWh
+
+**Delivered Heat**:
+The fixture-backed thermal energy displayed for facility heating or desalination context over a visible output window. It is a presentation counter and not a process-heat contract guarantee.
+_Avoid_: Heat invoice, guaranteed thermal delivery, tariff heat credit
+
+**Contracted Availability**:
+The presentational idea that a unit's availability matters in a commercial mode. It should be displayed as context, not as a capacity-market payment, capacity accreditation, or settlement credit.
+_Avoid_: Capacity payment, capacity credit, RPM credit, market availability charge
+
+**Availability Display Credit**:
+A local demo score or display contribution for a unit being in an availability-supporting phase. It is not a market credit, billing credit, or reliability-product settlement.
+_Avoid_: Availability credit, capacity credit, performance credit
+
+**Outage Economics**:
+Out of scope for the presentational Simulator Workbench slice. Real operators may track lost generation opportunity cost and additional operations or maintenance cost during outages, cooldown, and refueling, but this project shall not model those costs.
+_Avoid_: Lost revenue counter, outage cost model, maintenance expense tracker
+
+**Resilience Backup**:
+A commercial mode where a Kaleidos Unit is presented as supporting backup or resilience value for a facility type such as a hospital, datacenter, military installation, or remote site. It is not an emergency management panel or black-start control workflow.
+_Avoid_: Emergency mode, incident command, black-start dispatch, alarm state
+
+**Facility Heat**:
+A commercial mode where thermal output is presented as useful heat for facility heating. It is display context only and does not claim cogeneration qualification, process guarantee, or heat-sale billing.
+_Avoid_: Cogeneration certification, steam contract, heat tariff
+
+**Desalination Heat**:
+A commercial mode where thermal output is presented as useful heat for water desalination. It is display context only and does not model a desalination plant contract or water-service billing.
+_Avoid_: Water sale, desalination contract engine, process guarantee
+
+**Pebble-Bed Reactor**:
+Out of scope for Radiant. Pebble-bed designs may appear in external HTGR background research, but the Simulator Workbench shall not include pebble-bed topology or pebble-bed comparison modes.
+_Avoid_: Pebble-bed toggle, VHTR comparator mode, alternative fuel-form view
+
+**Nuclear Thermal Propulsion**:
+Out of scope for Radiant. The Simulator Workbench shall not include rocket propulsion, propellant tank, turbopump, nozzle, or NTP test-article topology.
+_Avoid_: Propulsion analogue, NTP comparison mode, hydrogen nozzle loop
