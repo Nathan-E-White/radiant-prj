@@ -33,6 +33,7 @@
 | SW-013 | Test | Workbench value-basis validation, separate topics, Postgres projections, Iceberg tables, and read-only APIs | `bun run backend:test`, `bun run simops:contract:check`, `bun run simulator-workbench:contract:check`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
 | SW-014 | Test | Resident source declaration, measured-only SCADA frames, token-gated ingest, `scada_measured_frames`, and `scada.measured_frames` | `bun run scada:standins:test`, `bun run backend:test`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
 | SW-015 | Test | `simops.result.v1` contract, simulated-only result ingest, twin imputed state, and lineage materialization | `bun run simops:generator:test`, `bun run backend:test`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
+| SW-016 | Demonstration | Simulation Health stories and fixtures render from shared model contract with 4-card coverage scenarios | `bun run typecheck`, `bun run build-storybook` | VVR-001 |
 
 ## Acceptance Scenario
 

@@ -21,6 +21,8 @@
     "scada:standins:test": "cd workers/scada-standins && cargo test",
     "simops:smoke:local": "scripts/simops-local-smoke.sh",
     "simulator-workbench:dataflow:smoke": "scripts/simulator-workbench-dataflow-smoke.sh",
+    "storybook": "storybook dev --no-open --port 6006",
+    "build-storybook": "storybook build",
     "backend:test": "cd backend/slurm-gateway && PATH=/opt/homebrew/bin:/usr/local/bin:$PATH env GOCACHE=/tmp/radiant-go-cache GOMODCACHE=/tmp/radiant-go-mod-cache go test ./...",
     "backend:run": "cd backend/slurm-gateway && go run ./cmd/server",
     "certs:local": "scripts/create-local-gateway-certs.sh",

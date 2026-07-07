@@ -23,6 +23,7 @@
 | CHG-011 | 2026-07-06 | Closed the SimOps data-plane pre-workbench gates with Docker image metadata/content preflight, WebTransport subscriber smoke probe, Compose-networked smoke workers, and Iceberg-Go append/readback verification before artifact commit. | SW-011, SW-012, SIMOPS-BACKEND-001 | `bun run backend:test`, `bun run infra:check`, `bun run simops:contract:check`, `bun run simops:smoke:local` |
 | CHG-012 | 2026-07-06 | Added the Simulator Workbench backend dataflow slice with resident measured SCADA stand-ins, separate simulated result ingest, Workbench projection writers, twin imputed-state projection, Iceberg tables, read-only APIs, dataflow diagrams, and smoke evidence. | SW-013, SW-014, SW-015, WORKBENCH-DATAFLOW-001, ADR-0005, SWB-DATAFLOW-001 | `bun run backend:test`, `bun run simops:contract:check`, `bun run simulator-workbench:contract:check`, `bun run scada:standins:test`, `bun run simops:generator:test`, `bun run simulator-workbench:dataflow:smoke` |
 | CHG-013 | 2026-07-07 | Refactored the app shell into readiness, simulator-workbench, and SimOps feature modules while preserving existing behavior and keeping fixture-backed workbench state selection. | SW-008, SW-009, SW-013 | `bun run typecheck`, `bun run test`, `bun run ci` |
+| CHG-014 | 2026-07-07 | Added Simulation Health panel Storybook coverage backed by a shared module-level model builder/fixtures for nominal and all major degraded variants. | SW-016 | `bun run typecheck`, `bun run build-storybook` |
 
 ## Control Note
 
