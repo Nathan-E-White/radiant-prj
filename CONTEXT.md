@@ -133,3 +133,17 @@ _Avoid_: Pebble-bed toggle, VHTR comparator mode, alternative fuel-form view
 **Nuclear Thermal Propulsion**:
 Out of scope for Radiant. The Simulator Workbench shall not include rocket propulsion, propellant tank, turbopump, nozzle, or NTP test-article topology.
 _Avoid_: Propulsion analogue, NTP comparison mode, hydrogen nozzle loop
+
+### Public Writing
+
+**Public-Facing Document**:
+An artifact created for readers outside the project team, including resumes, presentation narratives, public bios, and externally shared project summaries. It should explain value and evidence without private implementation sprawl, compliance overclaiming, or demo hype.
+_Avoid_: Internal note, marketing copy, private work log
+
+**Resume**:
+A public-facing evidence document that compresses a person's relevant work into concrete roles, outcomes, and proof points. It is not a biography, sales sheet, or exhaustive project inventory.
+_Avoid_: Bio, CV dump, hype sheet, work diary
+
+**Hemingway-Star Style**:
+The local writing baseline adapted from The Kansas City Star copy rules associated with Ernest Hemingway: short openings, vigorous concrete language, positive construction, and deletion of superfluous words. It is a public-document discipline, not imitation of Hemingway's fiction.
+_Avoid_: Literary voice, macho minimalism, marketing punch-up
