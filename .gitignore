@@ -11,6 +11,7 @@ vite.config.d.ts
 generated/
 .vite/
 .local/
+*.mhtml
 
 # Infrastructure tooling caches
 .terraform/
