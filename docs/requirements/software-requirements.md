@@ -27,7 +27,7 @@ This document defines software and deployment requirements for the interview dem
 | SW-013 | Simulator Workbench backend dataflow shall preserve measured, simulated, and imputed value-basis separation through transport, storage, and read APIs. | The Workbench must not collapse source observations, worker results, and twin estimates into generic metrics. | Test | Verified |
 | SW-014 | Resident public-safe SCADA stand-ins shall declare measured sources and emit deterministic measured frames into Redpanda, Postgres projection storage, and Iceberg tables. | Long-running measured sources need their own resident flow independent of run-scoped simulation workers. | Test | Verified |
 | SW-015 | SimOps workers shall emit separate synthetic simulated result frames that the twin projector consumes to materialize imputed twin state and lineage. | The full backend slice must prove result-to-imputation flow before frontend controls are added. | Test | Verified |
-| SW-016 | The Simulation Health front-end slice shall consume a module-level `SimulationHealthPanelModel` contract and Storybook fixtures for nominal and degraded scenarios across lifecycle, artifact, worker, and stream freshness interpretations. | Shared fixture sourcing keeps stories aligned with component contract and avoids duplicate model literals. | Test | In progress |
+| SW-016 | The Simulation Health front-end slice shall consume a module-level `SimulationHealthPanelModel` contract and Storybook fixtures for nominal and degraded scenarios across lifecycle, artifact, worker, and stream freshness interpretations. | Shared fixture sourcing keeps stories aligned with component contract and avoids duplicate model literals. | Test | Verified |
 
 ## Interface Summary
 

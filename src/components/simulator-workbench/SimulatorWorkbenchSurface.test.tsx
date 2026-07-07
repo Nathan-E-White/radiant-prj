@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { buildWorkbenchProjection, loadFixtureWorkbenchData } from "../../domain/simulator-workbench";
+import { simulationHealthPanelNominal } from "./fixtures/healthPanels.fixture";
 import { SimulatorWorkbenchSurface } from "./SimulatorWorkbenchSurface";
 
 describe("SimulatorWorkbenchSurface", () => {
@@ -10,6 +11,7 @@ describe("SimulatorWorkbenchSurface", () => {
         onSelectUnit={vi.fn()}
         onSelectValue={vi.fn()}
         projection={buildWorkbenchProjection(loadFixtureWorkbenchData())}
+        healthPanelModel={simulationHealthPanelNominal}
       />
     );
 
@@ -28,6 +30,9 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(markup).toContain("Core Power Distribution Estimate");
     expect(markup.toLowerCase()).not.toContain("revenue");
     expect(markup).not.toContain("/api/simulator-workbench");
+    expect(markup).toContain("Simulation Health (4-card interpretation)");
+    expect(markup).toContain("Lifecycle");
+    expect(markup).toContain("Worker");
   });
 
   it("renders commercial display basis when a fleet commercial value is selected", () => {
@@ -36,7 +41,7 @@ describe("SimulatorWorkbenchSurface", () => {
       selectedCommercialBasisId: "CDB-KAL-03-DESALINATION"
     });
     const markup = renderToStaticMarkup(
-      <SimulatorWorkbenchSurface onSelectUnit={vi.fn()} onSelectValue={vi.fn()} projection={projection} />
+      <SimulatorWorkbenchSurface onSelectUnit={vi.fn()} onSelectValue={vi.fn()} projection={projection} healthPanelModel={simulationHealthPanelNominal} />
     );
 
     expect(markup).toContain("Commercial Display Basis");

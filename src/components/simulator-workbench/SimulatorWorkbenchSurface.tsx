@@ -1,6 +1,7 @@
 import { FleetStrip } from "./FleetStrip";
 import { LineagePanel } from "./LineagePanel";
 import { MeasuredStatePanel } from "./MeasuredStatePanel";
+import { SimulationHealthPanel, type SimulationHealthPanelModel } from "./SimulationHealthPanel";
 import { SimulationResultsPanel } from "./SimulationResultsPanel";
 import { TwinStatePanel } from "./TwinStatePanel";
 import { TwinViewport } from "./TwinViewport";
@@ -8,10 +9,12 @@ import type { WorkbenchProjection } from "../../domain/simulator-workbench";
 
 export function SimulatorWorkbenchSurface({
   projection,
+  healthPanelModel,
   onSelectUnit,
   onSelectValue
 }: {
   projection: WorkbenchProjection;
+  healthPanelModel: SimulationHealthPanelModel;
   onSelectUnit: (unitId: string, commercialBasisId: string) => void;
   onSelectValue: (valueId: string) => void;
 }) {
@@ -40,6 +43,7 @@ export function SimulatorWorkbenchSurface({
 
       <div className="simwb-grid">
         <aside className="simwb-stack">
+          <SimulationHealthPanel model={healthPanelModel} />
           <MeasuredStatePanel
             group={projection.groups.measured}
             selectedValueId={selectedValueId}

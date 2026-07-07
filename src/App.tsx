@@ -54,6 +54,7 @@ export default function App() {
       simulatorWorkbenchTab={
         <SimulatorWorkbenchTab
           projection={workbench.projection}
+          healthPanelModel={workbench.healthPanelModel}
           onSelectUnit={workbench.selectUnit}
           onSelectValue={workbench.selectValue}
         />
