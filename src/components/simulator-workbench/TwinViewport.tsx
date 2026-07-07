@@ -1,5 +1,4 @@
 import type { KeyboardEvent, ReactNode } from "react";
-import twinConceptUrl from "../../../docs/design/simulator-workbench-visuals/digital-twin-concept-v1.png";
 import type { TwinViewportEntity } from "../../api/simulatorWorkbench";
 import type {
   ProjectedWorkbenchValue,
@@ -48,13 +47,14 @@ export function TwinViewport({
         <span className="simwb-layer simulated">simulated</span>
       </div>
       <div className="simwb-viewport">
-        <img src={twinConceptUrl} alt="Public-safe simulator workbench digital twin concept" />
         <svg
           aria-label="Kaleidos Unit twin topology overlay"
           className="simwb-overlay"
           role="img"
           viewBox="0 0 100 64"
         >
+          <title>Kaleidos Unit public-safe digital twin schematic</title>
+          <SchematicPlate />
           {model.entityIds.map((entityId) => {
             const layer = layerByEntity.get(entityId);
             const interactive = Boolean(layer);
@@ -88,6 +88,52 @@ export function TwinViewport({
         )}
       </div>
     </section>
+  );
+}
+
+function SchematicPlate() {
+  return (
+    <g aria-hidden="true" className="simwb-schematic">
+      <defs>
+        <linearGradient id="simwb-schematic-vessel-gradient" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stopColor="#d8f5f0" stopOpacity="0.24" />
+          <stop offset="52%" stopColor="#7fc8d8" stopOpacity="0.1" />
+          <stop offset="100%" stopColor="#d8f5f0" stopOpacity="0.2" />
+        </linearGradient>
+        <linearGradient id="simwb-schematic-core-gradient" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor="#f3c058" stopOpacity="0.16" />
+          <stop offset="48%" stopColor="#f08548" stopOpacity="0.44" />
+          <stop offset="100%" stopColor="#55dda0" stopOpacity="0.18" />
+        </linearGradient>
+      </defs>
+
+      <rect className="simwb-schematic-bg" height="64" width="100" />
+      <path className="simwb-schematic-grid" d="M0 8H100 M0 16H100 M0 24H100 M0 32H100 M0 40H100 M0 48H100 M0 56H100" />
+      <path className="simwb-schematic-grid" d="M10 0V64 M20 0V64 M30 0V64 M40 0V64 M50 0V64 M60 0V64 M70 0V64 M80 0V64 M90 0V64" />
+      <path className="simwb-schematic-grid diagonal" d="M-8 64L32 24 M8 64L48 24 M24 64L64 24 M40 64L80 24 M56 64L96 24 M72 64L112 24" />
+
+      <rect className="simwb-schematic-boundary" height="58" rx="8" width="78" x="11" y="3" />
+      <rect className="simwb-schematic-shield" height="52" rx="18" width="46" x="27" y="6" />
+      <path className="simwb-schematic-loop cool" d="M22 32C22 13 78 13 78 32C78 51 22 51 22 32Z" />
+      <path className="simwb-schematic-loop hot" d="M18 35C29 53 70 53 82 35" />
+      <rect className="simwb-schematic-vessel" height="42" rx="16" width="34" x="33" y="10" />
+      <ellipse className="simwb-schematic-core" cx="50" cy="31" rx="9" ry="14" />
+      <path className="simwb-schematic-core-lines" d="M42 25H58 M41 31H59 M42 37H58 M47 18V44 M53 18V44" />
+
+      <path className="simwb-schematic-drums" d="M35 20L41 16L43 45L36 43Z M59 16L65 20L64 43L57 45Z" />
+      <circle className="simwb-schematic-circulator" cx="24" cy="43" r="6" />
+      <path className="simwb-schematic-circulator-blade" d="M24 37V49 M18 43H30 M20 39L28 47 M28 39L20 47" />
+
+      <rect className="simwb-schematic-module power" height="12" rx="2" width="16" x="5" y="26" />
+      <path className="simwb-schematic-module-lines" d="M9 29H17 M9 32H17 M9 35H17" />
+      <rect className="simwb-schematic-module exchanger" height="18" rx="2" width="14" x="75" y="22" />
+      <path className="simwb-schematic-module-lines" d="M78 25H86 M78 29H86 M78 33H86 M78 37H86" />
+      <path className="simwb-schematic-secondary" d="M86 32H98" />
+
+      <path className="simwb-schematic-flow measured" d="M21 32C21 18 38 13 50 13C62 13 79 18 79 32" />
+      <path className="simwb-schematic-flow imputed" d="M50 45C40 43 36 37 36 31C36 24 41 18 50 17C59 18 64 24 64 31C64 37 60 43 50 45Z" />
+      <path className="simwb-schematic-flow simulated" d="M17 34H24 M76 34H90" />
+    </g>
   );
 }
 

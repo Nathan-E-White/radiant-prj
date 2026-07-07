@@ -992,7 +992,7 @@ a:hover {
   display: grid;
   grid-template-columns: minmax(260px, 0.86fr) minmax(420px, 1.55fr) minmax(280px, 0.92fr);
   gap: 10px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .simwb-stack {
@@ -1165,7 +1165,8 @@ a:hover {
 .simwb-viewport-panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  min-height: 520px;
+  align-self: start;
+  min-height: clamp(500px, 39vw, 620px);
   overflow: hidden;
 }
 
@@ -1183,27 +1184,176 @@ a:hover {
 }
 
 .simwb-viewport {
+  isolation: isolate;
   position: relative;
+  display: grid;
+  align-items: center;
   min-height: 0;
   overflow: hidden;
-  background: #071615;
+  background:
+    radial-gradient(circle at 50% 48%, rgba(85, 221, 160, 0.13), transparent 28%),
+    radial-gradient(circle at 72% 48%, rgba(240, 166, 58, 0.1), transparent 24%),
+    radial-gradient(circle at 28% 48%, rgba(58, 160, 255, 0.12), transparent 24%),
+    #061313;
+  padding: clamp(14px, 2vw, 26px);
 }
 
-.simwb-viewport img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  min-height: 480px;
-  object-fit: cover;
-  object-position: center;
+.simwb-viewport::before,
+.simwb-viewport::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  pointer-events: none;
+}
+
+.simwb-viewport::before {
+  background:
+    linear-gradient(rgba(205, 235, 229, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(205, 235, 229, 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  mask-image: radial-gradient(circle at center, black 0 58%, transparent 82%);
+}
+
+.simwb-viewport::after {
+  border: 1px solid rgba(214, 236, 230, 0.08);
+  box-shadow: inset 0 0 90px rgba(1, 8, 9, 0.82);
 }
 
 .simwb-overlay {
-  position: absolute;
-  inset: 0;
+  position: relative;
+  z-index: 1;
+  display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
+  aspect-ratio: 100 / 64;
+  min-height: 0;
+  filter: drop-shadow(0 28px 46px rgba(0, 0, 0, 0.34));
   pointer-events: none;
+}
+
+.simwb-schematic {
+  pointer-events: none;
+}
+
+.simwb-schematic * {
+  vector-effect: non-scaling-stroke;
+}
+
+.simwb-schematic-bg {
+  fill: #061313;
+}
+
+.simwb-schematic-grid {
+  fill: none;
+  stroke: rgba(130, 165, 158, 0.1);
+  stroke-width: 0.35;
+}
+
+.simwb-schematic-grid.diagonal {
+  stroke: rgba(85, 221, 160, 0.08);
+}
+
+.simwb-schematic-boundary {
+  fill: rgba(24, 51, 52, 0.84);
+  stroke: rgba(214, 236, 230, 0.36);
+  stroke-width: 0.85;
+}
+
+.simwb-schematic-shield {
+  fill: rgba(121, 151, 149, 0.15);
+  stroke: rgba(211, 232, 226, 0.34);
+  stroke-width: 0.9;
+}
+
+.simwb-schematic-loop {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2.2;
+}
+
+.simwb-schematic-loop.cool {
+  stroke: rgba(58, 160, 255, 0.34);
+}
+
+.simwb-schematic-loop.hot {
+  stroke: rgba(240, 166, 58, 0.34);
+}
+
+.simwb-schematic-vessel {
+  fill: url("#simwb-schematic-vessel-gradient");
+  stroke: rgba(225, 245, 241, 0.62);
+  stroke-width: 1.1;
+}
+
+.simwb-schematic-core {
+  fill: url("#simwb-schematic-core-gradient");
+  stroke: rgba(245, 201, 122, 0.7);
+  stroke-width: 0.9;
+}
+
+.simwb-schematic-core-lines,
+.simwb-schematic-circulator-blade,
+.simwb-schematic-module-lines {
+  fill: none;
+  stroke: rgba(222, 242, 236, 0.34);
+  stroke-linecap: round;
+  stroke-width: 0.6;
+}
+
+.simwb-schematic-drums {
+  fill: rgba(221, 239, 234, 0.1);
+  stroke: rgba(221, 239, 234, 0.35);
+  stroke-linejoin: round;
+  stroke-width: 0.8;
+}
+
+.simwb-schematic-circulator {
+  fill: rgba(58, 160, 255, 0.1);
+  stroke: rgba(92, 178, 255, 0.48);
+  stroke-width: 0.9;
+}
+
+.simwb-schematic-module {
+  stroke-width: 0.85;
+}
+
+.simwb-schematic-module.power {
+  fill: rgba(58, 160, 255, 0.1);
+  stroke: rgba(92, 178, 255, 0.5);
+}
+
+.simwb-schematic-module.exchanger {
+  fill: rgba(240, 166, 58, 0.11);
+  stroke: rgba(246, 187, 88, 0.52);
+}
+
+.simwb-schematic-secondary {
+  fill: none;
+  stroke: rgba(85, 221, 160, 0.42);
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.simwb-schematic-flow {
+  fill: none;
+  stroke-linecap: round;
+  stroke-width: 1;
+}
+
+.simwb-schematic-flow.measured {
+  stroke: rgba(58, 160, 255, 0.72);
+  stroke-dasharray: 1.2 2.2;
+}
+
+.simwb-schematic-flow.imputed {
+  stroke: rgba(85, 221, 160, 0.64);
+  stroke-dasharray: 1 2;
+}
+
+.simwb-schematic-flow.simulated {
+  stroke: rgba(240, 166, 58, 0.72);
+  stroke-dasharray: 1.4 2.4;
 }
 
 .simwb-overlay-entity {
@@ -1250,6 +1400,7 @@ a:hover {
 
 .simwb-selected-callout {
   position: absolute;
+  z-index: 2;
   left: 18px;
   bottom: 18px;
   display: grid;
@@ -1512,8 +1663,8 @@ a:hover {
     min-height: 380px;
   }
 
-  .simwb-viewport img {
-    min-height: 340px;
+  .simwb-viewport {
+    padding: 10px;
   }
 
   .simwb-lineage-steps {

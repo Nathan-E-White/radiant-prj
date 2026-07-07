@@ -19,8 +19,11 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(markup).toContain("Imputed State");
     expect(markup).toContain("Simulated Result State");
     expect(markup).toContain("Kaleidos Unit twin topology overlay");
+    expect(markup).toContain("Kaleidos Unit public-safe digital twin schematic");
     expect(markup).toContain('id="core"');
     expect(markup).toContain('id="heatExchangers"');
+    expect(markup).not.toContain("<img");
+    expect(markup).not.toContain("digital-twin-concept-v1.png");
     expect(markup).toContain("Engineering Lineage");
     expect(markup).toContain("Core Power Distribution Estimate");
     expect(markup.toLowerCase()).not.toContain("revenue");
