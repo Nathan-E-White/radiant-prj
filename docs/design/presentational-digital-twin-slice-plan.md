@@ -62,7 +62,7 @@ The slice proves that the frontend can present a coherent Kaleidos Unit digital 
 | Fleet cards | Simplified notation; details move to the bottom explanation rail. |
 | Freshness | Show on cards only when late or stale; always include in explanation basis. |
 | Simulation monitoring | Compact Simulated Result State summary only. |
-| SimOps Control | Remains separate. |
+| SimOps Control | Superseded by ADR-0006: absorbed as a lower Status Workbench Container Orchestration region. |
 | Explanation rail | Reused for engineering lineage and commercial display basis. |
 
 ## UX Layout
@@ -301,11 +301,11 @@ Visual QA must confirm:
 - bottom rail switches between engineering lineage and commercial display basis;
 - cooldown shows residual heat but no commercial output;
 - late/stale freshness appears only when degraded;
-- no backend calls are required for the Simulator Workbench tab.
+- no backend calls are required for the upper value-basis workbench region.
 
 ## Acceptance Criteria
 
-- Simulator Workbench is a complete presentational screen backed entirely by local fixtures.
+- Status Workbench preserves the presentational value-basis screen backed by local fixtures.
 - The selected Kaleidos Unit drives fleet strip state, measured panels, imputed panels, simulated summary, viewport overlays, and bottom explanation rail.
 - The fleet strip uses source-backed commercial modes only: PPA electric, direct unit sale, facility heat, desalination heat, and resilience backup.
 - The fleet strip uses source-backed availability phases only: online generation, ramping, cooldown, planned maintenance outage, unplanned maintenance outage, and refueling outage.
@@ -314,8 +314,8 @@ Visual QA must confirm:
 - The reactor-wise twin uses the capped measured stand-ins and capped imputed values from this plan.
 - Core Power Distribution Estimate appears only when multiple flux stand-ins are present.
 - Cooldown Heat appears as reactor-state context and uses Value Basis in the rail.
-- SimOps Control remains separate.
-- No backend API, live stream, broker, database, lake, Docker, Slurm, SCADA, billing, or control-system wiring is introduced.
+- SimOps Control is no longer a standalone top-level tab; ADR-0006 absorbs it below the value-basis workbench.
+- The value-basis workbench region introduces no backend API, live stream, broker, database, lake, Docker, Slurm, SCADA, billing, or control-system wiring.
 - Phaser/Pixi/Three are not added.
 - The slice remains public-safe and avoids real plant telemetry, safety, validated physics, and control-room claims.
 
@@ -323,8 +323,8 @@ Visual QA must confirm:
 
 - Backend read-only Workbench API integration.
 - Live stream or WebTransport workbench delivery.
-- Detailed simulation health panel.
-- SimOps Control migration or folding.
+- Live backend-backed detailed simulation health beyond the static HPC status bay.
+- Further SimOps Control refinement after its Status Workbench folding.
 - Additional reactor units beyond fixture presentation.
 - Billing, settlement, market, tariff, or outage-economics systems.
 - Real SCADA, historian, calibration, alarm, or maintenance workflows.

@@ -20,7 +20,7 @@
 | SR-008 | Configuration audit | `SIMOPS-BACKEND-001` Simulation Ops backend evidence record | `bun run backend:test`, `bun run infra:check`, `bun run simops:contract:check` | OEI-001 |
 | SW-001 | Test | Scheduler state fixtures and logs | `bun run test` | VVR-001 |
 | SW-002 | Test | `JOB-HPC-404`, `EP-HPC-404`, diagnosis unit tests | `bun run test` | VVR-001 |
-| SW-003 | Demonstration | React console tabs and controlled fixture rendering | `bun run typecheck`, `bun run build` | VVR-001 |
+| SW-003 | Demonstration | React console pages and controlled fixture rendering | `bun run typecheck`, `bun run build` | VVR-001 |
 | SW-004 | Configuration audit | Docker Compose, Terraform locals/outputs, Ansible templates, CI workflow | `bun run infra:check` | VVR-001 |
 | SW-005 | Test | Documentation quality checker and controlled traceability records | `bun run quality:check` | VVR-001 |
 | SW-006 | Configuration audit | Generic release operation scripts with v2 compatibility wrappers | Script dry-runs | REL-001 |
@@ -30,19 +30,19 @@
 | SW-010 | Test | SimOps run creation, idempotency, stop, and token-gated ingest handler tests | `bun run backend:test` | SIMOPS-BACKEND-001 |
 | SW-011 | Test | WebTransport subscription metadata, Redpanda-backed lifecycle/telemetry/quality/artifact track routing tests, and the containerized WebTransport smoke probe | `bun run backend:test`, `bun run simops:contract:check`, `bun run simops:smoke:local` | SIMOPS-BACKEND-001 |
 | SW-012 | Configuration audit | Compose, Timescale init SQL, Redpanda, MinIO, WebTransport gateway, Timescale writer, Iceberg-Go writer, and Docker metadata/content preflight artifacts | `bun run infra:check`, `bun run simops:smoke:local` | SIMOPS-BACKEND-001 |
-| SW-013 | Test | Workbench value-basis validation, separate topics, Postgres projections, Iceberg tables, and read-only APIs | `bun run backend:test`, `bun run simops:contract:check`, `bun run simulator-workbench:contract:check`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
+| SW-013 | Test | Status Workbench value-basis validation, separate topics, Postgres projections, Iceberg tables, and read-only APIs | `bun run backend:test`, `bun run simops:contract:check`, `bun run simulator-workbench:contract:check`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
 | SW-014 | Test | Resident source declaration, measured-only SCADA frames, token-gated ingest, `scada_measured_frames`, and `scada.measured_frames` | `bun run scada:standins:test`, `bun run backend:test`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
 | SW-015 | Test | `simops.result.v1` contract, simulated-only result ingest, twin imputed state, and lineage materialization | `bun run simops:generator:test`, `bun run backend:test`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
-| SW-016 | Test | Simulation Health stories and fixtures render from shared model contract with 4-card coverage scenarios and fixture-driven health ticking | `bun run typecheck`, `bun run test`, `bun run build-storybook` | VVR-001 |
+| SW-016 | Test | Status Workbench render test covers the three-page IA, preserved value-basis region, absorbed compute queue, SimOps orchestration subregion, and four-panel HPC status bay | `bun run typecheck`, `bun run test`, `bun run build-storybook` | VVR-001 |
 
 ## Acceptance Scenario
 
 1. Start the app with `bun run dev`.
-2. Open the Kaleidos Brief and confirm public facts include source links and limitations.
+2. Open Welcome and confirm public facts include source links and limitations.
 3. Run the synthetic readiness bundle.
-4. Open the Compute Workbench and select `JOB-HPC-404`.
-5. Confirm the failed job has logs, diagnosis, next action, and preventative control.
-6. Open the Evidence Matrix and confirm requirements link to jobs, evidence packs, hashes, and deployment checks.
+4. Open Status Workbench and select `JOB-HPC-404` in the queue rail.
+5. Confirm the selected job drives the HPC status bay, diagnosis terminal, SimOps orchestration region, and evidence-handoff messaging.
+6. Open Evidence and confirm requirements link to jobs, evidence packs, hashes, and deployment checks.
 7. Run `bun run backend:test` and confirm the Slurm gateway rejects unauthorized requests and records mock jobs.
 8. Create a Simulation Ops run through `POST /api/simops/runs` and confirm the response contains WebTransport subscription metadata, worker tracks, and artifact references.
 9. Run `bun run quality:check` and confirm the v3.0 controlled document and traceability package is complete.

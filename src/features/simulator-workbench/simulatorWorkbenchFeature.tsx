@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { SimulatorWorkbenchSurface, type SimulationHealthPanelModel } from "../../components/simulator-workbench";
+import type { ComputeJob } from "../../domain/types";
 import {
   buildWorkbenchProjection,
   createHealthTickDriver,
@@ -55,23 +57,38 @@ export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelectio
   };
 }
 
-export function SimulatorWorkbenchTab({
+export function StatusWorkbenchTab({
   projection,
-  healthPanelModel,
   onSelectUnit,
-  onSelectValue
+  onSelectValue,
+  computeQueue,
+  selectedJob,
+  scenario,
+  scenarioJobs,
+  bundleState,
+  orchestrationPanel
 }: {
   projection: WorkbenchProjection;
-  healthPanelModel: SimulationHealthPanelModel;
   onSelectUnit: (unitId: string, commercialBasisId: string) => void;
   onSelectValue: (valueId: string) => void;
+  computeQueue: ReactNode;
+  selectedJob: ComputeJob;
+  scenario: string;
+  scenarioJobs: ComputeJob[];
+  bundleState: string;
+  orchestrationPanel: ReactNode;
 }) {
   return (
     <SimulatorWorkbenchSurface
       projection={projection}
-      healthPanelModel={healthPanelModel}
       onSelectUnit={onSelectUnit}
       onSelectValue={onSelectValue}
+      computeQueue={computeQueue}
+      selectedJob={selectedJob}
+      scenario={scenario}
+      scenarioJobs={scenarioJobs}
+      bundleState={bundleState}
+      orchestrationPanel={orchestrationPanel}
     />
   );
 }

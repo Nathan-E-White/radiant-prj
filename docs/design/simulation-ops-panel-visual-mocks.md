@@ -10,7 +10,7 @@
 
 ## Purpose
 
-This document collects visual mockups for the four primary Simulation Ops stress panels inside the existing Compute Workbench. These are static SVG design artifacts only. They do not implement React components, Phaser/WebGL scenes, backend calls, fixture schema, keyboard handlers, or generated evidence.
+This document collects visual mockups for the four primary Simulation Ops stress panels inside the Status Workbench HPC status bay. These are static SVG design artifacts only. They do not implement React components, Phaser/WebGL scenes, backend calls, fixture schema, keyboard handlers, or generated evidence.
 
 All panel content is synthetic simulation-operations stress data. These mocks are not a control-room display, plant monitor, safety-path interface, physics trainer, or validated reactor model.
 
@@ -35,14 +35,14 @@ All panel content is synthetic simulation-operations stress data. These mocks ar
 
 ## Integration Notes
 
-- The mocks are designed to appear inside the existing Compute Workbench, not as a separate top-level product.
+- The mocks are designed to appear inside the Status Workbench lower HPC status bay, not as separate top-level products.
 - `JOB-HPC-404` is the default scenario anchor for scheduler/module drift.
 - `SLURM-GATEWAY-001` is the backend/evidence seam for Slurm submit/status semantics.
-- `EP-HPC-404` and deployment checks remain Evidence Matrix destinations.
+- `EP-HPC-404` and deployment checks remain Evidence destinations.
 - Diagnostic log and evidence handoff regions can appear below these four panels in the integrated layout.
 
 ## Review Questions
 
-1. Do the panels read as an evolution of the current Compute Workbench?
+1. Do the panels read as a queue-driven lower bay inside Status Workbench?
 2. Can a reviewer trace synthetic scheduler, storage, cloud-burst, and fabric warnings to evidence output?
 3. Are the non-safety and synthetic-data boundaries visible without verbal explanation?

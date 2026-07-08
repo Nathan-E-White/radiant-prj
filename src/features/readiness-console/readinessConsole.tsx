@@ -196,6 +196,80 @@ export function BriefTab({
   );
 }
 
+export type ComputeQueuePanelProps = {
+  jobs: ComputeJob[];
+  scenario: string;
+  selectedJob: ComputeJob;
+  setScenario: (scenario: string) => void;
+  setSelectedJobId: (jobId: string) => void;
+  onRunBundle: () => void;
+};
+
+export function ComputeQueuePanel({
+  jobs,
+  scenario,
+  selectedJob,
+  setScenario,
+  setSelectedJobId,
+  onRunBundle
+}: ComputeQueuePanelProps) {
+  return (
+    <div className="panel queue-panel status-queue-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Scheduler emulator</p>
+          <h2>Scientific compute queue</h2>
+        </div>
+        <button className="primary-command" onClick={onRunBundle} type="button">
+          <Play size={16} />
+          Run Bundle
+        </button>
+      </div>
+
+      <div className="scenario-row" aria-label="Scenario selector">
+        {scenarioOptions.map((option) => (
+          <button
+            className={option === scenario ? "scenario active" : "scenario"}
+            key={option}
+            onClick={() => setScenario(option)}
+            type="button"
+          >
+            {option.replace(" synthetic ", " ")}
+          </button>
+        ))}
+      </div>
+
+      <div className="queue-table" role="table" aria-label="Compute jobs">
+        <div className="queue-row queue-head" role="row">
+          <span>Job</span>
+          <span>Discipline</span>
+          <span>Resources</span>
+          <span>State</span>
+        </div>
+        {jobs.map((job) => (
+          <button
+            className={selectedJob.id === job.id ? "queue-row selected" : "queue-row"}
+            key={job.id}
+            onClick={() => setSelectedJobId(job.id)}
+            type="button"
+            role="row"
+          >
+            <span>
+              <strong>{job.id}</strong>
+              <small>{job.title}</small>
+            </span>
+            <span>{job.discipline}</span>
+            <span>
+              {job.resources.nodes}n / {job.resources.ranks}r / {job.resources.storageGb}GB
+            </span>
+            <StatusPill label={job.state} state={job.state} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export function WorkbenchTab({
   bundleState,
   jobs,
@@ -219,59 +293,14 @@ export function WorkbenchTab({
 
   return (
     <section className="content-grid workbench-grid">
-      <div className="panel queue-panel">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">Scheduler emulator</p>
-            <h2>Scientific compute queue</h2>
-          </div>
-          <button className="primary-command" onClick={onRunBundle} type="button">
-            <Play size={16} />
-            Run Bundle
-          </button>
-        </div>
-
-        <div className="scenario-row" aria-label="Scenario selector">
-          {scenarioOptions.map((option) => (
-            <button
-              className={option === scenario ? "scenario active" : "scenario"}
-              key={option}
-              onClick={() => setScenario(option)}
-              type="button"
-            >
-              {option.replace(" synthetic ", " ")}
-            </button>
-          ))}
-        </div>
-
-        <div className="queue-table" role="table" aria-label="Compute jobs">
-          <div className="queue-row queue-head" role="row">
-            <span>Job</span>
-            <span>Discipline</span>
-            <span>Resources</span>
-            <span>State</span>
-          </div>
-          {jobs.map((job) => (
-            <button
-              className={selectedJob.id === job.id ? "queue-row selected" : "queue-row"}
-              key={job.id}
-              onClick={() => setSelectedJobId(job.id)}
-              type="button"
-              role="row"
-            >
-              <span>
-                <strong>{job.id}</strong>
-                <small>{job.title}</small>
-              </span>
-              <span>{job.discipline}</span>
-              <span>
-                {job.resources.nodes}n / {job.resources.ranks}r / {job.resources.storageGb}GB
-              </span>
-              <StatusPill label={job.state} state={job.state} />
-            </button>
-          ))}
-        </div>
-      </div>
+      <ComputeQueuePanel
+        jobs={jobs}
+        scenario={scenario}
+        selectedJob={selectedJob}
+        setScenario={setScenario}
+        setSelectedJobId={setSelectedJobId}
+        onRunBundle={onRunBundle}
+      />
 
       <div className="panel job-panel">
         <div className="panel-heading">

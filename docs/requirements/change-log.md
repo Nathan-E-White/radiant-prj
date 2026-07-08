@@ -25,6 +25,7 @@
 | CHG-013 | 2026-07-07 | Refactored the app shell into readiness, simulator-workbench, and SimOps feature modules while preserving existing behavior and keeping fixture-backed workbench state selection. | SW-008, SW-009, SW-013 | `bun run typecheck`, `bun run test`, `bun run ci` |
 | CHG-014 | 2026-07-07 | Added Simulation Health panel Storybook coverage backed by a shared module-level model builder/fixtures for nominal and all major degraded variants. | SW-016 | `bun run typecheck`, `bun run build-storybook` |
 | CHG-015 | 2026-07-07 | Added fixture-driven 4-card Simulation Health projection logic, dynamic timer driver, and surface integration with cleanup-safe lifecycle. | SW-016 | `bun run typecheck`, `bun run test` |
+| CHG-016 | 2026-07-08 | Consolidated the app IA into Welcome, Status Workbench, and Evidence; absorbed the compute queue and SimOps Control into Status Workbench with a queue-driven HPC status bay. | SW-003, SW-016, ADR-0006 | `bun run typecheck`, `bun run test`, `bun run build`, `bun run build-storybook`, `bun run ci` |
 
 ## Control Note
 

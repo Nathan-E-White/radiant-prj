@@ -8,7 +8,7 @@ import {
 } from "./fixtures/healthPanels.fixture";
 
 const meta: Meta<typeof SimulationHealthPanel> = {
-  title: "Simulator Workbench/Simulation Health Panel",
+  title: "Status Workbench/HPC Status Summary",
   component: SimulationHealthPanel
 };
 

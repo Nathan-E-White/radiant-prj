@@ -33,8 +33,8 @@ export function SimulationHealthPanel({ model }: SimulationHealthPanelProps) {
     <section className="simwb-card" aria-label="Simulation health cards">
       <div className="simwb-card-heading">
         <div>
-          <p className="eyebrow">Simulation Workbench</p>
-          <h3>Simulation Health (4-card interpretation)</h3>
+          <p className="eyebrow">Status Workbench</p>
+          <h3>HPC Status Summary (4-card fixture)</h3>
         </div>
         <span className="simwb-count complete">4 cards</span>
       </div>
