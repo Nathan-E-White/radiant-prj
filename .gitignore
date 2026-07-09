@@ -2,6 +2,9 @@
 node_modules/
 dist/
 coverage/
+test-results/
+storybook-static/
+package-lock.json
 scripts/archive
 *.tsbuildinfo
 vite.config.js
@@ -22,9 +25,9 @@ terraform.tfstate*
 .env
 .env.*
 !.env.example
-/bun.lock
 .DS_Store
 .idea/
+.worktrees/
 target/
 **/target/
 
