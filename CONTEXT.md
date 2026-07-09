@@ -74,6 +74,10 @@ _Avoid_: Planned maintenance only, fuel status badge
 The Fleet Board's visible event-pressure marker. It represents toy disruptions such as routing pressure, service delay, or short local outage pressure, and should stay playful and public-safe.
 _Avoid_: Disaster response, emergency, incident command, sabotage, attack
 
+**Simulation Container Token**:
+A deferred Fleet Board v2 game resource representing player-created simulated-job capacity associated with a reactor. It has a virtual budget cost and a per-reactor cap, both TBD. It is not real infrastructure capacity, cloud spend, project budget, or a live SimOps control.
+_Avoid_: Real container quota, cloud budget, production capacity, live scheduler control
+
 **Cooldown**:
 A post-shutdown phase where the unit is not commercially generating but still has active thermal/reactor-state work to represent. Cooldown is not standby and does not imply immediate restart availability.
 _Avoid_: Standby, offline, idle

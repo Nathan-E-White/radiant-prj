@@ -32,6 +32,8 @@
 | [ ] | Build palette icons | 64x64 PNG/WebP | Medium | Small icon variants for facility buttons. | Placeholder sheet | TBD | Pending |
 | [ ] | Outage/refueling markers | 128x128 PNG/WebP | Medium | Clear board markers, non-alarmist, no SCRAM/emergency language. | None | TBD | Pending |
 | [ ] | Service-credit tokens | 96x96 PNG/WebP | Low | Water/resilience/electric/thermal tokens for score feedback. | None | TBD | Pending |
+| [ ] | Simulation container token | 128x128 PNG/WebP | Low | Future v2 token for player-created simulation capacity, abstract compute container, no vendor/cloud logos. | None | TBD | Pending |
+| [ ] | Simulation job card | 256x256 PNG/WebP | Low | Future v2 card for queued/active simulated jobs, schematic compute tile, no shell/terminal text. | None | TBD | Pending |
 
 ## Style Rules
 

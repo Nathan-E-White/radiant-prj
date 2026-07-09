@@ -52,6 +52,18 @@ Fleet Board uses existing Simulator Workbench projection state as light gameplay
 
 The game does not flatten measured, imputed, and simulated values into one metric stream.
 
+## Deferred V2: Simulation Job Economy
+
+Fleet Board v2 is expected to make player-created simulation jobs part of the game loop. The current v1 implementation only reads Workbench projection state as a modifier; it does not let the player create simulated jobs or persist game actions through SimOps.
+
+Initial v2 note:
+
+- each reactor may support a capped number of associated simulation containers;
+- each simulation container costs virtual game budget;
+- the exact cap, cost curve, and reward model are TBD;
+- this budget is a game resource, not cloud spend, real infrastructure capacity, or project budget;
+- simulated job output must remain `Simulated Result State` and must not become measured or imputed state unless it flows through the existing Workbench semantics.
+
 ## Prototype Verdict
 
 The logic prototype is available with:
