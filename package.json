@@ -17,9 +17,11 @@
     "adr:check": "node scripts/check-adr-docs.mjs",
     "simops:contract:check": "node scripts/check-simops-contract.mjs",
     "simops:generator:test": "cd workers/simops-generator && cargo test",
+    "simops:smoke:json:test": "node --test scripts/simops-smoke-json.node-test.mjs",
     "simulator-workbench:contract:check": "node scripts/check-simulator-workbench-contract.mjs",
     "scada:standins:test": "cd workers/scada-standins && cargo test",
     "simops:smoke:local": "scripts/simops-local-smoke.sh",
+    "simops:smoke:docker-orbstack": "scripts/simops-docker-orbstack-smoke.sh",
     "simulator-workbench:dataflow:smoke": "scripts/simulator-workbench-dataflow-smoke.sh",
     "storybook": "storybook dev --no-open --port 6006",
     "build-storybook": "storybook build",
@@ -37,7 +39,7 @@
     "fold:v2": "scripts/archive/fold-v2-to-main.sh",
     "checkpoint:v2": "scripts/archive/checkpoint-v2.sh",
     "cleanup:v2": "scripts/archive/cleanup-v2-hygiene.sh",
-    "ci": "\"$npm_execpath\" run typecheck && \"$npm_execpath\" run test && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run backend:deps:check && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run infra:check && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run simops:contract:check && \"$npm_execpath\" run simulator-workbench:contract:check && \"$npm_execpath\" run simops:generator:test && \"$npm_execpath\" run scada:standins:test",
+    "ci": "\"$npm_execpath\" run typecheck && \"$npm_execpath\" run test && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run backend:deps:check && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run infra:check && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run simops:contract:check && \"$npm_execpath\" run simulator-workbench:contract:check && \"$npm_execpath\" run simops:smoke:json:test && \"$npm_execpath\" run simops:generator:test && \"$npm_execpath\" run scada:standins:test",
     "ci:full": "\"$npm_execpath\" run ci && \"$npm_execpath\" run compose:smoke"
   },
   "dependencies": {

@@ -36,6 +36,7 @@
 | SW-016 | Test | Status Workbench render test covers the three-page IA, preserved value-basis region, absorbed compute queue, SimOps orchestration subregion, and four-panel HPC status bay | `bun run typecheck`, `bun run test`, `bun run build-storybook` | VVR-001 |
 | SW-017 | Test | Docker SDK SimOps adapter fake-client tests for profile consumption, create/start construction, label/env/network propagation, structured metadata/errors, and run/worker-scoped stop targeting | `go test ./internal/gateway ./internal/simopsdocker -run 'TestDefaultSimopsController|TestSpooler'`, `bun run backend:test`, `bun run backend:deps:check`, `bun run ci` | SIMOPS-DOCKER-SDK-001 |
 | SW-018 | Test | SyncRun adapter contract, runtime-neutral observed worker states, Docker container-state mapping, missing-resource behavior, and telemetry/artifact/data-plane boundary tests | `go test ./internal/gateway ./internal/simopsdocker -run 'TestSimopsControllerSyncs|TestWorkerTelemetryDoesNotOverwrite|TestDataPlaneAndArtifactUpdatesDoNotMutate|TestSpoolerSyncRunProfiles'`, `bun run backend:test`, `bun run backend:deps:check`, `bun run ci` | SIMOPS-SYNCRUN-001 |
+| SW-019 | Demonstration | Docker/OrbStack SimOps Runtime Proof for API-driven worker launch, gateway-only worker ingest, observed lifecycle sync, zero-TTL success cleanup, failed-run retention, and smoke-forced cleanup | `bun run simops:smoke:json:test`, `bun run simops:smoke:docker-orbstack` (`SIMOPS_SMOKE_BUILD=always` for forced image rebuild), `bun run infra:check`, `bun run ci` | SIMOPS-DOCKER-ORBSTACK-E2E-001 |
 
 ## Acceptance Scenario
 
@@ -51,3 +52,4 @@
 10. Run `bun run simulator-workbench:dataflow:smoke` and confirm measured, telemetry, simulated, and imputed units reach Redpanda, Postgres, Iceberg, and the read-only Workbench APIs.
 11. Run the Docker SDK SimOps adapter unit slice and confirm worker launch uses run connection profiles without Docker CLI shell-out.
 12. Run the SyncRun lifecycle unit slice and confirm runtime observations remain separate from telemetry, artifacts, and data-plane health.
+13. Run `bun run simops:smoke:docker-orbstack` and confirm the Docker/OrbStack runtime proof reports API launch, gateway-only ingest, observed Docker lifecycle, zero-TTL success cleanup, failed-run retention with logs, and forced cleanup. Use `SIMOPS_SMOKE_BUILD=always` when the evidence must include a fresh image rebuild.

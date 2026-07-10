@@ -34,6 +34,8 @@ This document identifies internal and operational interfaces that are controlled
 | `scripts/check-quality-docs.mjs` | Controlled markdown docs | Pass/fail documentation structure check |
 | `scripts/check-simops-contract.mjs` | Simulation Ops schemas and examples | Pass/fail contract example validation |
 | `scripts/check-simulator-workbench-contract.mjs` | Simulator Workbench, SCADA stand-in, and digital twin schemas/examples | Pass/fail scaffold contract validation |
+| `scripts/simops-smoke-json.mjs` | SimOps smoke JSON from API responses and Docker inspect | Pass/fail runtime proof parsing, gateway-ingest credential checks, and redacted evidence output |
+| `scripts/simops-docker-orbstack-smoke.sh` | Local Docker/OrbStack compose platform and optional `SIMOPS_SMOKE_BUILD=auto\|always\|never` image build mode | Pass/fail SimOps Runtime Proof for Docker worker launch, gateway-only ingest, observed lifecycle, zero-TTL success cleanup, failed-run retention, and smoke-forced cleanup |
 | `scripts/simulator-workbench-dataflow-smoke.sh` | Local Docker/OrbStack compose platform | Pass/fail backend dataflow proof for measured, telemetry, simulated, and imputed units |
 | `scripts/checkpoint-wip.sh` | Git worktree state | WIP checkpoint commit and optional push |
 | `scripts/fold-branch.sh` | Source and target branches | No-fast-forward merge into target branch |
@@ -84,6 +86,8 @@ The contract uses NDJSON as the canonical example and local fixture format. Live
 Observed runtime-worker lifecycle is separate from telemetry stream health, artifact disposition, Redpanda status, Postgres status, and Iceberg write health. Docker sync maps container existence and inspected container state into the neutral state set. Kubernetes sync will use the same state set: Job `Complete` maps to `succeeded`, Job `Failed` maps to `failed`, Pod `Pending` maps to `pending`, Pod `Running` maps to `active`, Pod `Succeeded` maps to `succeeded`, Pod `Failed` maps to `failed`, `ErrImagePull`/`ImagePullBackOff` maps to `image-pull-failed`, and missing/deleted resources map to `missing` unless the run is already stopped.
 
 Run inspection remains available when a runtime sync attempt fails; in that case the handler returns the stored run and worker records without fresh observed lifecycle updates.
+
+Ordinary run-scoped worker containers are controlled by Gateway-Only Worker Ingest. Runtime proof may inspect worker container labels and environment keys, but evidence output must redact tokens and must fail if ordinary workers receive Redpanda, Postgres, Iceberg, Docker, Kubernetes, Workbench, or AWS credential-bearing environment variables.
 
 | MoQ Namespace | Track | Payload |
 | --- | --- | --- |

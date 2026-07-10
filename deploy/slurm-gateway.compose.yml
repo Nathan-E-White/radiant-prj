@@ -3,6 +3,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/slurm-gateway.Dockerfile
+      target: gateway-runtime
       args:
         SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
         SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
@@ -29,9 +30,9 @@ services:
       SIMOPS_WORKER_INGEST_BASE_URL: "http://slurm-gateway:8080"
       SIMOPS_WORKER_NETWORK: "radiant-simops-local"
       SIMOPS_WORKER_KUBERNETES_NAMESPACE: "radiant-simops"
-      SIMOPS_WORKER_FRAME_OVERRIDE: "2"
-      SIMOPS_WORKER_CLEANUP_TTL: "10m"
-      SIMOPS_WORKER_AUTO_REMOVE: "true"
+      SIMOPS_WORKER_FRAME_OVERRIDE: "${SIMOPS_WORKER_FRAME_OVERRIDE:-2}"
+      SIMOPS_WORKER_CLEANUP_TTL: "${SIMOPS_WORKER_CLEANUP_TTL:-10m}"
+      SIMOPS_WORKER_AUTO_REMOVE: "${SIMOPS_WORKER_AUTO_REMOVE:-false}"
       SIMOPS_MOQ_WEBTRANSPORT_URL: "https://127.0.0.1:9443/moq/simops"
       SIMOPS_ICEBERG_CATALOG: "postgres-sql"
       SIMOPS_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
@@ -47,7 +48,7 @@ services:
       AWS_ACCESS_KEY_ID: "radiant"
       AWS_SECRET_ACCESS_KEY: "radiant-password"
       AWS_EC2_METADATA_DISABLED: "true"
-      SIMOPS_ICEBERG_WRITER_MODE: "iceberg-go"
+      SIMOPS_ICEBERG_WRITER_MODE: "manifest"
       SIMOPS_ICEBERG_BATCH_SIZE: "1"
       SIMOPS_ICEBERG_FLUSH_INTERVAL: "5s"
       SIMOPS_ICEBERG_RUST_CMD: ""

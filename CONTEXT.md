@@ -55,6 +55,16 @@ The runtime-resource state observed for a run-scoped worker, such as pending, ac
 It is not telemetry health, artifact disposition, data-plane health, or simulated result quality.
 _Avoid_: Telemetry health, artifact health, infrastructure health
 
+**Gateway-Only Worker Ingest**:
+The rule that an ordinary Run-Scoped Simulation Worker sends operational telemetry and simulated result state through Simulation Ops gateway ingest URLs and tokens, without receiving direct Redpanda, Postgres, Iceberg, Docker, or Kubernetes credentials.
+Trusted data-plane roles may receive the credentials their role requires; ordinary run-scoped workers may not.
+_Avoid_: Direct data-plane worker, credentialed simulation worker
+
+**SimOps Runtime Proof**:
+A verification claim that a SimOps Runtime Adapter can launch, observe, and clean up Run-Scoped Simulation Workers through the existing Simulation Ops run interface while preserving Gateway-Only Worker Ingest.
+It is narrower than full data-plane or lakehouse validation.
+_Avoid_: Full lakehouse proof, browser UX proof, platform provisioning proof
+
 **Kaleidos Unit**:
 The single standardized reactor unit represented by the Simulator Workbench: a public-safe Kaleidos-style prismatic HTGR with TRISO/prismatic graphite core, helium primary loop, control drum, turbomachinery/cooling, reactor/shielding, vessel/container boundary, and heat/electric output context.
 _Avoid_: Generic reactor, reactor zoo, pebble-bed variant

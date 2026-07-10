@@ -92,6 +92,9 @@ pub fn post_ingest(run: &GeneratedRun, url: &str, token: &str) -> Result<()> {
 }
 
 pub fn post_results(results: &[SimulatedResultFrame], url: &str, token: &str) -> Result<()> {
+    if results.is_empty() {
+        return Ok(());
+    }
     let payload = serde_json::to_vec(&json!({ "results": results }))?;
     post_json(payload, url, "X-Simops-Ingest-Token", token)
 }
@@ -528,6 +531,16 @@ mod ingest_tests {
         )
         .expect_err("bad status should fail");
         assert!(error.to_string().contains("non-success status"));
+    }
+
+    #[test]
+    fn skips_result_ingest_when_no_results_exist() {
+        post_results(
+            &[],
+            "http://127.0.0.1:1/internal/simops/runs/RUN-TEST-001/results",
+            "secret-token",
+        )
+        .expect("empty result batch should not post");
     }
 
     fn read_http_request(stream: &mut TcpStream) -> String {

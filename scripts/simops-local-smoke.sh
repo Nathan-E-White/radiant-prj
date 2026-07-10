@@ -67,6 +67,8 @@ repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
 export PATH="$HOME/.orbstack/bin:/opt/homebrew/bin:/usr/local/bin:/Applications/Docker.app/Contents/Resources/bin:$PATH"
+export SIMOPS_WORKER_AUTO_REMOVE="${SIMOPS_WORKER_AUTO_REMOVE:-true}"
+export SIMOPS_WORKER_FRAME_OVERRIDE="${SIMOPS_WORKER_FRAME_OVERRIDE:-2}"
 compose=(docker compose -f deploy/slurm-gateway.compose.yml)
 
 export SIMOPS_GO_BUILDER_IMAGE="${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"

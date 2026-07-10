@@ -155,7 +155,7 @@ func (s Spooler) SyncRun(ctx context.Context, run gateway.SimopsRunRecord, worke
 	if err != nil {
 		return nil, err
 	}
-	return s.SyncRunProfiles(ctx, run, profiles)
+	return s.syncRunProfiles(ctx, run, profiles, workerRecordsByID(workers))
 }
 
 func (s Spooler) StopRunProfiles(ctx context.Context, runID string, profiles []gateway.RunConnectionProfile) error {
@@ -171,6 +171,10 @@ func (s Spooler) StopRunProfiles(ctx context.Context, runID string, profiles []g
 }
 
 func (s Spooler) SyncRunProfiles(ctx context.Context, run gateway.SimopsRunRecord, profiles []gateway.RunConnectionProfile) ([]gateway.ObservedWorkerLifecycle, error) {
+	return s.syncRunProfiles(ctx, run, profiles, nil)
+}
+
+func (s Spooler) syncRunProfiles(ctx context.Context, run gateway.SimopsRunRecord, profiles []gateway.RunConnectionProfile, priorWorkers map[string]gateway.SimopsWorkerRecord) ([]gateway.ObservedWorkerLifecycle, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -209,6 +213,10 @@ func (s Spooler) SyncRunProfiles(ctx context.Context, run gateway.SimopsRunRecor
 	for _, profile := range profiles {
 		item, ok := byWorker[profile.WorkerID]
 		if !ok {
+			if observation, ok := cleanedUpSucceededObservation(run, profile, priorWorkers[profile.WorkerID], s.now()); ok {
+				observations = append(observations, observation)
+				continue
+			}
 			observations = append(observations, s.missingWorkerObservation(ctx, run, profile))
 			continue
 		}
@@ -217,7 +225,13 @@ func (s Spooler) SyncRunProfiles(ctx context.Context, run gateway.SimopsRunRecor
 			observations = append(observations, observedFromProfile(run, profile, gateway.ObservedWorkerMissing, item.ID, "container_inspect", err.Error(), nil, item.Labels, s.now()))
 			continue
 		}
-		observations = append(observations, observedFromDockerState(run, profile, item, inspect, s.now()))
+		observation := observedFromDockerState(run, profile, item, inspect, s.now())
+		if succeededCleanupDue(profile, inspect, observation, s.now()) {
+			if err := s.Client.ContainerRemove(ctx, observation.RuntimeID, container.RemoveOptions{Force: true}); err != nil {
+				return nil, fmt.Errorf("cleanup succeeded simops worker container %s for run %s: %w", observation.RuntimeID, runID, err)
+			}
+		}
+		observations = append(observations, observation)
 	}
 	return observations, nil
 }
@@ -348,6 +362,53 @@ func observedFromProfile(run gateway.SimopsRunRecord, profile gateway.RunConnect
 		ObservedAt: now.UTC(),
 		Labels:     copyLabels(labels),
 	}
+}
+
+func workerRecordsByID(workers []gateway.SimopsWorkerRecord) map[string]gateway.SimopsWorkerRecord {
+	byID := make(map[string]gateway.SimopsWorkerRecord, len(workers))
+	for _, worker := range workers {
+		workerID := strings.TrimSpace(worker.WorkerID)
+		if workerID != "" {
+			byID[workerID] = worker
+		}
+	}
+	return byID
+}
+
+func cleanedUpSucceededObservation(run gateway.SimopsRunRecord, profile gateway.RunConnectionProfile, worker gateway.SimopsWorkerRecord, now time.Time) (gateway.ObservedWorkerLifecycle, bool) {
+	if worker.ObservedLifecycle != gateway.ObservedWorkerSucceeded {
+		return gateway.ObservedWorkerLifecycle{}, false
+	}
+	return observedFromProfile(
+		run,
+		profile,
+		gateway.ObservedWorkerSucceeded,
+		worker.RuntimeID,
+		"cleaned-up",
+		"worker runtime resource was cleaned up after success",
+		worker.ObservedExitCode,
+		worker.Labels,
+		now,
+	), true
+}
+
+func succeededCleanupDue(profile gateway.RunConnectionProfile, inspect container.InspectResponse, observation gateway.ObservedWorkerLifecycle, now time.Time) bool {
+	if observation.State != gateway.ObservedWorkerSucceeded || strings.TrimSpace(observation.RuntimeID) == "" {
+		return false
+	}
+	if profile.Cleanup.TTLSecondsAfterFinished < 0 {
+		return false
+	}
+	state := inspect.State
+	if state == nil {
+		return false
+	}
+	ttl := time.Duration(profile.Cleanup.TTLSecondsAfterFinished) * time.Second
+	finishedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(state.FinishedAt))
+	if err != nil || finishedAt.IsZero() {
+		return ttl == 0
+	}
+	return !now.Before(finishedAt.Add(ttl))
 }
 
 func dockerIntPtr(value int) *int {

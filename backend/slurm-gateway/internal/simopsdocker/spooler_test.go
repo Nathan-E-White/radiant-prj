@@ -356,6 +356,96 @@ func TestSpoolerSyncRunProfilesMapsDockerContainerStates(t *testing.T) {
 	}
 }
 
+func TestSpoolerSyncRunProfilesCleansSucceededContainersAfterTTL(t *testing.T) {
+	run := testDockerRun("RUN-SYNC-CLEANUP")
+	cfg := testDockerConfig()
+	cfg.WorkerAutoRemove = false
+	cfg.WorkerCleanupTTL = 0
+	client := &fakeDockerClient{
+		image: image.InspectResponse{ID: "image-123"},
+		listed: []container.Summary{
+			dockerSummary("container-success", "RUN-SYNC-CLEANUP", "scheduler-01", "scheduler"),
+		},
+		inspect: map[string]container.InspectResponse{
+			"container-success": dockerInspect("container-success", container.State{
+				Status:     container.StateExited,
+				ExitCode:   0,
+				FinishedAt: fixedNow().Add(-time.Second).Format(time.RFC3339Nano),
+			}),
+		},
+	}
+	spooler := Spooler{Config: cfg, Client: client, Now: fixedNow}
+
+	observations, err := spooler.SyncRunProfiles(context.Background(), run, testDockerProfilesWithConfig(t, cfg, run, gateway.SimopsWorkerScheduler))
+	if err != nil {
+		t.Fatalf("sync run: %v", err)
+	}
+	if len(observations) != 1 || observations[0].State != gateway.ObservedWorkerSucceeded {
+		t.Fatalf("expected succeeded observation before cleanup, got %#v", observations)
+	}
+	if !slices.Equal(client.removed, []string{"container-success"}) {
+		t.Fatalf("expected succeeded container cleanup, got %#v", client.removed)
+	}
+}
+
+func TestSpoolerSyncRunProfilesRetainsFailedContainers(t *testing.T) {
+	run := testDockerRun("RUN-SYNC-RETAIN")
+	cfg := testDockerConfig()
+	cfg.WorkerAutoRemove = false
+	cfg.WorkerCleanupTTL = 0
+	client := &fakeDockerClient{
+		image: image.InspectResponse{ID: "image-123"},
+		listed: []container.Summary{
+			dockerSummary("container-failed", "RUN-SYNC-RETAIN", "scheduler-01", "scheduler"),
+		},
+		inspect: map[string]container.InspectResponse{
+			"container-failed": dockerInspect("container-failed", container.State{
+				Status:     container.StateExited,
+				ExitCode:   2,
+				Error:      "manifest validation failed",
+				FinishedAt: fixedNow().Add(-time.Second).Format(time.RFC3339Nano),
+			}),
+		},
+	}
+	spooler := Spooler{Config: cfg, Client: client, Now: fixedNow}
+
+	observations, err := spooler.SyncRunProfiles(context.Background(), run, testDockerProfilesWithConfig(t, cfg, run, gateway.SimopsWorkerScheduler))
+	if err != nil {
+		t.Fatalf("sync run: %v", err)
+	}
+	if len(observations) != 1 || observations[0].State != gateway.ObservedWorkerFailed {
+		t.Fatalf("expected failed observation, got %#v", observations)
+	}
+	if len(client.removed) != 0 {
+		t.Fatalf("expected failed container retention, got removals %#v", client.removed)
+	}
+}
+
+func TestSpoolerSyncRunPreservesSucceededStateAfterCleanup(t *testing.T) {
+	run := testDockerRun("RUN-SYNC-CLEANED")
+	cfg := testDockerConfig()
+	client := &fakeDockerClient{image: image.InspectResponse{ID: "image-123"}}
+	spooler := Spooler{Config: cfg, Client: client, Now: fixedNow}
+
+	observations, err := spooler.SyncRun(context.Background(), run, []gateway.SimopsWorkerRecord{{
+		RunID:             run.RunID,
+		WorkerID:          "scheduler-01",
+		WorkerKind:        gateway.SimopsWorkerScheduler,
+		ObservedLifecycle: gateway.ObservedWorkerSucceeded,
+		Runtime:           "docker",
+		RuntimeID:         "container-success",
+	}})
+	if err != nil {
+		t.Fatalf("sync run: %v", err)
+	}
+	if len(observations) != 1 || observations[0].State != gateway.ObservedWorkerSucceeded {
+		t.Fatalf("expected cleaned-up succeeded observation, got %#v", observations)
+	}
+	if observations[0].Reason != "cleaned-up" || observations[0].RuntimeID != "container-success" {
+		t.Fatalf("expected cleaned-up detail, got %#v", observations[0])
+	}
+}
+
 func TestSpoolerSyncRunProfilesReportsMissingStoppedAndImagePullFailure(t *testing.T) {
 	run := testDockerRun("RUN-SYNC-MISSING")
 	profiles := testDockerProfiles(t, run, gateway.SimopsWorkerScheduler)
@@ -450,7 +540,12 @@ func testDockerRun(runID string) gateway.SimopsRunRecord {
 
 func testDockerProfiles(t *testing.T, run gateway.SimopsRunRecord, workers ...gateway.SimopsWorkerKind) []gateway.RunConnectionProfile {
 	t.Helper()
-	profiles, err := gateway.BuildRunWorkerConnectionProfiles(testDockerConfig(), run, workers)
+	return testDockerProfilesWithConfig(t, testDockerConfig(), run, workers...)
+}
+
+func testDockerProfilesWithConfig(t *testing.T, cfg gateway.SimopsConfig, run gateway.SimopsRunRecord, workers ...gateway.SimopsWorkerKind) []gateway.RunConnectionProfile {
+	t.Helper()
+	profiles, err := gateway.BuildRunWorkerConnectionProfiles(cfg, run, workers)
 	if err != nil {
 		t.Fatalf("build profiles: %v", err)
 	}
