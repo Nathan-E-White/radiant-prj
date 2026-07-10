@@ -10,18 +10,18 @@
 
 ## Purpose
 
-This storyboard describes key-triggered synthetic Simulation Ops scenarios inside the existing Compute Workbench. It is a design artifact only. It does not define keyboard handlers, React state, backend calls, or fixture schema.
+This storyboard describes key-triggered synthetic Simulation Ops scenarios inside the Status Workbench lower HPC status bay. It is a design artifact only. It does not define keyboard handlers, React state, backend calls, or fixture schema.
 
 ## Shared Interaction Model
 
 ```text
-User selects Compute Workbench
+User selects Status Workbench
   -> selects JOB-HPC-404
-  -> switches local mode to Simulation Ops Stress
+  -> reviews the lower HPC status bay
   -> triggers a synthetic scenario key
   -> workbench panels update in the mockup
   -> evidence handoff names the records that would be reviewed
-  -> Evidence Matrix remains the destination for traceability
+  -> Evidence remains the destination for traceability
 ```
 
 Each scenario is synthetic simulation-operations stress data. It is not a plant event, operator command, safety function, or physical reactor state.
@@ -54,7 +54,7 @@ Each scenario is synthetic simulation-operations stress data. It is not a plant 
 | 2 | Multiphysics Job Co-scheduler shows `scheduler drift`, `module-rerun`, allocation state, MPI rank split, and active queue Gantt | The trigger is an infrastructure workload condition, not reactor behavior. |
 | 3 | Co-scheduler status shows held or failed synthetic job state | The view references the `SLURM-GATEWAY-001` contract for submit/status semantics. |
 | 4 | Diagnostic Log shows the existing worker module mismatch lines | Root cause and next action are pulled from the current fixture concept. |
-| 5 | Evidence Handoff points to `slurm-404.out`, `module-inventory.diff`, and `triage-note.md` | Evidence Matrix remains the controlled destination. |
+| 5 | Evidence Handoff points to `slurm-404.out`, `module-inventory.diff`, and `triage-note.md` | Evidence remains the controlled destination. |
 
 ## Storyboard: Checkpoint Pressure
 
@@ -84,7 +84,7 @@ Each scenario is synthetic simulation-operations stress data. It is not a plant 
 | 2 | Fabric Topology and MPI Profiler shows InfiniBand counters, message-size distribution, non-blocking communication overhead, and topology heat | This is HPC infrastructure telemetry, not plant instrumentation. |
 | 3 | Co-scheduler barrier waits may rise if fabric delay affects synchronization | The synchronization warning is visible in the same workbench. |
 | 4 | Diagnostic Log recommends checking fabric counters, job placement, and artifact transfer path | This reflects job-description-aligned Linux/HPC triage. |
-| 5 | Evidence Handoff links deployment checks and triage note | The Evidence Matrix records limitations and synthetic provenance. |
+| 5 | Evidence Handoff links deployment checks and triage note | Evidence records limitations and synthetic provenance. |
 
 ## Review Notes
 

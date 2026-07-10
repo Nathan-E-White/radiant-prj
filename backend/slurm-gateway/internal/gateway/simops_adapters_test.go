@@ -8,8 +8,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/segmentio/kafka-go"
 )
 
 func TestDockerSimopsSpoolerLaunchesWorkerWithIngestArgs(t *testing.T) {
@@ -194,11 +192,11 @@ func TestPostgresSimopsStoreRoundTrip(t *testing.T) {
 }
 
 type capturingKafkaWriter struct {
-	messages []kafka.Message
+	messages []SimopsBrokerMessage
 	err      error
 }
 
-func (w *capturingKafkaWriter) WriteMessages(_ context.Context, msgs ...kafka.Message) error {
+func (w *capturingKafkaWriter) WriteMessages(_ context.Context, msgs ...SimopsBrokerMessage) error {
 	if w.err != nil {
 		return w.err
 	}

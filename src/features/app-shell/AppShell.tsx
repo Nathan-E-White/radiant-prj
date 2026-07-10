@@ -5,23 +5,20 @@ import {
   Cpu,
   GitBranch,
   ServerCog,
-  ShieldCheck,
-  TerminalSquare
+  ShieldCheck
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { Metric, StatusPill } from "../shared/presentation";
 
-export type AppTabId = "brief" | "workbench" | "simulator-workbench" | "evidence" | "simops";
+export type AppTabId = "welcome" | "status" | "evidence";
 
 type Tab = { id: AppTabId; label: string; icon: LucideIcon };
 
 export const appTabItems: Array<Tab> = [
-  { id: "brief", label: "Kaleidos Brief", icon: Boxes },
-  { id: "workbench", label: "Compute Workbench", icon: TerminalSquare },
-  { id: "simulator-workbench", label: "Simulator Workbench", icon: Activity },
-  { id: "evidence", label: "Evidence Matrix", icon: ClipboardCheck },
-  { id: "simops", label: "SimOps Control", icon: ServerCog }
+  { id: "welcome", label: "Welcome", icon: Boxes },
+  { id: "status", label: "Status Workbench", icon: Activity },
+  { id: "evidence", label: "Evidence", icon: ClipboardCheck }
 ];
 
 type AppShellProps = {
@@ -30,11 +27,9 @@ type AppShellProps = {
   jobCount: number;
   traceabilityProblemsCount: number;
   deploymentReadiness: number;
-  briefTab: ReactNode;
-  workbenchTab: ReactNode;
-  simulatorWorkbenchTab: ReactNode;
+  welcomeTab: ReactNode;
+  statusWorkbenchTab: ReactNode;
   evidenceTab: ReactNode;
-  simopsTab: ReactNode;
 };
 
 export function AppShell({
@@ -43,11 +38,9 @@ export function AppShell({
   jobCount,
   traceabilityProblemsCount,
   deploymentReadiness,
-  briefTab,
-  workbenchTab,
-  simulatorWorkbenchTab,
-  evidenceTab,
-  simopsTab
+  welcomeTab,
+  statusWorkbenchTab,
+  evidenceTab
 }: AppShellProps) {
   return (
     <main className="app-shell">
@@ -56,8 +49,8 @@ export function AppShell({
           <p className="eyebrow">Public-safe engineering demo</p>
           <h1>Kaleidos Compute Readiness Console</h1>
           <p className="deck">
-            Source-linked product facts, synthetic transport jobs, HPC failure triage, and controlled evidence
-            records in one compact screen-share.
+            Source-linked product facts, Status Workbench simulation state, HPC orchestration, and controlled
+            evidence records in one compact screen-share.
           </p>
         </div>
         <div className="summary-strip" aria-label="Readiness summary">
@@ -90,11 +83,9 @@ export function AppShell({
         })}
       </nav>
 
-      {activeTab === "brief" && <>{briefTab}</>}
-      {activeTab === "workbench" && <>{workbenchTab}</>}
-      {activeTab === "simulator-workbench" && <>{simulatorWorkbenchTab}</>}
+      {activeTab === "welcome" && <>{welcomeTab}</>}
+      {activeTab === "status" && <>{statusWorkbenchTab}</>}
       {activeTab === "evidence" && <>{evidenceTab}</>}
-      {activeTab === "simops" && <>{simopsTab}</>}
     </main>
   );
 }

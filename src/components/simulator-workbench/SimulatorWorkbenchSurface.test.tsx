@@ -1,18 +1,26 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+import { fixtures } from "../../domain/readiness";
 import { buildWorkbenchProjection, loadFixtureWorkbenchData } from "../../domain/simulator-workbench";
 import { SimulatorWorkbenchSurface } from "./SimulatorWorkbenchSurface";
 
 describe("SimulatorWorkbenchSurface", () => {
-  it("renders the integrated presentational twin screen with fleet, viewport, value bases, and explanation rail", () => {
+  it("renders the integrated Status Workbench with fleet, viewport, value bases, orchestration, and HPC status", () => {
     const markup = renderToStaticMarkup(
       <SimulatorWorkbenchSurface
         onSelectUnit={vi.fn()}
         onSelectValue={vi.fn()}
         projection={buildWorkbenchProjection(loadFixtureWorkbenchData())}
+        computeQueue={<div>Scientific compute queue</div>}
+        selectedJob={fixtures.computeJobs.find((job) => job.id === "JOB-HPC-404") ?? fixtures.computeJobs[0]}
+        scenario="DOME synthetic full-power readiness bundle"
+        scenarioJobs={fixtures.computeJobs}
+        bundleState="ready"
+        orchestrationPanel={<div>Containerized worker orchestration</div>}
       />
     );
 
+    expect(markup).toContain("Status Workbench");
     expect(markup).toContain("KAL-01");
     expect(markup).toContain("KAL-05");
     expect(markup).toContain("Measured State");
@@ -28,6 +36,15 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(markup).toContain("Core Power Distribution Estimate");
     expect(markup.toLowerCase()).not.toContain("revenue");
     expect(markup).not.toContain("/api/simulator-workbench");
+    expect(markup).toContain("Container orchestration");
+    expect(markup).toContain("Containerized worker orchestration");
+    expect(markup).toContain("Scientific compute queue");
+    expect(markup).toContain("HPC Status Panel");
+    expect(markup).toContain("Panel 1: Multiphysics Co-scheduler");
+    expect(markup).toContain("Panel 2: I/O Checkpoint Burst Buffer");
+    expect(markup).toContain("Panel 3: Core Thermal Mesh Cloud Burst");
+    expect(markup).toContain("Panel 4: Fabric Topology and MPI Profiler");
+    expect(markup).not.toContain("Simulation Health (4-card interpretation)");
   });
 
   it("renders commercial display basis when a fleet commercial value is selected", () => {
@@ -36,7 +53,17 @@ describe("SimulatorWorkbenchSurface", () => {
       selectedCommercialBasisId: "CDB-KAL-03-DESALINATION"
     });
     const markup = renderToStaticMarkup(
-      <SimulatorWorkbenchSurface onSelectUnit={vi.fn()} onSelectValue={vi.fn()} projection={projection} />
+      <SimulatorWorkbenchSurface
+        onSelectUnit={vi.fn()}
+        onSelectValue={vi.fn()}
+        projection={projection}
+        computeQueue={<div>Scientific compute queue</div>}
+        selectedJob={fixtures.computeJobs[0]}
+        scenario="DOME synthetic full-power readiness bundle"
+        scenarioJobs={fixtures.computeJobs}
+        bundleState="ready"
+        orchestrationPanel={<div>Containerized worker orchestration</div>}
+      />
     );
 
     expect(markup).toContain("Commercial Display Basis");
@@ -45,7 +72,6 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(markup).toContain("desalination heat");
     expect(markup).toContain("not billing");
     expect(markup).toContain("not settlement");
-    expect(markup).not.toContain("run launch");
     expect(markup).not.toContain("Redpanda");
   });
 });

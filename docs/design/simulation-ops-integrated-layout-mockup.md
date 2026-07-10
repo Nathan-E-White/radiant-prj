@@ -12,7 +12,7 @@
 
 This document mocks up how a Simulation Ops stress view would be absorbed into the existing Kaleidos Compute Readiness Console. It is a design artifact only. It does not implement React changes, backend calls, fixture schema, Phaser, WebGL, or any control-room behavior.
 
-The mockup treats Simulation Ops as an enhanced Compute Workbench mode. It uses synthetic simulation-operations stress data to show multiphysics co-scheduling pressure, checkpoint storage backpressure, elastic cloud-burst orchestration, fabric topology, MPI profiling, diagnostic logs, and evidence handoff.
+The mockup now serves as the lower HPC status bay inside Status Workbench. It uses synthetic simulation-operations stress data to show multiphysics co-scheduling pressure, checkpoint storage backpressure, elastic cloud-burst orchestration, fabric topology, MPI profiling, diagnostic logs, and evidence handoff.
 
 ## Claim Boundary
 
@@ -30,16 +30,17 @@ The existing top-level app flow stays intact:
 | Kaleidos Compute Readiness Console                                             |
 | public-safe demo | synthetic jobs | controlled evidence                         |
 +--------------------------------------------------------------------------------+
-| [Kaleidos Brief] [Compute Workbench] [Evidence Matrix]                         |
+| [Welcome] [Status Workbench] [Evidence]                                        |
 +--------------------------------------------------------------------------------+
 ```
 
-Simulation Ops appears inside `Compute Workbench`, not as a fourth top-level app. The current queue, job detail, diagnosis, and bundle-state panels remain the base. Selecting `JOB-HPC-404` can reveal the stress layout because that fixture already represents synthetic infrastructure failure triage.
+Simulation Ops appears inside `Status Workbench`, not as a separate top-level app. The current queue becomes the lower-left rail, while the measured/twin/imputed value-basis region remains above it. Selecting `JOB-HPC-404` drives the HPC status bay because that fixture already represents synthetic infrastructure failure triage.
 
 ```text
 +--------------------------------------------------------------------------------+
-| Compute Workbench                                                              |
-| Mode: [Job Queue] [Simulation Ops Stress]                                      |
+| Status Workbench                                                               |
+| Upper: fleet / measured / twin / imputed / lineage                             |
+| Lower: queue / container orchestration / HPC status bay                        |
 +--------------------------------------------------------------------------------+
 | Left rail: existing synthetic job queue                                        |
 | - JOB-TRN-001                                                                 |
@@ -67,7 +68,7 @@ Simulation Ops appears inside `Compute Workbench`, not as a fourth top-level app
 | - module-inventory.diff                                                        |
 | - triage-note.md                                                               |
 | - degraded-state-note.md                                                       |
-| Destination: Evidence Matrix -> EP-HPC-404 and SLURM-GATEWAY-001               |
+| Destination: Evidence -> EP-HPC-404 and SLURM-GATEWAY-001                      |
 +--------------------------------------------------------------------------------+
 ```
 
@@ -82,13 +83,13 @@ Simulation Ops appears inside `Compute Workbench`, not as a fourth top-level app
 | Diagnostic Log | Existing job logs and diagnosis | Runtime-style trace, root cause, next action | `triage-note.md` and review note |
 | Evidence Handoff | Evidence packs and controlled evidence records | Destination records and limitations | Artifact map entry for review |
 
-## Evidence Matrix Continuation
+## Evidence Continuation
 
-The Evidence Matrix remains the controlled destination. The mockup shows how the scenario would be traced without claiming production infrastructure.
+Evidence remains the controlled destination. The mockup shows how the scenario would be traced without claiming production infrastructure.
 
 ```text
 --------------------------------------------------------------------------------+
-| Evidence Matrix                                                                |
+| Evidence                                                                       |
 +--------------------------------------------------------------------------------+
 | Requirement links                                                              |
 | SW-001: fixture-backed workbench display                                       |
@@ -108,7 +109,7 @@ The Evidence Matrix remains the controlled destination. The mockup shows how the
 
 ## Non-Goals
 
-- Do not create a new top-level product surface.
+- Do not create a new top-level product surface beyond Status Workbench.
 - Do not add live browser calls to the Slurm gateway.
 - Do not store client certificates in the frontend.
 - Do not add reactor control, SCRAM, safety actuator, or validated physics language.
@@ -116,6 +117,6 @@ The Evidence Matrix remains the controlled destination. The mockup shows how the
 
 ## Review Questions
 
-1. Does the layout feel like the current Compute Workbench evolving?
+1. Does the layout feel like Status Workbench absorbing queue, orchestration, and HPC status coherently?
 2. Can a reviewer trace `JOB-HPC-404` from scenario trigger to gateway seam to evidence output?
 3. Are synthetic-data and non-safety boundaries visible without oral explanation?

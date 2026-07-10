@@ -176,6 +176,9 @@ type PostgresWorkbenchStore struct {
 }
 
 func NewPostgresWorkbenchStore(dsn string) (*PostgresWorkbenchStore, error) {
+	if err := requirePostgresDriver(); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err

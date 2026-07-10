@@ -14,13 +14,13 @@ This document describes the design of the Kaleidos Compute Readiness Console and
 
 ## System Overview
 
-The console is a local React and TypeScript application with an optional Go backend gateway. It presents source-linked public facts, synthetic compute jobs, deterministic toy calculations, infrastructure-readiness artifacts, and objective evidence records. The v3.0 backend gateway adds a controlled handler boundary for Slurm-style submission while keeping mock mode as the default public-safe path. The Simulation Ops backend slice adds bounded run orchestration, token-gated telemetry ingest, API-polled event state, Postgres-backed local control-plane persistence, Redpanda event publication, Docker-launched Rust workers, WebTransport delivery, and Iceberg artifact management. The Simulator Workbench backend dataflow slice promotes resident SCADA stand-ins, simulated result ingest, twin projection, Postgres read models, Iceberg tables, and read-only Workbench APIs while preserving the measured, simulated, and imputed value-basis boundary.
+The console is a local React and TypeScript application with an optional Go backend gateway. It presents source-linked public facts, a Status Workbench for value-basis state plus compute/orchestration status, infrastructure-readiness artifacts, and objective evidence records. The v3.0 backend gateway adds a controlled handler boundary for Slurm-style submission while keeping mock mode as the default public-safe path. The Simulation Ops backend slice adds bounded run orchestration, token-gated telemetry ingest, API-polled event state, Postgres-backed local control-plane persistence, Redpanda event publication, Docker-launched Rust workers, WebTransport delivery, and Iceberg artifact management. The Simulator Workbench backend dataflow slice promotes resident SCADA stand-ins, simulated result ingest, twin projection, Postgres read models, Iceberg tables, and read-only Workbench APIs while preserving the measured, simulated, and imputed value-basis boundary.
 
 ## Major Components
 
 | Component | Location | Responsibility |
 | --- | --- | --- |
-| UI console | `src/App.tsx`, `src/styles.css` | Renders brief, workbench, and evidence views from controlled fixtures |
+| UI console | `src/App.tsx`, `src/styles.css` | Renders Welcome, Status Workbench, and Evidence views from controlled fixtures |
 | Domain logic | `src/domain/readiness.ts` | Performs deterministic toy calculations, diagnosis, hashing, and traceability checks |
 | Domain types | `src/domain/types.ts` | Defines controlled fixture and result shapes |
 | Fixtures | `src/data/readiness-fixtures.json` | Source of public facts, synthetic jobs, requirements, compute evidence, controlled process evidence, and deployment checks |
@@ -44,9 +44,9 @@ The console is a local React and TypeScript application with an optional Go back
 - The frontend shall not hold client private keys for backend gateway authentication.
 - The frontend shall not hold Redpanda, Postgres, MinIO, Docker, or Iceberg catalog credentials; it polls gateway run/event endpoints and receives short-lived WebTransport subscription metadata from the control plane.
 - Iceberg artifact management shall not replace Postgres control-plane state; the deployment contract keeps Postgres as the run, spooler, idempotency, ingest-token, event, and artifact-reference source of truth while memory adapters remain available for deterministic local tests.
-- Simulator Workbench values shall keep measured, imputed, and simulated basis visible in contracts, APIs, UI anchors, and examples.
+- Status Workbench values shall keep measured, imputed, and simulated basis visible in contracts, APIs, UI anchors, and examples.
 - Resident SCADA stand-ins shall emit only `valueBasis=measured`; SimOps workers shall emit operational telemetry plus separate `valueBasis=simulated` result frames; only the twin projector shall emit `valueBasis=imputed`.
-- Simulator Workbench scaffold artifacts shall not imply real plant telemetry, safety behavior, actuation, alarm management, or validated physics.
+- Status Workbench scaffold artifacts shall not imply real plant telemetry, safety behavior, actuation, alarm management, or validated physics.
 
 ## Data Flow
 

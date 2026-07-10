@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 type TimescaleTelemetryStore struct {
@@ -16,6 +14,9 @@ type TimescaleTelemetryStore struct {
 }
 
 func NewTimescaleTelemetryStore(dsn string) (*TimescaleTelemetryStore, error) {
+	if err := requirePostgresDriver(); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(dsn) == "" {
 		return nil, fmt.Errorf("timescale telemetry store requires SIMOPS_POSTGRES_DSN")
 	}
