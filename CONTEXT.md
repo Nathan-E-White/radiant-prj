@@ -46,6 +46,10 @@ _Avoid_: Generic reactor, reactor zoo, pebble-bed variant
 An ensemble view of identically produced, separately operated Kaleidos Units. Fleet views may summarize unit-level readiness, output, freshness, and lineage, but each unit remains its own reactor instance.
 _Avoid_: One giant reactor, mixed reactor family, centralized control-room simulation
 
+**Fleet Board**:
+A playable Simulator Workbench board-game surface where abstract facilities, routes, service credits, and pressure pawns make fleet-scale readiness concepts tangible. It is a local demo game layered over Workbench projection state, not a real operations, design, dispatch, billing, or control surface.
+_Avoid_: Fleet command, control console, operator game, real deployment planner
+
 **Breaker-to-Breaker Run**:
 The commercial operating interval for a Kaleidos Unit between grid/output connection and the next planned or unplanned breaker separation. An unplanned outage resets the run.
 _Avoid_: Generic uptime, always-on status
@@ -65,6 +69,14 @@ _Avoid_: Emergency panel, SCRAM workflow, incident command
 **Refueling Outage**:
 A scheduled outage specifically for fuel replacement or fuel-related maintenance. It is distinct from generic planned maintenance.
 _Avoid_: Planned maintenance only, fuel status badge
+
+**Trouble Pawn**:
+The Fleet Board's visible event-pressure marker. It represents toy disruptions such as routing pressure, service delay, or short local outage pressure, and should stay playful and public-safe.
+_Avoid_: Disaster response, emergency, incident command, sabotage, attack
+
+**Simulation Container Token**:
+A deferred Fleet Board v2 game resource representing player-created simulated-job capacity associated with a reactor. It has a virtual budget cost and a per-reactor cap, both TBD. It is not real infrastructure capacity, cloud spend, project budget, or a live SimOps control.
+_Avoid_: Real container quota, cloud budget, production capacity, live scheduler control
 
 **Cooldown**:
 A post-shutdown phase where the unit is not commercially generating but still has active thermal/reactor-state work to represent. Cooldown is not standby and does not imply immediate restart availability.
