@@ -28,6 +28,10 @@ type Gateway struct {
 }
 
 func NewDefaultGateway(cfg Config) (*Gateway, error) {
+	return NewDefaultGatewayWithSimopsSpooler(cfg, nil)
+}
+
+func NewDefaultGatewayWithSimopsSpooler(cfg Config, simopsSpooler SimopsSpooler) (*Gateway, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -42,7 +46,7 @@ func NewDefaultGateway(cfg Config) (*Gateway, error) {
 	}
 
 	app := NewGateway(cfg, spooler, NewInMemoryJobStore(), NewMetrics())
-	simops, err := NewDefaultSimopsController(cfg.Simops)
+	simops, err := NewDefaultSimopsControllerWithSpooler(cfg.Simops, simopsSpooler)
 	if err != nil {
 		return nil, err
 	}

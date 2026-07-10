@@ -36,9 +36,13 @@ CREATE TABLE IF NOT EXISTS simops_spool_commands (
   mode TEXT NOT NULL,
   state TEXT NOT NULL,
   message TEXT NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
   created_at TIMESTAMPTZ NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL
 );
+
+ALTER TABLE simops_spool_commands
+  ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS simops_events (
   event_id BIGSERIAL PRIMARY KEY,

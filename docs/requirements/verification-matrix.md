@@ -34,6 +34,7 @@
 | SW-014 | Test | Resident source declaration, measured-only SCADA frames, token-gated ingest, `scada_measured_frames`, and `scada.measured_frames` | `bun run scada:standins:test`, `bun run backend:test`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
 | SW-015 | Test | `simops.result.v1` contract, simulated-only result ingest, twin imputed state, and lineage materialization | `bun run simops:generator:test`, `bun run backend:test`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
 | SW-016 | Test | Status Workbench render test covers the three-page IA, preserved value-basis region, absorbed compute queue, SimOps orchestration subregion, and four-panel HPC status bay | `bun run typecheck`, `bun run test`, `bun run build-storybook` | VVR-001 |
+| SW-017 | Test | Docker SDK SimOps adapter fake-client tests for profile consumption, create/start construction, label/env/network propagation, structured metadata/errors, and run/worker-scoped stop targeting | `go test ./internal/gateway ./internal/simopsdocker -run 'TestDefaultSimopsController|TestSpooler'`, `bun run backend:test`, `bun run backend:deps:check`, `bun run ci` | SIMOPS-DOCKER-SDK-001 |
 
 ## Acceptance Scenario
 
@@ -47,3 +48,4 @@
 8. Create a Simulation Ops run through `POST /api/simops/runs` and confirm the response contains WebTransport subscription metadata, worker tracks, and artifact references.
 9. Run `bun run quality:check` and confirm the v3.0 controlled document and traceability package is complete.
 10. Run `bun run simulator-workbench:dataflow:smoke` and confirm measured, telemetry, simulated, and imputed units reach Redpanda, Postgres, Iceberg, and the read-only Workbench APIs.
+11. Run the Docker SDK SimOps adapter unit slice and confirm worker launch uses run connection profiles without Docker CLI shell-out.

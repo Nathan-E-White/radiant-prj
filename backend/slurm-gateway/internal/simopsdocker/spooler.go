@@ -1,0 +1,432 @@
+package simopsdocker
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
+	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/api/types/network"
+	dockerclient "github.com/docker/docker/client"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
+	"radiant/slurm-gateway/internal/gateway"
+)
+
+type DockerClient interface {
+	ImageInspect(ctx context.Context, imageID string) (image.InspectResponse, error)
+	ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (container.CreateResponse, error)
+	ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error
+	ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
+	ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error
+	ContainerRemove(ctx context.Context, containerID string, options container.RemoveOptions) error
+}
+
+type Spooler struct {
+	Config gateway.SimopsConfig
+	Client DockerClient
+	Now    func() time.Time
+}
+
+type LaunchError struct {
+	Operation     string
+	RunID         string
+	WorkerID      string
+	ContainerName string
+	Image         string
+	Err           error
+}
+
+func (e LaunchError) Error() string {
+	target := strings.TrimSpace(e.ContainerName)
+	if target == "" {
+		target = strings.TrimSpace(e.WorkerID)
+	}
+	if target == "" {
+		target = strings.TrimSpace(e.Image)
+	}
+	message := "simops docker launch"
+	if e.Operation != "" {
+		message += " " + e.Operation
+	}
+	if target != "" {
+		message += " for " + target
+	}
+	if e.Err != nil {
+		message += ": " + e.Err.Error()
+	}
+	return message
+}
+
+func (e LaunchError) Unwrap() error {
+	return e.Err
+}
+
+func NewSpooler(cfg gateway.SimopsConfig) (Spooler, error) {
+	client, err := dockerclient.NewClientWithOpts(dockerclient.FromEnv, dockerclient.WithAPIVersionNegotiation())
+	if err != nil {
+		return Spooler{}, fmt.Errorf("create docker client: %w", err)
+	}
+	return Spooler{
+		Config: cfg,
+		Client: engineClient{client: client},
+		Now:    time.Now,
+	}, nil
+}
+
+func (s Spooler) StartRun(ctx context.Context, run gateway.SimopsRunRecord, workers []gateway.SimopsWorkerKind) ([]gateway.SimopsWorkerRecord, []gateway.SimopsSpoolCommand, error) {
+	profiles, err := gateway.BuildRunWorkerConnectionProfiles(s.Config, run, workers)
+	if err != nil {
+		return nil, nil, err
+	}
+	return s.StartRunProfiles(ctx, run, profiles)
+}
+
+func (s Spooler) StartRunProfiles(ctx context.Context, run gateway.SimopsRunRecord, profiles []gateway.RunConnectionProfile) ([]gateway.SimopsWorkerRecord, []gateway.SimopsSpoolCommand, error) {
+	select {
+	case <-ctx.Done():
+		return nil, nil, ctx.Err()
+	default:
+	}
+	if s.Client == nil {
+		return nil, nil, fmt.Errorf("docker client is required")
+	}
+
+	records := make([]gateway.SimopsWorkerRecord, 0, len(profiles))
+	commands := make([]gateway.SimopsSpoolCommand, 0, len(profiles))
+	for _, profile := range profiles {
+		if err := validateLaunchProfile(run, profile); err != nil {
+			_ = s.tryStopRunProfiles(ctx, run.RunID, profiles)
+			return nil, nil, err
+		}
+		containerID, err := s.startWorker(ctx, profile)
+		if err != nil {
+			_ = s.tryStopRunProfiles(ctx, run.RunID, profiles)
+			return nil, nil, err
+		}
+
+		now := s.now()
+		records = append(records, gateway.SimopsWorkerRecord{
+			RunID:      run.RunID,
+			WorkerID:   profile.WorkerID,
+			WorkerKind: profile.WorkerKind,
+			Lifecycle:  gateway.SimopsStarting,
+			LaunchMode: profile.LaunchMode,
+			Endpoint:   profile.Gateway.IngestURL,
+			UpdatedAt:  now,
+			Labels:     launchLabels(profile, containerID),
+		})
+		commands = append(commands, gateway.SimopsSpoolCommand{
+			CommandID: fmt.Sprintf("%s-%s-start", run.RunID, profile.WorkerID),
+			RunID:     run.RunID,
+			WorkerID:  profile.WorkerID,
+			Mode:      profile.LaunchMode,
+			State:     gateway.SimopsStarting,
+			Message:   fmt.Sprintf("Worker container launched as %s (%s)", profile.Runtime.Docker.ContainerName, containerID),
+			Metadata:  launchMetadata(profile, containerID),
+			CreatedAt: now,
+			UpdatedAt: now,
+		})
+	}
+
+	return records, commands, nil
+}
+
+func (s Spooler) StopRun(ctx context.Context, runID string) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	if s.Client == nil {
+		return fmt.Errorf("docker client is required")
+	}
+	return s.tryStopRunWorkers(ctx, strings.TrimSpace(runID))
+}
+
+func (s Spooler) StopRunProfiles(ctx context.Context, runID string, profiles []gateway.RunConnectionProfile) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	if s.Client == nil {
+		return fmt.Errorf("docker client is required")
+	}
+	return s.tryStopRunProfiles(ctx, strings.TrimSpace(runID), profiles)
+}
+
+func (s Spooler) startWorker(ctx context.Context, profile gateway.RunConnectionProfile) (string, error) {
+	if strings.TrimSpace(profile.WorkerImage) == "" {
+		return "", launchError(profile, "image_required", errors.New("worker image is required"))
+	}
+	if _, err := s.Client.ImageInspect(ctx, profile.WorkerImage); err != nil {
+		return "", launchError(profile, "image_inspect", err)
+	}
+
+	response, err := s.Client.ContainerCreate(
+		ctx,
+		&container.Config{
+			Image:  profile.WorkerImage,
+			Labels: containerLabels(profile),
+			Env:    dockerEnv(profile),
+			Cmd:    dockerCommand(profile, s.Config.WorkerFrameOverride),
+		},
+		dockerHostConfig(profile),
+		dockerNetworking(profile),
+		nil,
+		profile.Runtime.Docker.ContainerName,
+	)
+	if err != nil {
+		return "", launchError(profile, "container_create", err)
+	}
+
+	containerID := strings.TrimSpace(response.ID)
+	if containerID == "" {
+		return "", launchError(profile, "container_create", errors.New("docker returned empty container id"))
+	}
+	if err := s.Client.ContainerStart(ctx, containerID, container.StartOptions{}); err != nil {
+		_ = s.Client.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true})
+		return "", launchError(profile, "container_start", err)
+	}
+	return containerID, nil
+}
+
+func (s Spooler) tryStopRunWorkers(ctx context.Context, runID string) error {
+	return s.tryStopRunProfiles(ctx, runID, nil)
+}
+
+func (s Spooler) tryStopRunProfiles(ctx context.Context, runID string, profiles []gateway.RunConnectionProfile) error {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return nil
+	}
+	workers := profileWorkerSet(profiles)
+	containers, err := s.Client.ContainerList(ctx, container.ListOptions{
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("label", "simops.run_id="+runID),
+			filters.Arg("label", "simops.runtime_adapter=docker-sdk"),
+			filters.Arg("label", "simops.role="+string(gateway.RunConnectionRoleOrdinaryWorker)),
+		),
+	})
+	if err != nil {
+		return fmt.Errorf("list simops worker containers for run %s: %w", runID, err)
+	}
+
+	var firstErr error
+	for _, item := range containers {
+		if !matchesRunWorker(runID, item.Labels, workers) {
+			continue
+		}
+		containerID := strings.TrimSpace(item.ID)
+		if containerID == "" {
+			continue
+		}
+		timeout := 10
+		if err := s.Client.ContainerStop(ctx, containerID, container.StopOptions{Timeout: &timeout}); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("stop simops worker container %s: %w", containerID, err)
+		}
+		if err := s.Client.ContainerRemove(ctx, containerID, container.RemoveOptions{Force: true}); err != nil && firstErr == nil {
+			firstErr = fmt.Errorf("remove simops worker container %s: %w", containerID, err)
+		}
+	}
+	return firstErr
+}
+
+func validateLaunchProfile(run gateway.SimopsRunRecord, profile gateway.RunConnectionProfile) error {
+	if strings.TrimSpace(profile.RunID) != strings.TrimSpace(run.RunID) {
+		return launchError(profile, "profile_validate", fmt.Errorf("profile run %q does not match run %q", profile.RunID, run.RunID))
+	}
+	if strings.TrimSpace(profile.WorkerID) == "" {
+		return launchError(profile, "profile_validate", fmt.Errorf("worker identity is required"))
+	}
+	if strings.TrimSpace(string(profile.WorkerKind)) == "" {
+		return launchError(profile, "profile_validate", fmt.Errorf("worker kind is required"))
+	}
+	return nil
+}
+
+func (s Spooler) now() time.Time {
+	if s.Now != nil {
+		return s.Now().UTC()
+	}
+	return time.Now().UTC()
+}
+
+func dockerCommand(profile gateway.RunConnectionProfile, frameOverride int) []string {
+	args := []string{
+		"--manifest", profile.ManifestPath,
+		"--worker", string(profile.WorkerKind),
+		"--run-id", profile.RunID,
+		"--ingest-url", profile.Gateway.IngestURL,
+		"--ingest-token", profile.Gateway.IngestToken,
+		"--result-ingest-url", profile.Gateway.ResultIngestURL,
+		"--result-ingest-token", profile.Gateway.IngestToken,
+		"--output", "-",
+	}
+	if frameOverride > 0 {
+		args = append(args, "--frames", strconv.Itoa(frameOverride))
+	}
+	return args
+}
+
+func dockerEnv(profile gateway.RunConnectionProfile) []string {
+	env := []string{
+		"SIMOPS_RUN_ID=" + profile.RunID,
+		"SIMOPS_WORKER_ID=" + profile.WorkerID,
+		"SIMOPS_WORKER_KIND=" + string(profile.WorkerKind),
+		"SIMOPS_ROLE=" + string(profile.Role),
+		"SIMOPS_LAUNCH_MODE=" + profile.LaunchMode,
+		"SIMOPS_SCENARIO_ID=" + profile.ScenarioID,
+		"SIMOPS_INGEST_URL=" + profile.Gateway.IngestURL,
+		"SIMOPS_INGEST_TOKEN=" + profile.Gateway.IngestToken,
+		"SIMOPS_RESULT_INGEST_URL=" + profile.Gateway.ResultIngestURL,
+		"SIMOPS_RESULT_INGEST_TOKEN=" + profile.Gateway.IngestToken,
+	}
+	if profile.Cleanup.TTLSecondsAfterFinished > 0 {
+		env = append(env, "SIMOPS_CLEANUP_TTL_SECONDS="+strconv.Itoa(int(profile.Cleanup.TTLSecondsAfterFinished)))
+	}
+	return env
+}
+
+func dockerHostConfig(profile gateway.RunConnectionProfile) *container.HostConfig {
+	hostConfig := &container.HostConfig{
+		AutoRemove: profile.Runtime.Docker.AutoRemove,
+	}
+	if networkName := strings.TrimSpace(profile.Runtime.Docker.Network); networkName != "" {
+		hostConfig.NetworkMode = container.NetworkMode(networkName)
+	}
+	return hostConfig
+}
+
+func dockerNetworking(profile gateway.RunConnectionProfile) *network.NetworkingConfig {
+	networkName := strings.TrimSpace(profile.Runtime.Docker.Network)
+	if networkName == "" {
+		return nil
+	}
+	return &network.NetworkingConfig{
+		EndpointsConfig: map[string]*network.EndpointSettings{
+			networkName: {},
+		},
+	}
+}
+
+func containerLabels(profile gateway.RunConnectionProfile) map[string]string {
+	labels := copyLabels(profile.Labels)
+	labels["simops.runtime"] = "docker"
+	labels["simops.runtime_adapter"] = "docker-sdk"
+	labels["simops.worker_image"] = profile.WorkerImage
+	labels["simops.worker_mode"] = profile.LaunchMode
+	labels["simops.launch_script"] = "simops-generator"
+	labels["simops.docker_network"] = profile.Runtime.Docker.Network
+	labels["simops.kubernetes_namespace"] = profile.Runtime.Kubernetes.Namespace
+	return labels
+}
+
+func launchLabels(profile gateway.RunConnectionProfile, containerID string) map[string]string {
+	labels := containerLabels(profile)
+	labels["simops.container_id"] = containerID
+	return labels
+}
+
+func launchMetadata(profile gateway.RunConnectionProfile, containerID string) map[string]string {
+	return map[string]string{
+		"runtime_adapter": "docker-sdk",
+		"container_id":    containerID,
+		"container_name":  profile.Runtime.Docker.ContainerName,
+		"worker_image":    profile.WorkerImage,
+		"worker_id":       profile.WorkerID,
+		"worker_kind":     string(profile.WorkerKind),
+		"docker_network":  profile.Runtime.Docker.Network,
+	}
+}
+
+func copyLabels(labels map[string]string) map[string]string {
+	copied := make(map[string]string, len(labels))
+	for key, value := range labels {
+		copied[key] = value
+	}
+	return copied
+}
+
+func launchError(profile gateway.RunConnectionProfile, operation string, err error) LaunchError {
+	return LaunchError{
+		Operation:     operation,
+		RunID:         profile.RunID,
+		WorkerID:      profile.WorkerID,
+		ContainerName: profile.Runtime.Docker.ContainerName,
+		Image:         profile.WorkerImage,
+		Err:           err,
+	}
+}
+
+func profileWorkerSet(profiles []gateway.RunConnectionProfile) map[string]gateway.SimopsWorkerKind {
+	if len(profiles) == 0 {
+		return nil
+	}
+	workers := make(map[string]gateway.SimopsWorkerKind, len(profiles))
+	for _, profile := range profiles {
+		workerID := strings.TrimSpace(profile.WorkerID)
+		if workerID == "" {
+			continue
+		}
+		workers[workerID] = profile.WorkerKind
+	}
+	return workers
+}
+
+func matchesRunWorker(runID string, labels map[string]string, workers map[string]gateway.SimopsWorkerKind) bool {
+	if labels["simops.run_id"] != runID {
+		return false
+	}
+	if labels["simops.runtime_adapter"] != "docker-sdk" {
+		return false
+	}
+	if labels["simops.role"] != string(gateway.RunConnectionRoleOrdinaryWorker) {
+		return false
+	}
+	workerID := strings.TrimSpace(labels["simops.worker_id"])
+	workerKind := strings.TrimSpace(labels["simops.worker_kind"])
+	if workerID == "" || workerKind == "" {
+		return false
+	}
+	if len(workers) == 0 {
+		return true
+	}
+	expectedKind, ok := workers[workerID]
+	return ok && string(expectedKind) == workerKind
+}
+
+type engineClient struct {
+	client *dockerclient.Client
+}
+
+func (c engineClient) ImageInspect(ctx context.Context, imageID string) (image.InspectResponse, error) {
+	return c.client.ImageInspect(ctx, imageID)
+}
+
+func (c engineClient) ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (container.CreateResponse, error) {
+	return c.client.ContainerCreate(ctx, config, hostConfig, networkingConfig, platform, containerName)
+}
+
+func (c engineClient) ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error {
+	return c.client.ContainerStart(ctx, containerID, options)
+}
+
+func (c engineClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
+	return c.client.ContainerList(ctx, options)
+}
+
+func (c engineClient) ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error {
+	return c.client.ContainerStop(ctx, containerID, options)
+}
+
+func (c engineClient) ContainerRemove(ctx context.Context, containerID string, options container.RemoveOptions) error {
+	return c.client.ContainerRemove(ctx, containerID, options)
+}

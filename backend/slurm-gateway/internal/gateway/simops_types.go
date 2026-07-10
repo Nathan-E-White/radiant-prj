@@ -88,14 +88,15 @@ type SimopsWorkerRecord struct {
 }
 
 type SimopsSpoolCommand struct {
-	CommandID string          `json:"command_id"`
-	RunID     string          `json:"run_id"`
-	WorkerID  string          `json:"worker_id"`
-	Mode      string          `json:"mode"`
-	State     SimopsLifecycle `json:"state"`
-	Message   string          `json:"message"`
-	CreatedAt time.Time       `json:"created_at"`
-	UpdatedAt time.Time       `json:"updated_at"`
+	CommandID string            `json:"command_id"`
+	RunID     string            `json:"run_id"`
+	WorkerID  string            `json:"worker_id"`
+	Mode      string            `json:"mode"`
+	State     SimopsLifecycle   `json:"state"`
+	Message   string            `json:"message"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+	CreatedAt time.Time         `json:"created_at"`
+	UpdatedAt time.Time         `json:"updated_at"`
 }
 
 type SimopsArtifactRecord struct {

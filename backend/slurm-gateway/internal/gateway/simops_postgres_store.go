@@ -112,11 +112,15 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 	}
 
 	for _, command := range commands {
+		metadata, err := marshalLabels(command.Metadata)
+		if err != nil {
+			return SimopsRunRecord{}, false, err
+		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO simops_spool_commands (
-				command_id, run_id, worker_id, mode, state, message, created_at, updated_at
+				command_id, run_id, worker_id, mode, state, message, metadata, created_at, updated_at
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
 		`,
 			command.CommandID,
 			command.RunID,
@@ -124,6 +128,7 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 			command.Mode,
 			string(command.State),
 			command.Message,
+			metadata,
 			command.CreatedAt,
 			command.UpdatedAt,
 		); err != nil {
@@ -192,14 +197,19 @@ func (s *PostgresSimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 	}
 
 	for _, command := range commands {
+		metadata, err := marshalLabels(command.Metadata)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO simops_spool_commands (
-				command_id, run_id, worker_id, mode, state, message, created_at, updated_at
+				command_id, run_id, worker_id, mode, state, message, metadata, created_at, updated_at
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
 			ON CONFLICT (command_id) DO UPDATE
 			SET state = EXCLUDED.state,
 			    message = EXCLUDED.message,
+			    metadata = EXCLUDED.metadata,
 			    updated_at = EXCLUDED.updated_at
 		`,
 			command.CommandID,
@@ -208,6 +218,7 @@ func (s *PostgresSimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 			command.Mode,
 			string(command.State),
 			command.Message,
+			metadata,
 			command.CreatedAt,
 			command.UpdatedAt,
 		); err != nil {
@@ -294,7 +305,7 @@ func (s *PostgresSimopsStore) ListCommands(runID string) ([]SimopsSpoolCommand, 
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT command_id, run_id, worker_id, mode, state, message, created_at, updated_at
+		SELECT command_id, run_id, worker_id, mode, state, message, metadata, created_at, updated_at
 		FROM simops_spool_commands
 		WHERE run_id = $1
 		ORDER BY created_at, command_id
@@ -308,10 +319,16 @@ func (s *PostgresSimopsStore) ListCommands(runID string) ([]SimopsSpoolCommand, 
 	for rows.Next() {
 		var command SimopsSpoolCommand
 		var state string
-		if err := rows.Scan(&command.CommandID, &command.RunID, &command.WorkerID, &command.Mode, &state, &command.Message, &command.CreatedAt, &command.UpdatedAt); err != nil {
+		var metadataRaw []byte
+		if err := rows.Scan(&command.CommandID, &command.RunID, &command.WorkerID, &command.Mode, &state, &command.Message, &metadataRaw, &command.CreatedAt, &command.UpdatedAt); err != nil {
 			return nil, err
 		}
 		command.State = SimopsLifecycle(state)
+		if len(metadataRaw) > 0 {
+			if err := json.Unmarshal(metadataRaw, &command.Metadata); err != nil {
+				return nil, err
+			}
+		}
 		commands = append(commands, command)
 	}
 	if err := rows.Err(); err != nil {
