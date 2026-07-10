@@ -5,6 +5,7 @@ const requiredFiles = [
   "docker-compose.yml",
   "Dockerfile",
   "worker.Dockerfile",
+  ".github/workflows/ci.yml",
   "backend/slurm-gateway/go.mod",
   "backend/slurm-gateway/cmd/server/main.go",
   "backend/slurm-gateway/internal/gateway/handlers.go",
@@ -58,6 +59,8 @@ if (existsSync("deploy/slurm-gateway.Dockerfile")) {
     "ARG SIMOPS_GATEWAY_RUNTIME_IMAGE",
     "backend/slurm-gateway",
     "go test -tags dataplane,iceberggo ./...",
+    "go build -tags dataplane,iceberggo -trimpath -ldflags=\"-s -w\" -o /out/slurm-gateway ./cmd/server",
+    "go build -tags dataplane -trimpath -ldflags=\"-s -w\" -o /out/simops-stream-gateway ./cmd/simops-stream-gateway",
     "-tags dataplane",
     "-tags dataplane,iceberggo",
     "simops-stream-gateway",
@@ -114,6 +117,12 @@ if (existsSync("deploy/slurm-gateway.compose.yml")) {
     "AWS_EC2_METADATA_DISABLED",
     "simops-moq-gateway",
     "simops-stream-gateway",
+    "SIMOPS_STREAM_GATEWAY_TLS_CERT_FILE",
+    "SIMOPS_STREAM_GATEWAY_TLS_KEY_FILE",
+    ".local/compose-secrets",
+    "simops_moq_gateway_ca_crt",
+    "/run/secrets/simops_moq_gateway_server_crt",
+    "/run/secrets/simops_moq_gateway_server_key",
     "simops-timescale-writer",
     "simops-iceberg-writer",
     "http://slurm-gateway:8080",
@@ -135,6 +144,22 @@ if (existsSync("deploy/slurm-gateway.compose.yml")) {
     if (!compose.includes(token)) {
       problems.push(`Slurm gateway compose missing ${token}`);
     }
+  }
+}
+
+if (existsSync("scripts/simops-local-smoke.sh")) {
+  const smoke = readFileSync("scripts/simops-local-smoke.sh", "utf8");
+  for (const token of ["--ca-cert", "/run/secrets/simops_moq_gateway_ca_crt", "--server-name", "simops-moq-gateway"]) {
+    if (!smoke.includes(token)) {
+      problems.push(`SimOps local smoke missing WebTransport TLS probe token ${token}`);
+    }
+  }
+}
+
+if (existsSync(".github/workflows/ci.yml")) {
+  const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
+  if (!workflow.includes("permissions:\n  contents: read")) {
+    problems.push("GitHub Actions workflow must limit GITHUB_TOKEN to contents: read");
   }
 }
 
@@ -178,10 +203,20 @@ if (existsSync("deploy/postgres-init/001_simops.sql")) {
 
 if (existsSync("scripts/create-local-gateway-certs.sh")) {
   const certScript = readFileSync("scripts/create-local-gateway-certs.sh", "utf8");
-  for (const token of [".local/certs", "client-authorized", "client-unauthorized", "subjectAltName"]) {
+  for (const token of [".local/certs", ".local/compose-secrets", "client-authorized", "client-unauthorized", "subjectAltName", "simops-moq-gateway"]) {
     if (!certScript.includes(token)) {
       problems.push(`Local gateway cert helper missing ${token}`);
     }
+  }
+}
+
+for (const sourceFile of [
+  "backend/slurm-gateway/cmd/simops-webtransport-probe/main.go",
+  "backend/slurm-gateway/cmd/simops-stream-gateway/main.go",
+  "backend/slurm-gateway/internal/gateway/webtransport_tls.go"
+]) {
+  if (existsSync(sourceFile) && readFileSync(sourceFile, "utf8").includes("InsecureSkipVerify")) {
+    problems.push(`${sourceFile} must not disable TLS certificate verification`);
   }
 }
 

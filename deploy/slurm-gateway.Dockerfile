@@ -9,8 +9,8 @@ COPY backend/slurm-gateway backend/slurm-gateway
 
 WORKDIR /src/backend/slurm-gateway
 RUN go test -tags dataplane,iceberggo ./...
-RUN CGO_ENABLED=0 GOOS=linux go build -tags dataplane -trimpath -ldflags="-s -w" -o /out/slurm-gateway ./cmd/server
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/simops-stream-gateway ./cmd/simops-stream-gateway
+RUN CGO_ENABLED=0 GOOS=linux go build -tags dataplane,iceberggo -trimpath -ldflags="-s -w" -o /out/slurm-gateway ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -tags dataplane -trimpath -ldflags="-s -w" -o /out/simops-stream-gateway ./cmd/simops-stream-gateway
 RUN CGO_ENABLED=0 GOOS=linux go build -tags dataplane -trimpath -ldflags="-s -w" -o /out/simops-timescale-writer ./cmd/simops-timescale-writer
 RUN CGO_ENABLED=0 GOOS=linux go build -tags dataplane,iceberggo -trimpath -ldflags="-s -w" -o /out/simops-iceberg-writer ./cmd/simops-iceberg-writer
 RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/simops-webtransport-probe ./cmd/simops-webtransport-probe

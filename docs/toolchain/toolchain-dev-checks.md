@@ -35,7 +35,7 @@ And two integration paths:
 Docker lifecycle helpers:
 * `scripts/docker-up.sh`: starts Docker Desktop on macOS and waits for `docker info`
 * `scripts/docker-down.sh`: quits Docker Desktop on macOS and waits for the daemon to disappear
-* `scripts/compose-smoke.sh`: calls `scripts/docker-up.sh` before Compose validation
+* `scripts/compose-smoke.sh`: calls `scripts/docker-up.sh`, refreshes ignored local WebTransport cert/secret copies, then runs Compose validation
 * Package scripts:
   * `docker:up`
   * `docker:down`
