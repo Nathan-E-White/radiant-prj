@@ -223,6 +223,206 @@ func TestSpoolerStopsRunWorkersByRunWorkerAndRuntimeLabels(t *testing.T) {
 	}
 }
 
+func TestSpoolerSyncRunProfilesMapsDockerContainerStates(t *testing.T) {
+	tests := []struct {
+		name      string
+		run       gateway.SimopsRunRecord
+		summary   container.Summary
+		inspect   container.InspectResponse
+		want      gateway.ObservedWorkerState
+		wantCause string
+	}{
+		{
+			name:    "created is pending",
+			run:     testDockerRun("RUN-SYNC-CREATED"),
+			summary: dockerSummary("container-created", "RUN-SYNC-CREATED", "scheduler-01", "scheduler"),
+			inspect: dockerInspect("container-created", container.State{
+				Status: container.StateCreated,
+			}),
+			want: gateway.ObservedWorkerPending,
+		},
+		{
+			name:    "running is active",
+			run:     testDockerRun("RUN-SYNC-RUNNING"),
+			summary: dockerSummary("container-running", "RUN-SYNC-RUNNING", "scheduler-01", "scheduler"),
+			inspect: dockerInspect("container-running", container.State{
+				Status:  container.StateRunning,
+				Running: true,
+			}),
+			want: gateway.ObservedWorkerActive,
+		},
+		{
+			name:    "zero exit is succeeded",
+			run:     testDockerRun("RUN-SYNC-SUCCESS"),
+			summary: dockerSummary("container-success", "RUN-SYNC-SUCCESS", "scheduler-01", "scheduler"),
+			inspect: dockerInspect("container-success", container.State{
+				Status:   container.StateExited,
+				ExitCode: 0,
+			}),
+			want: gateway.ObservedWorkerSucceeded,
+		},
+		{
+			name:    "nonzero exit is failed",
+			run:     testDockerRun("RUN-SYNC-FAIL"),
+			summary: dockerSummary("container-fail", "RUN-SYNC-FAIL", "scheduler-01", "scheduler"),
+			inspect: dockerInspect("container-fail", container.State{
+				Status:   container.StateExited,
+				ExitCode: 17,
+				Error:    "worker failed",
+			}),
+			want:      gateway.ObservedWorkerFailed,
+			wantCause: "exit-code",
+		},
+		{
+			name:    "dead is failed",
+			run:     testDockerRun("RUN-SYNC-DEAD"),
+			summary: dockerSummary("container-dead", "RUN-SYNC-DEAD", "scheduler-01", "scheduler"),
+			inspect: dockerInspect("container-dead", container.State{
+				Status: container.StateDead,
+				Dead:   true,
+				Error:  "container dead",
+			}),
+			want:      gateway.ObservedWorkerFailed,
+			wantCause: "dead",
+		},
+		{
+			name:    "image pull error is image-pull-failed",
+			run:     testDockerRun("RUN-SYNC-IMAGE-PULL"),
+			summary: dockerSummary("container-image-pull", "RUN-SYNC-IMAGE-PULL", "scheduler-01", "scheduler"),
+			inspect: dockerInspect("container-image-pull", container.State{
+				Status:   container.StateExited,
+				ExitCode: 125,
+				Error:    "pull access denied for radiant-simops-generator:test",
+			}),
+			want:      gateway.ObservedWorkerImagePullFailed,
+			wantCause: "image-pull",
+		},
+		{
+			name: "present container after stopped run with stop exit is stopped",
+			run: func() gateway.SimopsRunRecord {
+				run := testDockerRun("RUN-SYNC-STOPPED")
+				run.Lifecycle = gateway.SimopsStopped
+				return run
+			}(),
+			summary: dockerSummary("container-stopped", "RUN-SYNC-STOPPED", "scheduler-01", "scheduler"),
+			inspect: dockerInspect("container-stopped", container.State{
+				Status:   container.StateExited,
+				ExitCode: 143,
+			}),
+			want:      gateway.ObservedWorkerStopped,
+			wantCause: "stopped",
+		},
+		{
+			name: "present failed container after stopped run remains failed",
+			run: func() gateway.SimopsRunRecord {
+				run := testDockerRun("RUN-SYNC-STOPPED-FAILED")
+				run.Lifecycle = gateway.SimopsStopped
+				return run
+			}(),
+			summary: dockerSummary("container-stopped-failed", "RUN-SYNC-STOPPED-FAILED", "scheduler-01", "scheduler"),
+			inspect: dockerInspect("container-stopped-failed", container.State{
+				Status:   container.StateExited,
+				ExitCode: 17,
+				Error:    "worker failed before stop",
+			}),
+			want:      gateway.ObservedWorkerFailed,
+			wantCause: "exit-code",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := &fakeDockerClient{
+				image:   image.InspectResponse{ID: "image-123"},
+				listed:  []container.Summary{tt.summary},
+				inspect: map[string]container.InspectResponse{tt.summary.ID: tt.inspect},
+			}
+			spooler := Spooler{Config: testDockerConfig(), Client: client, Now: fixedNow}
+			observations, err := spooler.SyncRunProfiles(context.Background(), tt.run, testDockerProfiles(t, tt.run, gateway.SimopsWorkerScheduler))
+			if err != nil {
+				t.Fatalf("sync run: %v", err)
+			}
+			if len(observations) != 1 {
+				t.Fatalf("expected one observation, got %#v", observations)
+			}
+			got := observations[0]
+			if got.State != tt.want {
+				t.Fatalf("expected %q, got %#v", tt.want, got)
+			}
+			if tt.wantCause != "" && got.Reason != tt.wantCause {
+				t.Fatalf("expected reason %q, got %#v", tt.wantCause, got)
+			}
+		})
+	}
+}
+
+func TestSpoolerSyncRunProfilesReportsMissingStoppedAndImagePullFailure(t *testing.T) {
+	run := testDockerRun("RUN-SYNC-MISSING")
+	profiles := testDockerProfiles(t, run, gateway.SimopsWorkerScheduler)
+
+	t.Run("missing container with present image", func(t *testing.T) {
+		client := &fakeDockerClient{image: image.InspectResponse{ID: "image-123"}}
+		spooler := Spooler{Config: testDockerConfig(), Client: client, Now: fixedNow}
+
+		observations, err := spooler.SyncRunProfiles(context.Background(), run, profiles)
+		if err != nil {
+			t.Fatalf("sync run: %v", err)
+		}
+		if len(observations) != 1 || observations[0].State != gateway.ObservedWorkerMissing {
+			t.Fatalf("expected missing observation, got %#v", observations)
+		}
+	})
+
+	t.Run("missing container after stopped run", func(t *testing.T) {
+		stoppedRun := run
+		stoppedRun.Lifecycle = gateway.SimopsStopped
+		client := &fakeDockerClient{image: image.InspectResponse{ID: "image-123"}}
+		spooler := Spooler{Config: testDockerConfig(), Client: client, Now: fixedNow}
+
+		observations, err := spooler.SyncRunProfiles(context.Background(), stoppedRun, profiles)
+		if err != nil {
+			t.Fatalf("sync run: %v", err)
+		}
+		if len(observations) != 1 || observations[0].State != gateway.ObservedWorkerStopped {
+			t.Fatalf("expected stopped observation, got %#v", observations)
+		}
+	})
+
+	t.Run("missing container with missing image is still missing", func(t *testing.T) {
+		client := &fakeDockerClient{imageErr: errors.New("missing image")}
+		spooler := Spooler{Config: testDockerConfig(), Client: client, Now: fixedNow}
+
+		observations, err := spooler.SyncRunProfiles(context.Background(), run, profiles)
+		if err != nil {
+			t.Fatalf("sync run: %v", err)
+		}
+		if len(observations) != 1 || observations[0].State != gateway.ObservedWorkerMissing {
+			t.Fatalf("expected missing observation, got %#v", observations)
+		}
+		if client.inspectedImage != "" {
+			t.Fatalf("expected sync not to reclassify missing container through image inspection, inspected %q", client.inspectedImage)
+		}
+	})
+
+	t.Run("failed run with missing container and missing image is image pull failed", func(t *testing.T) {
+		failedRun := run
+		failedRun.Lifecycle = gateway.SimopsFailed
+		client := &fakeDockerClient{imageErr: errors.New("pull access denied")}
+		spooler := Spooler{Config: testDockerConfig(), Client: client, Now: fixedNow}
+
+		observations, err := spooler.SyncRunProfiles(context.Background(), failedRun, profiles)
+		if err != nil {
+			t.Fatalf("sync run: %v", err)
+		}
+		if len(observations) != 1 || observations[0].State != gateway.ObservedWorkerImagePullFailed {
+			t.Fatalf("expected image-pull-failed observation, got %#v", observations)
+		}
+		if observations[0].Reason != "image_inspect" || client.inspectedImage != "radiant-simops-generator:test" {
+			t.Fatalf("expected image inspect failure detail, got observation=%#v inspected=%q", observations[0], client.inspectedImage)
+		}
+	})
+}
+
 func testDockerConfig() gateway.SimopsConfig {
 	cfg := gateway.DefaultConfig().Simops
 	cfg.LaunchMode = "auto"
@@ -276,26 +476,29 @@ func fixedNow() time.Time {
 }
 
 type fakeDockerClient struct {
-	image     image.InspectResponse
-	imageErr  error
-	create    container.CreateResponse
-	createErr error
-	startErr  error
-	listed    []container.Summary
-	listErr   error
-	stopErr   error
-	removeErr error
+	image      image.InspectResponse
+	imageErr   error
+	create     container.CreateResponse
+	createErr  error
+	startErr   error
+	listed     []container.Summary
+	listErr    error
+	inspect    map[string]container.InspectResponse
+	inspectErr error
+	stopErr    error
+	removeErr  error
 
-	inspectedImage    string
-	createdConfig     container.Config
-	createdHostConfig container.HostConfig
-	createdNetworking network.NetworkingConfig
-	createdPlatform   *v1.Platform
-	createdName       string
-	startedContainer  string
-	listOptions       container.ListOptions
-	stopped           []string
-	removed           []string
+	inspectedImage      string
+	createdConfig       container.Config
+	createdHostConfig   container.HostConfig
+	createdNetworking   network.NetworkingConfig
+	createdPlatform     *v1.Platform
+	createdName         string
+	startedContainer    string
+	listOptions         container.ListOptions
+	inspectedContainers []string
+	stopped             []string
+	removed             []string
 }
 
 func (c *fakeDockerClient) ImageInspect(_ context.Context, imageID string) (image.InspectResponse, error) {
@@ -328,6 +531,21 @@ func (c *fakeDockerClient) ContainerList(_ context.Context, options container.Li
 	return c.listed, c.listErr
 }
 
+func (c *fakeDockerClient) ContainerInspect(_ context.Context, containerID string) (container.InspectResponse, error) {
+	c.inspectedContainers = append(c.inspectedContainers, containerID)
+	if c.inspectErr != nil {
+		return container.InspectResponse{}, c.inspectErr
+	}
+	if c.inspect == nil {
+		return container.InspectResponse{}, errors.New("container not found")
+	}
+	response, ok := c.inspect[containerID]
+	if !ok {
+		return container.InspectResponse{}, errors.New("container not found")
+	}
+	return response, nil
+}
+
 func (c *fakeDockerClient) ContainerStop(_ context.Context, containerID string, _ container.StopOptions) error {
 	c.stopped = append(c.stopped, containerID)
 	return c.stopErr
@@ -336,4 +554,27 @@ func (c *fakeDockerClient) ContainerStop(_ context.Context, containerID string, 
 func (c *fakeDockerClient) ContainerRemove(_ context.Context, containerID string, _ container.RemoveOptions) error {
 	c.removed = append(c.removed, containerID)
 	return c.removeErr
+}
+
+func dockerSummary(containerID string, runID string, workerID string, workerKind string) container.Summary {
+	return container.Summary{
+		ID:    containerID,
+		State: container.StateRunning,
+		Labels: map[string]string{
+			"simops.run_id":          runID,
+			"simops.runtime_adapter": "docker-sdk",
+			"simops.role":            string(gateway.RunConnectionRoleOrdinaryWorker),
+			"simops.worker_id":       workerID,
+			"simops.worker_kind":     workerKind,
+		},
+	}
+}
+
+func dockerInspect(containerID string, state container.State) container.InspectResponse {
+	return container.InspectResponse{
+		ContainerJSONBase: &container.ContainerJSONBase{
+			ID:    containerID,
+			State: &state,
+		},
+	}
 }

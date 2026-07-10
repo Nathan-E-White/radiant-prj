@@ -105,6 +105,25 @@ func BuildRunWorkerConnectionProfile(cfg SimopsConfig, run SimopsRunRecord, work
 	return buildRunConnectionProfile(cfg, run, RunConnectionRoleOrdinaryWorker, fmt.Sprintf("%s-01", worker), worker, false)
 }
 
+func BuildRunWorkerConnectionProfileForRecord(cfg SimopsConfig, run SimopsRunRecord, worker SimopsWorkerRecord) (RunConnectionProfile, error) {
+	if !allowedWorker(worker.WorkerKind) {
+		return RunConnectionProfile{}, fmt.Errorf("worker kind %q is not supported", worker.WorkerKind)
+	}
+	return buildRunConnectionProfile(cfg, run, RunConnectionRoleOrdinaryWorker, worker.WorkerID, worker.WorkerKind, false)
+}
+
+func BuildRunWorkerConnectionProfilesForRecords(cfg SimopsConfig, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]RunConnectionProfile, error) {
+	profiles := make([]RunConnectionProfile, 0, len(workers))
+	for _, worker := range workers {
+		profile, err := BuildRunWorkerConnectionProfileForRecord(cfg, run, worker)
+		if err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, profile)
+	}
+	return profiles, nil
+}
+
 func BuildTrustedRunConnectionProfile(cfg SimopsConfig, run SimopsRunRecord, role RunConnectionRole) (RunConnectionProfile, error) {
 	switch role {
 	case RunConnectionRoleStreamGateway, RunConnectionRoleProjector, RunConnectionRoleIcebergWriter:

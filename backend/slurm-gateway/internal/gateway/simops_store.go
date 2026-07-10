@@ -20,6 +20,7 @@ type SimopsStore interface {
 	ListArtifacts(runID string) ([]SimopsArtifactRecord, error)
 	UpdateRunLifecycle(runID string, lifecycle SimopsLifecycle) (SimopsRunRecord, error)
 	UpdateWorkerFrames(runID string, workerID string, lifecycle SimopsLifecycle, framesDelta int) error
+	UpdateWorkerObservedLifecycle(observation ObservedWorkerLifecycle) error
 	SaveArtifact(record SimopsArtifactRecord) error
 	SaveEvent(event SimopsEvent) error
 	ListEvents(runID string) ([]SimopsEvent, error)
@@ -192,6 +193,22 @@ func (s *InMemorySimopsStore) UpdateWorkerFrames(runID string, workerID string, 
 	return nil
 }
 
+func (s *InMemorySimopsStore) UpdateWorkerObservedLifecycle(observation ObservedWorkerLifecycle) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.runs[observation.RunID]; !ok {
+		return ErrSimopsRunNotFound
+	}
+	workerMap := s.workersByRun[observation.RunID]
+	worker, ok := workerMap[observation.WorkerID]
+	if !ok {
+		return ErrSimopsRunNotFound
+	}
+	applyObservedWorkerLifecycle(&worker, observation, time.Now)
+	workerMap[observation.WorkerID] = worker
+	return nil
+}
+
 func (s *InMemorySimopsStore) SaveArtifact(record SimopsArtifactRecord) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -257,4 +274,30 @@ func (s *InMemorySimopsStore) ActiveRunCount() int {
 
 func idempotencyScope(identity string, key string) string {
 	return identity + "|" + key
+}
+
+func applyObservedWorkerLifecycle(worker *SimopsWorkerRecord, observation ObservedWorkerLifecycle, now func() time.Time) {
+	observedAt := observation.ObservedAt.UTC()
+	if observedAt.IsZero() {
+		observedAt = now().UTC()
+	}
+	worker.ObservedLifecycle = observation.State
+	worker.ObservedReason = observation.Reason
+	worker.ObservedMessage = observation.Message
+	worker.Runtime = observation.Runtime
+	worker.RuntimeID = observation.RuntimeID
+	worker.ObservedExitCode = observation.ExitCode
+	worker.ObservedAt = &observedAt
+	worker.UpdatedAt = observedAt
+	if len(observation.Labels) > 0 {
+		worker.Labels = copyStringMap(observation.Labels)
+	}
+}
+
+func copyStringMap(values map[string]string) map[string]string {
+	copied := make(map[string]string, len(values))
+	for key, value := range values {
+		copied[key] = value
+	}
+	return copied
 }

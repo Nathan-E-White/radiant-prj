@@ -17,6 +17,41 @@ const (
 	SimopsStopped   SimopsLifecycle = "stopped"
 )
 
+// ObservedWorkerState is runtime-resource state only. It is not telemetry
+// health, artifact disposition, Redpanda/Postgres/Iceberg health, or simulated
+// result quality.
+//
+// Kubernetes mapping prep:
+//   - Job Complete -> succeeded; Job Failed -> failed.
+//   - Pod Pending -> pending; Running -> active; Succeeded -> succeeded; Failed -> failed.
+//   - Container waiting reasons ErrImagePull/ImagePullBackOff -> image-pull-failed.
+//   - NotFound/deleted runtime resources -> missing, unless the run is already stopped.
+type ObservedWorkerState string
+
+const (
+	ObservedWorkerPending         ObservedWorkerState = "pending"
+	ObservedWorkerActive          ObservedWorkerState = "active"
+	ObservedWorkerSucceeded       ObservedWorkerState = "succeeded"
+	ObservedWorkerFailed          ObservedWorkerState = "failed"
+	ObservedWorkerMissing         ObservedWorkerState = "missing"
+	ObservedWorkerImagePullFailed ObservedWorkerState = "image-pull-failed"
+	ObservedWorkerStopped         ObservedWorkerState = "stopped"
+)
+
+type ObservedWorkerLifecycle struct {
+	RunID      string
+	WorkerID   string
+	WorkerKind SimopsWorkerKind
+	State      ObservedWorkerState
+	Runtime    string
+	RuntimeID  string
+	Reason     string
+	Message    string
+	ExitCode   *int
+	ObservedAt time.Time
+	Labels     map[string]string
+}
+
 type SimopsWorkerKind string
 
 const (
@@ -76,15 +111,22 @@ type SimopsRunRecord struct {
 }
 
 type SimopsWorkerRecord struct {
-	RunID      string            `json:"-"`
-	WorkerID   string            `json:"worker_id"`
-	WorkerKind SimopsWorkerKind  `json:"worker_kind"`
-	Lifecycle  SimopsLifecycle   `json:"lifecycle"`
-	LaunchMode string            `json:"launch_mode"`
-	Endpoint   string            `json:"endpoint,omitempty"`
-	Frames     int               `json:"frames"`
-	UpdatedAt  time.Time         `json:"updated_at"`
-	Labels     map[string]string `json:"labels,omitempty"`
+	RunID             string              `json:"-"`
+	WorkerID          string              `json:"worker_id"`
+	WorkerKind        SimopsWorkerKind    `json:"worker_kind"`
+	Lifecycle         SimopsLifecycle     `json:"lifecycle"`
+	ObservedLifecycle ObservedWorkerState `json:"observed_lifecycle,omitempty"`
+	ObservedReason    string              `json:"observed_reason,omitempty"`
+	ObservedMessage   string              `json:"observed_message,omitempty"`
+	Runtime           string              `json:"runtime,omitempty"`
+	RuntimeID         string              `json:"runtime_id,omitempty"`
+	ObservedExitCode  *int                `json:"observed_exit_code,omitempty"`
+	ObservedAt        *time.Time          `json:"observed_at,omitempty"`
+	LaunchMode        string              `json:"launch_mode"`
+	Endpoint          string              `json:"endpoint,omitempty"`
+	Frames            int                 `json:"frames"`
+	UpdatedAt         time.Time           `json:"updated_at"`
+	Labels            map[string]string   `json:"labels,omitempty"`
 }
 
 type SimopsSpoolCommand struct {

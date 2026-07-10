@@ -27,6 +27,7 @@
 | CHG-015 | 2026-07-07 | Added fixture-driven 4-card Simulation Health projection logic, dynamic timer driver, and surface integration with cleanup-safe lifecycle. | SW-016 | `bun run typecheck`, `bun run test` |
 | CHG-016 | 2026-07-08 | Consolidated the app IA into Welcome, Status Workbench, and Evidence; absorbed the compute queue and SimOps Control into Status Workbench with a queue-driven HPC status bay. | SW-003, SW-016, ADR-0006 | `bun run typecheck`, `bun run test`, `bun run build`, `bun run build-storybook`, `bun run ci` |
 | CHG-017 | 2026-07-10 | Replaced the Simulation Ops Docker CLI worker launcher with a Docker SDK adapter behind the runtime seam, using run connection profiles, structured launch metadata/errors, and run/worker-scoped cleanup filters. | SW-017, SIMOPS-DOCKER-SDK-001 | `go test ./internal/gateway ./internal/simopsdocker -run 'TestDefaultSimopsController|TestSpooler'`, `bun run backend:test`, `bun run backend:deps:check`, `bun run ci` |
+| CHG-018 | 2026-07-10 | Added runtime-neutral SyncRun lifecycle observation for Simulation Ops workers, including Docker state mapping, observed lifecycle persistence, and explicit telemetry/artifact/data-plane separation. | SW-018, SIMOPS-SYNCRUN-001, ICD-001, CI-SRC, CI-DOC, CI-INF | `go test ./internal/gateway ./internal/simopsdocker -run 'TestSimopsControllerSyncs|TestWorkerTelemetryDoesNotOverwrite|TestDataPlaneAndArtifactUpdatesDoNotMutate|TestSpoolerSyncRunProfiles'`, `bun run backend:test`, `bun run backend:deps:check`, `bun run ci` |
 
 ## Control Note
 

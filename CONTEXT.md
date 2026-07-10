@@ -50,6 +50,11 @@ _Avoid_: Docker config, job spec, environment blob
 The runtime-specific launcher that turns a Run Connection Profile into an external worker execution record while preserving the Simulation Ops run interface.
 _Avoid_: Shell launcher, worker script, data-plane adapter
 
+**Observed Worker Lifecycle**:
+The runtime-resource state observed for a run-scoped worker, such as pending, active, succeeded, failed, missing, image-pull-failed, or stopped.
+It is not telemetry health, artifact disposition, data-plane health, or simulated result quality.
+_Avoid_: Telemetry health, artifact health, infrastructure health
+
 **Kaleidos Unit**:
 The single standardized reactor unit represented by the Simulator Workbench: a public-safe Kaleidos-style prismatic HTGR with TRISO/prismatic graphite core, helium primary loop, control drum, turbomachinery/cooling, reactor/shielding, vessel/container boundary, and heat/electric output context.
 _Avoid_: Generic reactor, reactor zoo, pebble-bed variant

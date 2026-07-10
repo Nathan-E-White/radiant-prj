@@ -130,6 +130,27 @@ func (s *recordingSimopsSpooler) StopRunProfiles(ctx context.Context, runID stri
 	return nil
 }
 
+func (s *recordingSimopsSpooler) SyncRun(ctx context.Context, _ SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	observations := make([]ObservedWorkerLifecycle, 0, len(workers))
+	for _, worker := range workers {
+		observations = append(observations, ObservedWorkerLifecycle{
+			RunID:      worker.RunID,
+			WorkerID:   worker.WorkerID,
+			WorkerKind: worker.WorkerKind,
+			State:      ObservedWorkerPending,
+			Runtime:    "test",
+			Reason:     "recording-runtime",
+			ObservedAt: fixedGatewayRuntimeNow(),
+		})
+	}
+	return observations, nil
+}
+
 func fixedGatewayRuntimeNow() time.Time {
 	return time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC)
 }

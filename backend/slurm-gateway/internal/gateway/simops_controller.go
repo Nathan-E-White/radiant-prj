@@ -226,6 +226,7 @@ func (c *SimopsController) GetRun(runID string) (SimopsRunResponse, int, error) 
 	if err != nil {
 		return SimopsRunResponse{}, http.StatusInternalServerError, err
 	}
+	_ = c.syncRunWorkers(context.Background(), record)
 	resp, _, err := c.responseFor(record, false)
 	return resp, http.StatusOK, err
 }
@@ -285,19 +286,35 @@ func (c *SimopsController) stopRunWorkers(ctx context.Context, record SimopsRunR
 		return c.spooler.StopRun(ctx, record.RunID)
 	}
 
-	profiles := make([]RunConnectionProfile, 0, len(workers))
-	for _, worker := range workers {
-		profile, err := BuildRunWorkerConnectionProfile(c.cfg, record, worker.WorkerKind)
-		if err != nil {
-			return err
-		}
-		profile.WorkerID = worker.WorkerID
-		profile.Runtime.Docker.ContainerName = dockerRunContainerName(record.RunID, worker.WorkerID)
-		profile.Runtime.Kubernetes.JobName = kubernetesRunJobName(record.RunID, worker.WorkerID)
-		profile.Labels = runConnectionLabels(profile)
-		profiles = append(profiles, profile)
+	profiles, err := c.runWorkerProfiles(record, workers)
+	if err != nil {
+		return err
 	}
 	return profileStopper.StopRunProfiles(ctx, record.RunID, profiles)
+}
+
+func (c *SimopsController) syncRunWorkers(ctx context.Context, record SimopsRunRecord) error {
+	workers, err := c.store.ListWorkers(record.RunID)
+	if err != nil {
+		return err
+	}
+	observations, err := c.spooler.SyncRun(ctx, record, workers)
+	if err != nil {
+		return err
+	}
+	for _, observation := range observations {
+		if observation.RunID == "" {
+			observation.RunID = record.RunID
+		}
+		if err := c.store.UpdateWorkerObservedLifecycle(observation); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *SimopsController) runWorkerProfiles(record SimopsRunRecord, workers []SimopsWorkerRecord) ([]RunConnectionProfile, error) {
+	return BuildRunWorkerConnectionProfilesForRecords(c.cfg, record, workers)
 }
 
 func plannedWorkerRecords(record SimopsRunRecord, workers []SimopsWorkerKind, now time.Time) []SimopsWorkerRecord {

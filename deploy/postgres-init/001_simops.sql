@@ -25,9 +25,25 @@ CREATE TABLE IF NOT EXISTS simops_workers (
   endpoint TEXT,
   frames INTEGER NOT NULL DEFAULT 0,
   labels JSONB NOT NULL DEFAULT '{}'::jsonb,
+  observed_lifecycle TEXT,
+  observed_reason TEXT,
+  observed_message TEXT,
+  runtime TEXT,
+  runtime_id TEXT,
+  observed_exit_code INTEGER,
+  observed_at TIMESTAMPTZ,
   updated_at TIMESTAMPTZ NOT NULL,
   PRIMARY KEY (run_id, worker_id)
 );
+
+ALTER TABLE simops_workers
+  ADD COLUMN IF NOT EXISTS observed_lifecycle TEXT,
+  ADD COLUMN IF NOT EXISTS observed_reason TEXT,
+  ADD COLUMN IF NOT EXISTS observed_message TEXT,
+  ADD COLUMN IF NOT EXISTS runtime TEXT,
+  ADD COLUMN IF NOT EXISTS runtime_id TEXT,
+  ADD COLUMN IF NOT EXISTS observed_exit_code INTEGER,
+  ADD COLUMN IF NOT EXISTS observed_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS simops_spool_commands (
   command_id TEXT PRIMARY KEY,

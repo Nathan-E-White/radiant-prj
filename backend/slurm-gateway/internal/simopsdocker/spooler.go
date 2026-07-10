@@ -23,6 +23,7 @@ type DockerClient interface {
 	ContainerCreate(ctx context.Context, config *container.Config, hostConfig *container.HostConfig, networkingConfig *network.NetworkingConfig, platform *ocispec.Platform, containerName string) (container.CreateResponse, error)
 	ContainerStart(ctx context.Context, containerID string, options container.StartOptions) error
 	ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error)
+	ContainerInspect(ctx context.Context, containerID string) (container.InspectResponse, error)
 	ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error
 	ContainerRemove(ctx context.Context, containerID string, options container.RemoveOptions) error
 }
@@ -149,6 +150,14 @@ func (s Spooler) StopRun(ctx context.Context, runID string) error {
 	return s.tryStopRunWorkers(ctx, strings.TrimSpace(runID))
 }
 
+func (s Spooler) SyncRun(ctx context.Context, run gateway.SimopsRunRecord, workers []gateway.SimopsWorkerRecord) ([]gateway.ObservedWorkerLifecycle, error) {
+	profiles, err := gateway.BuildRunWorkerConnectionProfilesForRecords(s.Config, run, workers)
+	if err != nil {
+		return nil, err
+	}
+	return s.SyncRunProfiles(ctx, run, profiles)
+}
+
 func (s Spooler) StopRunProfiles(ctx context.Context, runID string, profiles []gateway.RunConnectionProfile) error {
 	select {
 	case <-ctx.Done():
@@ -159,6 +168,58 @@ func (s Spooler) StopRunProfiles(ctx context.Context, runID string, profiles []g
 		return fmt.Errorf("docker client is required")
 	}
 	return s.tryStopRunProfiles(ctx, strings.TrimSpace(runID), profiles)
+}
+
+func (s Spooler) SyncRunProfiles(ctx context.Context, run gateway.SimopsRunRecord, profiles []gateway.RunConnectionProfile) ([]gateway.ObservedWorkerLifecycle, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	if s.Client == nil {
+		return nil, fmt.Errorf("docker client is required")
+	}
+
+	runID := strings.TrimSpace(run.RunID)
+	containers, err := s.Client.ContainerList(ctx, container.ListOptions{
+		All: true,
+		Filters: filters.NewArgs(
+			filters.Arg("label", "simops.run_id="+runID),
+			filters.Arg("label", "simops.runtime_adapter=docker-sdk"),
+			filters.Arg("label", "simops.role="+string(gateway.RunConnectionRoleOrdinaryWorker)),
+		),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list simops worker containers for run %s: %w", runID, err)
+	}
+
+	byWorker := make(map[string]container.Summary, len(containers))
+	expectedWorkers := profileWorkerSet(profiles)
+	for _, item := range containers {
+		if !matchesRunWorker(runID, item.Labels, expectedWorkers) {
+			continue
+		}
+		workerID := strings.TrimSpace(item.Labels["simops.worker_id"])
+		if workerID != "" {
+			byWorker[workerID] = item
+		}
+	}
+
+	observations := make([]gateway.ObservedWorkerLifecycle, 0, len(profiles))
+	for _, profile := range profiles {
+		item, ok := byWorker[profile.WorkerID]
+		if !ok {
+			observations = append(observations, s.missingWorkerObservation(ctx, run, profile))
+			continue
+		}
+		inspect, err := s.Client.ContainerInspect(ctx, item.ID)
+		if err != nil {
+			observations = append(observations, observedFromProfile(run, profile, gateway.ObservedWorkerMissing, item.ID, "container_inspect", err.Error(), nil, item.Labels, s.now()))
+			continue
+		}
+		observations = append(observations, observedFromDockerState(run, profile, item, inspect, s.now()))
+	}
+	return observations, nil
 }
 
 func (s Spooler) startWorker(ctx context.Context, profile gateway.RunConnectionProfile) (string, error) {
@@ -195,6 +256,102 @@ func (s Spooler) startWorker(ctx context.Context, profile gateway.RunConnectionP
 		return "", launchError(profile, "container_start", err)
 	}
 	return containerID, nil
+}
+
+func (s Spooler) missingWorkerObservation(ctx context.Context, run gateway.SimopsRunRecord, profile gateway.RunConnectionProfile) gateway.ObservedWorkerLifecycle {
+	if run.Lifecycle == gateway.SimopsStopped {
+		return observedFromProfile(run, profile, gateway.ObservedWorkerStopped, "", "stopped", "worker runtime resource is absent after stop", nil, profile.Labels, s.now())
+	}
+	if run.Lifecycle == gateway.SimopsFailed && strings.TrimSpace(profile.WorkerImage) != "" {
+		if _, err := s.Client.ImageInspect(ctx, profile.WorkerImage); err != nil {
+			return observedFromProfile(run, profile, gateway.ObservedWorkerImagePullFailed, "", "image_inspect", err.Error(), nil, profile.Labels, s.now())
+		}
+	}
+	return observedFromProfile(run, profile, gateway.ObservedWorkerMissing, "", "missing", "expected worker runtime resource was not found", nil, profile.Labels, s.now())
+}
+
+func observedFromDockerState(run gateway.SimopsRunRecord, profile gateway.RunConnectionProfile, summary container.Summary, inspect container.InspectResponse, now time.Time) gateway.ObservedWorkerLifecycle {
+	state := inspect.State
+	if state == nil {
+		return observedFromProfile(run, profile, gateway.ObservedWorkerMissing, summary.ID, "container_inspect", "container inspect response did not include state", nil, summary.Labels, now)
+	}
+	runtimeID := strings.TrimSpace(inspect.ID)
+	if runtimeID == "" {
+		runtimeID = strings.TrimSpace(summary.ID)
+	}
+	status := strings.TrimSpace(state.Status)
+	exitCode := dockerIntPtr(state.ExitCode)
+	switch {
+	case isImagePullFailure(state):
+		return observedFromProfile(run, profile, gateway.ObservedWorkerImagePullFailed, runtimeID, "image-pull", state.Error, exitCode, summary.Labels, now)
+	case state.OOMKilled:
+		return observedFromProfile(run, profile, gateway.ObservedWorkerFailed, runtimeID, "oom-killed", state.Error, exitCode, summary.Labels, now)
+	case state.Dead || status == container.StateDead:
+		return observedFromProfile(run, profile, gateway.ObservedWorkerFailed, runtimeID, "dead", state.Error, exitCode, summary.Labels, now)
+	case status == container.StateCreated:
+		return observedFromProfile(run, profile, gateway.ObservedWorkerPending, runtimeID, "created", "container exists but is not running", nil, summary.Labels, now)
+	case status == container.StateRunning:
+		return observedFromProfile(run, profile, gateway.ObservedWorkerActive, runtimeID, "running", "container is running", nil, summary.Labels, now)
+	case status == container.StateRestarting:
+		return observedFromProfile(run, profile, gateway.ObservedWorkerActive, runtimeID, "restarting", "container is restarting", nil, summary.Labels, now)
+	case status == container.StatePaused:
+		return observedFromProfile(run, profile, gateway.ObservedWorkerActive, runtimeID, "paused", "container is paused", nil, summary.Labels, now)
+	case status == container.StateExited && state.ExitCode == 0:
+		return observedFromProfile(run, profile, gateway.ObservedWorkerSucceeded, runtimeID, "exited", "container exited successfully", exitCode, summary.Labels, now)
+	case run.Lifecycle == gateway.SimopsStopped && status == container.StateExited && isStopExitCode(state.ExitCode):
+		return observedFromProfile(run, profile, gateway.ObservedWorkerStopped, runtimeID, "stopped", "container exited after run stop", exitCode, summary.Labels, now)
+	case status == container.StateExited:
+		return observedFromProfile(run, profile, gateway.ObservedWorkerFailed, runtimeID, "exit-code", state.Error, exitCode, summary.Labels, now)
+	case status == container.StateRemoving:
+		return observedFromProfile(run, profile, gateway.ObservedWorkerPending, runtimeID, "removing", "container is being removed", nil, summary.Labels, now)
+	default:
+		return observedFromProfile(run, profile, gateway.ObservedWorkerPending, runtimeID, status, "container state is pending classification", nil, summary.Labels, now)
+	}
+}
+
+func isStopExitCode(exitCode int) bool {
+	return exitCode == 130 || exitCode == 137 || exitCode == 143
+}
+
+func isImagePullFailure(state *container.State) bool {
+	if state == nil {
+		return false
+	}
+	text := strings.ToLower(strings.TrimSpace(state.Error + " " + state.Status))
+	for _, marker := range []string{
+		"errimagepull",
+		"imagepullbackoff",
+		"image pull",
+		"pull access denied",
+		"manifest unknown",
+		"no such image",
+		"repository does not exist",
+	} {
+		if strings.Contains(text, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+func observedFromProfile(run gateway.SimopsRunRecord, profile gateway.RunConnectionProfile, state gateway.ObservedWorkerState, runtimeID string, reason string, message string, exitCode *int, labels map[string]string, now time.Time) gateway.ObservedWorkerLifecycle {
+	return gateway.ObservedWorkerLifecycle{
+		RunID:      run.RunID,
+		WorkerID:   profile.WorkerID,
+		WorkerKind: profile.WorkerKind,
+		State:      state,
+		Runtime:    "docker",
+		RuntimeID:  runtimeID,
+		Reason:     reason,
+		Message:    message,
+		ExitCode:   exitCode,
+		ObservedAt: now.UTC(),
+		Labels:     copyLabels(labels),
+	}
+}
+
+func dockerIntPtr(value int) *int {
+	return &value
 }
 
 func (s Spooler) tryStopRunWorkers(ctx context.Context, runID string) error {
@@ -421,6 +578,10 @@ func (c engineClient) ContainerStart(ctx context.Context, containerID string, op
 
 func (c engineClient) ContainerList(ctx context.Context, options container.ListOptions) ([]container.Summary, error) {
 	return c.client.ContainerList(ctx, options)
+}
+
+func (c engineClient) ContainerInspect(ctx context.Context, containerID string) (container.InspectResponse, error) {
+	return c.client.ContainerInspect(ctx, containerID)
 }
 
 func (c engineClient) ContainerStop(ctx context.Context, containerID string, options container.StopOptions) error {

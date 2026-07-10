@@ -52,7 +52,7 @@ This document identifies internal and operational interfaces that are controlled
 | `/api/jobs/submit` | POST | `script_name`, `partition`, `node_count`, optional `rank_count` | Queued job id, state, and mode | mTLS identity check, allowlists, Go tests |
 | `/api/jobs/{job_id}` | GET | Job id path segment | Recorded job status | mTLS identity check and Go tests |
 | `/api/simops/runs` | POST | Scenario id, optional work script, worker kinds, launch mode, runtime, idempotency key | Run id, lifecycle state, workers, spool commands, artifact refs, WebTransport subscription metadata | mTLS identity check, allowlists, idempotency tests, Go tests |
-| `/api/simops/runs/{run_id}` | GET | Run id path segment | Run, worker, spool-command, lifecycle, and artifact-reference state | mTLS identity check and Go tests |
+| `/api/simops/runs/{run_id}` | GET | Run id path segment | Run, worker, spool-command, lifecycle, observed runtime-worker lifecycle, and artifact-reference state | mTLS identity check and Go tests |
 | `/api/simops/runs/{run_id}/events` | GET | Run id path segment | Persisted lifecycle, telemetry, and artifact-ready events | mTLS identity check, event store, and Go tests |
 | `/api/simops/runs/{run_id}/stop` | POST | Run id path segment | Controlled stop lifecycle update | mTLS identity check and Go tests |
 | `/internal/simops/runs/{run_id}/ingest` | POST | Token-gated telemetry frame batch | Validated ingest count and lifecycle/telemetry event append | Internal token validation and Go tests |
@@ -77,8 +77,13 @@ Simulation Ops public handlers use the same backend trust boundary. Browser-loca
 | Payload schemas | Scheduler, storage, elastic bursting, and fabric profiler metrics | Panel-ready metric structures | Payload schemas and example NDJSON |
 | Run summary | Completed telemetry stream and scenario events | Reviewable run artifact for future evidence handoff | `simops-run-summary.v1` schema |
 | Simulated result envelope | Run-scoped synthetic engineering result values | `simops.result.v1` frames with `valueBasis=simulated` | `simops-result-envelope.v1` schema |
+| Runtime adapter sync | Run record and stored worker records | Runtime-neutral observed worker lifecycle states: `pending`, `active`, `succeeded`, `failed`, `missing`, `image-pull-failed`, `stopped` | Gateway runtime interface and Go tests |
 
 The contract uses NDJSON as the canonical example and local fixture format. Live browser transport for v1 is WebTransport with a MoQ-compatible SimOps namespace/track envelope; `GET /api/simops/runs/{run_id}/events` is recovery/inspection only and is not the live telemetry stream.
+
+Observed runtime-worker lifecycle is separate from telemetry stream health, artifact disposition, Redpanda status, Postgres status, and Iceberg write health. Docker sync maps container existence and inspected container state into the neutral state set. Kubernetes sync will use the same state set: Job `Complete` maps to `succeeded`, Job `Failed` maps to `failed`, Pod `Pending` maps to `pending`, Pod `Running` maps to `active`, Pod `Succeeded` maps to `succeeded`, Pod `Failed` maps to `failed`, `ErrImagePull`/`ImagePullBackOff` maps to `image-pull-failed`, and missing/deleted resources map to `missing` unless the run is already stopped.
+
+Run inspection remains available when a runtime sync attempt fails; in that case the handler returns the stored run and worker records without fresh observed lifecycle updates.
 
 | MoQ Namespace | Track | Payload |
 | --- | --- | --- |
@@ -91,7 +96,7 @@ The contract uses NDJSON as the canonical example and local fixture format. Live
 
 | Layer | Controlled Responsibility | Local Artifact |
 | --- | --- | --- |
-| Timescale/Postgres | Runs, workers, spool commands, idempotency keys, launch records, artifact refs, telemetry hypertable projection, consumer offsets, and Iceberg SQL-catalog metadata | `deploy/postgres-init/001_simops.sql` |
+| Timescale/Postgres | Runs, workers, observed runtime-worker lifecycle, spool commands, idempotency keys, launch records, artifact refs, telemetry hypertable projection, consumer offsets, and Iceberg SQL-catalog metadata | `deploy/postgres-init/001_simops.sql` |
 | Redpanda | Hot durable telemetry and lifecycle log keyed by run and worker | `deploy/slurm-gateway.compose.yml` |
 | MinIO | S3-compatible object storage for local Parquet-backed Iceberg table data | `deploy/slurm-gateway.compose.yml` |
 | Timescale writer | Redpanda consumer projecting telemetry frames into `simops_telemetry_frames` idempotently | `backend/slurm-gateway/cmd/simops-timescale-writer` |

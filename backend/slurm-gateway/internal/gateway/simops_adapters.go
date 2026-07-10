@@ -12,6 +12,7 @@ import (
 type SimopsSpooler interface {
 	StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error)
 	StopRun(ctx context.Context, runID string) error
+	SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error)
 }
 
 type RunConnectionProfileSpooler interface {
@@ -33,6 +34,7 @@ type SimopsArtifactSink interface {
 type SimopsRuntime interface {
 	StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error)
 	StopRun(ctx context.Context, runID string) error
+	SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error)
 }
 
 type ContractSimopsSpooler struct {
@@ -95,6 +97,33 @@ func (s ContractSimopsSpooler) StopRun(ctx context.Context, runID string) error 
 	default:
 		return nil
 	}
+}
+
+func (s ContractSimopsSpooler) SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	now := time.Now().UTC()
+	if s.Now != nil {
+		now = s.Now().UTC()
+	}
+	observations := make([]ObservedWorkerLifecycle, 0, len(workers))
+	for _, worker := range workers {
+		observations = append(observations, ObservedWorkerLifecycle{
+			RunID:      run.RunID,
+			WorkerID:   worker.WorkerID,
+			WorkerKind: worker.WorkerKind,
+			State:      ObservedWorkerActive,
+			Runtime:    "contract",
+			Reason:     "contract-runtime",
+			Message:    "contract runtime reports worker record present",
+			ObservedAt: now,
+			Labels:     worker.Labels,
+		})
+	}
+	return observations, nil
 }
 
 type MemorySimopsEventLog struct {
