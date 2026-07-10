@@ -35,39 +35,41 @@ type Config struct {
 }
 
 type SimopsConfig struct {
-	Enabled                bool
-	ControlStore           string
-	PostgresDSN            string
-	TelemetryLog           string
-	RedpandaBrokers        string
-	RedpandaTopic          string
-	TimescaleConsumerGroup string
-	IcebergConsumerGroup   string
-	MoQConsumerGroup       string
-	LaunchMode             string
-	WorkerRuntime          string
-	WorkerImage            string
-	WorkerManifestRoot     string
-	WorkerIngestBaseURL    string
-	WorkerFrameOverride    int
-	WorkerNetwork          string
-	WorkerAutoRemove       bool
-	MoQWebTransportURL     string
-	StreamTokenTTL         time.Duration
-	MaxActiveRuns          int
-	IcebergCatalog         string
-	IcebergCatalogDSN      string
-	IcebergWarehouse       string
-	IcebergS3Endpoint      string
-	IcebergS3Bucket        string
-	IcebergS3Region        string
-	IcebergS3AccessKeyID   string
-	IcebergS3SecretKey     string
-	IcebergWriterMode      string
-	IcebergBatchSize       int
-	IcebergFlushInterval   time.Duration
-	IcebergRustCommand     string
-	IcebergManifestDir     string
+	Enabled                   bool
+	ControlStore              string
+	PostgresDSN               string
+	TelemetryLog              string
+	RedpandaBrokers           string
+	RedpandaTopic             string
+	TimescaleConsumerGroup    string
+	IcebergConsumerGroup      string
+	MoQConsumerGroup          string
+	LaunchMode                string
+	WorkerRuntime             string
+	WorkerImage               string
+	WorkerManifestRoot        string
+	WorkerIngestBaseURL       string
+	WorkerFrameOverride       int
+	WorkerNetwork             string
+	WorkerKubernetesNamespace string
+	WorkerCleanupTTL          time.Duration
+	WorkerAutoRemove          bool
+	MoQWebTransportURL        string
+	StreamTokenTTL            time.Duration
+	MaxActiveRuns             int
+	IcebergCatalog            string
+	IcebergCatalogDSN         string
+	IcebergWarehouse          string
+	IcebergS3Endpoint         string
+	IcebergS3Bucket           string
+	IcebergS3Region           string
+	IcebergS3AccessKeyID      string
+	IcebergS3SecretKey        string
+	IcebergWriterMode         string
+	IcebergBatchSize          int
+	IcebergFlushInterval      time.Duration
+	IcebergRustCommand        string
+	IcebergManifestDir        string
 }
 
 type WorkbenchConfig struct {
@@ -110,35 +112,37 @@ func DefaultConfig() Config {
 		SbatchBin:         "sbatch",
 		RequireClientCert: true,
 		Simops: SimopsConfig{
-			Enabled:                true,
-			ControlStore:           "memory",
-			TelemetryLog:           "memory",
-			RedpandaBrokers:        "redpanda:9092",
-			RedpandaTopic:          "simops.telemetry.v1",
-			TimescaleConsumerGroup: "simops-timescale-writer",
-			IcebergConsumerGroup:   "simops-iceberg-writer",
-			MoQConsumerGroup:       "simops-moq-gateway",
-			LaunchMode:             "resident",
-			WorkerRuntime:          "contract",
-			WorkerImage:            "simops-generator:latest",
-			WorkerManifestRoot:     "/examples/simulation-ops",
-			WorkerIngestBaseURL:    "http://host.docker.internal:8080",
-			WorkerNetwork:          "bridge",
-			WorkerAutoRemove:       false,
-			MoQWebTransportURL:     "https://127.0.0.1:9443/moq/simops",
-			StreamTokenTTL:         15 * time.Minute,
-			MaxActiveRuns:          8,
-			IcebergCatalog:         "postgres-sql",
-			IcebergWarehouse:       "s3://radiant-simops/warehouse",
-			IcebergS3Endpoint:      "http://minio:9000",
-			IcebergS3Bucket:        "radiant-simops",
-			IcebergS3Region:        "us-east-1",
-			IcebergS3AccessKeyID:   "radiant",
-			IcebergS3SecretKey:     "radiant-password",
-			IcebergWriterMode:      "manifest",
-			IcebergBatchSize:       64,
-			IcebergFlushInterval:   5 * time.Second,
-			IcebergManifestDir:     "/tmp/simops-iceberg-manifests",
+			Enabled:                   true,
+			ControlStore:              "memory",
+			TelemetryLog:              "memory",
+			RedpandaBrokers:           "redpanda:9092",
+			RedpandaTopic:             "simops.telemetry.v1",
+			TimescaleConsumerGroup:    "simops-timescale-writer",
+			IcebergConsumerGroup:      "simops-iceberg-writer",
+			MoQConsumerGroup:          "simops-moq-gateway",
+			LaunchMode:                "resident",
+			WorkerRuntime:             "contract",
+			WorkerImage:               "simops-generator:latest",
+			WorkerManifestRoot:        "/examples/simulation-ops",
+			WorkerIngestBaseURL:       "http://host.docker.internal:8080",
+			WorkerNetwork:             "bridge",
+			WorkerKubernetesNamespace: "radiant-simops",
+			WorkerCleanupTTL:          10 * time.Minute,
+			WorkerAutoRemove:          false,
+			MoQWebTransportURL:        "https://127.0.0.1:9443/moq/simops",
+			StreamTokenTTL:            15 * time.Minute,
+			MaxActiveRuns:             8,
+			IcebergCatalog:            "postgres-sql",
+			IcebergWarehouse:          "s3://radiant-simops/warehouse",
+			IcebergS3Endpoint:         "http://minio:9000",
+			IcebergS3Bucket:           "radiant-simops",
+			IcebergS3Region:           "us-east-1",
+			IcebergS3AccessKeyID:      "radiant",
+			IcebergS3SecretKey:        "radiant-password",
+			IcebergWriterMode:         "manifest",
+			IcebergBatchSize:          64,
+			IcebergFlushInterval:      5 * time.Second,
+			IcebergManifestDir:        "/tmp/simops-iceberg-manifests",
 		},
 		Workbench: WorkbenchConfig{
 			Enabled:                       true,
@@ -192,6 +196,7 @@ func LoadConfigFromEnv() (Config, error) {
 	cfg.Simops.WorkerManifestRoot = getenv("SIMOPS_WORKER_MANIFEST_ROOT", cfg.Simops.WorkerManifestRoot)
 	cfg.Simops.WorkerIngestBaseURL = getenv("SIMOPS_WORKER_INGEST_BASE_URL", cfg.Simops.WorkerIngestBaseURL)
 	cfg.Simops.WorkerNetwork = getenv("SIMOPS_WORKER_NETWORK", cfg.Simops.WorkerNetwork)
+	cfg.Simops.WorkerKubernetesNamespace = getenv("SIMOPS_WORKER_KUBERNETES_NAMESPACE", cfg.Simops.WorkerKubernetesNamespace)
 	cfg.Simops.MoQWebTransportURL = getenv("SIMOPS_MOQ_WEBTRANSPORT_URL", cfg.Simops.MoQWebTransportURL)
 	cfg.Simops.IcebergCatalog = getenv("SIMOPS_ICEBERG_CATALOG", cfg.Simops.IcebergCatalog)
 	cfg.Simops.IcebergCatalogDSN = getenv("SIMOPS_ICEBERG_CATALOG_DSN", cfg.Simops.IcebergCatalogDSN)
@@ -297,6 +302,13 @@ func LoadConfigFromEnv() (Config, error) {
 			return cfg, fmt.Errorf("SIMOPS_WORKER_FRAME_OVERRIDE must be an integer: %w", err)
 		}
 		cfg.Simops.WorkerFrameOverride = value
+	}
+	if raw := strings.TrimSpace(os.Getenv("SIMOPS_WORKER_CLEANUP_TTL")); raw != "" {
+		value, err := time.ParseDuration(raw)
+		if err != nil {
+			return cfg, fmt.Errorf("SIMOPS_WORKER_CLEANUP_TTL must be a duration: %w", err)
+		}
+		cfg.Simops.WorkerCleanupTTL = value
 	}
 	if raw := strings.TrimSpace(os.Getenv("SIMOPS_ICEBERG_BATCH_SIZE")); raw != "" {
 		value, err := strconv.Atoi(raw)
@@ -439,6 +451,12 @@ func (c SimopsConfig) Validate() error {
 		}
 		if strings.TrimSpace(c.WorkerIngestBaseURL) == "" {
 			return fmt.Errorf("SIMOPS_WORKER_INGEST_BASE_URL is required when SIMOPS_WORKER_RUNTIME=docker")
+		}
+		if strings.TrimSpace(c.WorkerKubernetesNamespace) == "" {
+			return fmt.Errorf("SIMOPS_WORKER_KUBERNETES_NAMESPACE is required when SIMOPS_WORKER_RUNTIME=docker")
+		}
+		if c.WorkerCleanupTTL < 0 {
+			return fmt.Errorf("SIMOPS_WORKER_CLEANUP_TTL must be zero or positive")
 		}
 		if c.WorkerFrameOverride < 0 {
 			return fmt.Errorf("SIMOPS_WORKER_FRAME_OVERRIDE must be zero or positive")

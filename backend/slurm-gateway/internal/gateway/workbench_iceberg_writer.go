@@ -1,3 +1,5 @@
+//go:build iceberggo
+
 package gateway
 
 import (

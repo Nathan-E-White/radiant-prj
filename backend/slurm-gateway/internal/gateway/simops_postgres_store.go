@@ -7,8 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"time"
-
-	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 const simopsPostgresTimeout = 5 * time.Second
@@ -18,6 +16,9 @@ type PostgresSimopsStore struct {
 }
 
 func NewPostgresSimopsStore(dsn string) (*PostgresSimopsStore, error) {
+	if err := requirePostgresDriver(); err != nil {
+		return nil, err
+	}
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, err

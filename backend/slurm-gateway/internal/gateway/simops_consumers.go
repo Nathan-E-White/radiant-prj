@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
-	"github.com/segmentio/kafka-go"
 )
 
 type SimopsTelemetryProjectionStore interface {
@@ -140,7 +138,7 @@ func RunArtifactIntentConsumer(ctx context.Context, cfg SimopsConfig, reader Sim
 	}
 }
 
-func decodeSimopsKafkaEvent(msg kafka.Message) (SimopsEvent, error) {
+func decodeSimopsKafkaEvent(msg SimopsBrokerMessage) (SimopsEvent, error) {
 	var event SimopsEvent
 	if err := json.Unmarshal(msg.Value, &event); err != nil {
 		return SimopsEvent{}, fmt.Errorf("decode simops kafka event topic=%s partition=%d offset=%d: %w", msg.Topic, msg.Partition, msg.Offset, err)
