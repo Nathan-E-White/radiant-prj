@@ -13,9 +13,8 @@ export default defineConfig({
     }
   },
   test: {
-    exclude: ["node_modules/**", "dist/**", "tests/e2e/**"],
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.worktrees/**", "tests/e2e/**"],
     environment: "node",
-    globals: true,
-    exclude: ["**/node_modules/**", "**/dist/**", "**/.worktrees/**"]
+    globals: true
   }
 });
