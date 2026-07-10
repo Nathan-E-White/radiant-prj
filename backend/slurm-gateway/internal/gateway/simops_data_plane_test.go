@@ -6,8 +6,6 @@ import (
 	"errors"
 	"testing"
 	"time"
-
-	"github.com/segmentio/kafka-go"
 )
 
 func TestProjectTelemetryEventMapsFrameAndRedpandaOffset(t *testing.T) {
@@ -51,7 +49,7 @@ func TestRunTimescaleTelemetryConsumerWritesProjectionAndCommits(t *testing.T) {
 	event := SimopsEvent{RunID: frame.RunID, WorkerID: frame.WorkerID, EventType: SimopsEventWorkerTelemetry, Frame: raw, OccurredAt: time.Now().UTC()}
 	payload, _ := json.Marshal(event)
 	reader := &fakeSimopsKafkaReader{
-		messages: []kafka.Message{{
+		messages: []SimopsBrokerMessage{{
 			Topic:     "simops.telemetry.v1",
 			Partition: 0,
 			Offset:    9,
@@ -146,89 +144,6 @@ func TestMoQTrackHubPublishesToActualSubscribers(t *testing.T) {
 	}
 }
 
-func TestIcebergGoBatchBuildsArrowTableFromTelemetryEvents(t *testing.T) {
-	frame := testTelemetryFrame(t, "RUN-ICEBERG-BATCH", "scheduler-01", 5)
-	raw, _ := json.Marshal(frame)
-	table, err := simopsEventsArrowTable("simops.telemetry.v1", []SimopsEvent{{
-		RunID:             frame.RunID,
-		WorkerID:          frame.WorkerID,
-		EventType:         SimopsEventWorkerTelemetry,
-		Frame:             raw,
-		OccurredAt:        time.Now().UTC(),
-		RedpandaTopic:     "simops.telemetry.v1",
-		RedpandaPartition: 1,
-		RedpandaOffset:    12,
-	}})
-	if err != nil {
-		t.Fatalf("build arrow table: %v", err)
-	}
-	defer table.Release()
-	if table.NumRows() != 1 {
-		t.Fatalf("expected one row, got %d", table.NumRows())
-	}
-	if got := table.Schema().Field(0).Name; got != "received_at" {
-		t.Fatalf("unexpected first column %q", got)
-	}
-	if got := table.Schema().Field(15).Name; got != "redpanda_offset" {
-		t.Fatalf("unexpected final column %q", got)
-	}
-}
-
-func TestIcebergReadbackOffsetHelpersMatchRedpandaCoordinates(t *testing.T) {
-	frame := testTelemetryFrame(t, "RUN-ICEBERG-READBACK", "scheduler-01", 8)
-	raw, _ := json.Marshal(frame)
-	events := []SimopsEvent{
-		{
-			RunID:             frame.RunID,
-			WorkerID:          frame.WorkerID,
-			EventType:         SimopsEventWorkerTelemetry,
-			Frame:             raw,
-			OccurredAt:        time.Now().UTC(),
-			RedpandaTopic:     "simops.telemetry.v1",
-			RedpandaPartition: 3,
-			RedpandaOffset:    99,
-		},
-		{
-			RunID:      frame.RunID,
-			EventType:  SimopsEventRunLifecycle,
-			Lifecycle:  SimopsStreaming,
-			OccurredAt: time.Now().UTC(),
-		},
-	}
-	expected, err := expectedIcebergOffsets("simops.telemetry.v1", events)
-	if err != nil {
-		t.Fatalf("expected offsets: %v", err)
-	}
-	if _, ok := expected["simops.telemetry.v1/3/99"]; !ok {
-		t.Fatalf("expected Redpanda coordinate missing from %#v", expected)
-	}
-
-	table, err := simopsEventsArrowTable("simops.telemetry.v1", events)
-	if err != nil {
-		t.Fatalf("build arrow table: %v", err)
-	}
-	defer table.Release()
-	observed, err := observedIcebergOffsets(table)
-	if err != nil {
-		t.Fatalf("observed offsets: %v", err)
-	}
-	if _, ok := observed["simops.telemetry.v1/3/99"]; !ok {
-		t.Fatalf("observed Redpanda coordinate missing from %#v", observed)
-	}
-}
-
-func TestIcebergReadbackOffsetHelpersRejectNoTelemetry(t *testing.T) {
-	_, err := expectedIcebergOffsets("simops.telemetry.v1", []SimopsEvent{{
-		RunID:      "RUN-NO-TELEMETRY",
-		EventType:  SimopsEventRunLifecycle,
-		Lifecycle:  SimopsStreaming,
-		OccurredAt: time.Now().UTC(),
-	}})
-	if err == nil {
-		t.Fatalf("expected no-telemetry readback plan to fail")
-	}
-}
-
 func testTelemetryFrame(t *testing.T, runID string, workerID string, sequence uint64) SimopsTelemetryFrame {
 	t.Helper()
 	return SimopsTelemetryFrame{
@@ -262,23 +177,23 @@ func (s *capturingProjectionStore) SaveProjection(_ context.Context, consumerNam
 }
 
 type fakeSimopsKafkaReader struct {
-	messages    []kafka.Message
-	committed   []kafka.Message
+	messages    []SimopsBrokerMessage
+	committed   []SimopsBrokerMessage
 	afterCommit func()
 	closed      bool
 }
 
-func (r *fakeSimopsKafkaReader) FetchMessage(ctx context.Context) (kafka.Message, error) {
+func (r *fakeSimopsKafkaReader) FetchMessage(ctx context.Context) (SimopsBrokerMessage, error) {
 	if len(r.messages) == 0 {
 		<-ctx.Done()
-		return kafka.Message{}, ctx.Err()
+		return SimopsBrokerMessage{}, ctx.Err()
 	}
 	message := r.messages[0]
 	r.messages = r.messages[1:]
 	return message, nil
 }
 
-func (r *fakeSimopsKafkaReader) CommitMessages(_ context.Context, msgs ...kafka.Message) error {
+func (r *fakeSimopsKafkaReader) CommitMessages(_ context.Context, msgs ...SimopsBrokerMessage) error {
 	if len(msgs) == 0 {
 		return errors.New("commit requires message")
 	}

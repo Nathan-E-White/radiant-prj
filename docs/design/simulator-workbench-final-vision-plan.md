@@ -1,16 +1,16 @@
-# Simulator Workbench Final Vision Plan
+# Status Workbench Final Vision Plan
 
 | Field | Value |
 | --- | --- |
 | Document ID | SIMWB-PLAN-001 |
-| Revision | 0.1 |
+| Revision | 0.2 |
 | Status | Planning document |
 | Owner | Software |
 | Baseline | Post-v3.0 planning input |
 
 ## Purpose
 
-This planning document proposes the final architecture direction for a top-level Simulator Workbench surface in the Kaleidos Compute Readiness Console. It covers project structure, additional files, frontend components, backend/data-plane changes, worker boundaries, documentation changes, and verification gates.
+This planning document proposes the final architecture direction for the user-facing Status Workbench surface in the Kaleidos Compute Readiness Console. It covers project structure, additional files, frontend components, backend/data-plane changes, worker boundaries, documentation changes, and verification gates. Backend/API path names may still use `simulator-workbench` for controlled contract continuity.
 
 This document is intentionally inert. It does not create source stubs, schemas, components, worker binaries, API handlers, database migrations, or deployment services. Those belong in later implementation threads after the current SimOps data-plane TODOs are finished.
 
@@ -34,13 +34,13 @@ Planning must preserve the existing dirty work and avoid pretending that the unt
 
 | Decision | Direction |
 | --- | --- |
-| Workbench placement | Simulator Workbench becomes a top-level product surface. It is not the whole product and does not replace Brief, Compute Workbench, or Evidence Matrix. |
+| Workbench placement | The user-facing workbench is Status Workbench. It replaces the separate Compute Workbench and SimOps Control top-level tabs while preserving Welcome and Evidence as the other top-level pages. |
 | Simulation workers | Run-scoped Rust workers represent expensive scientific simulations or compute workloads launched dynamically by the backend. |
 | Sensor/SCADA stand-ins | Resident Rust workers represent measured sensor/SCADA streams. They are not dynamically spawned per simulation run. |
 | Digital twin | The twin consumes measured and simulated data. It does not generate source telemetry. |
 | Value basis | Measured, imputed, and simulated values must remain distinguishable in schemas, storage, APIs, and UI. |
 | Sensor/SCADA health | No dedicated sensor/SCADA health panel is planned. Lightweight data quality and freshness indicators are allowed. |
-| Simulation health | Simulation/computation health remains in scope because expensive compute lifecycle, resource pressure, worker failures, and artifact production are central to the workbench. |
+| Simulation health | Simulation/computation health remains in scope as the lower Status Workbench HPC status bay because expensive compute lifecycle, resource pressure, worker failures, and artifact production are central to the workbench. |
 | Current TODOs | The Iceberg readback proof, WebTransport live-link probe, and Docker metadata/content preflight are closed in `docs/design/simops-data-plane-todo-stubs.md`; broader workbench implementation can build on that data-plane baseline. |
 
 ## Core Model
@@ -122,16 +122,11 @@ The backend directory name is currently `slurm-gateway`, which is awkward but to
 | `src/components/simulator-workbench/MeasuredStatePanel.tsx` | Proposed measured telemetry panel. |
 | `src/components/simulator-workbench/TwinStatePanel.tsx` | Proposed measured-plus-imputed twin panel. |
 | `src/components/simulator-workbench/SimulationResultsPanel.tsx` | Proposed simulation result panel. |
-| `src/components/simulator-workbench/SimulationHealthPanel.tsx` | Proposed computation lifecycle, resource, artifact, and stream-health panel. |
+| `src/components/simulator-workbench/SimulationHealthPanel.tsx` | Existing compact health model/story fixture retained for coverage; user-facing detailed status now belongs in the Status Workbench HPC bay. |
 | `src/components/simulator-workbench/LineagePanel.tsx` | Proposed value/source/run/model lineage panel. |
 | `src/domain/simulator-workbench/` | Proposed UI domain mappers, value-basis helpers, and presentation models. |
 
-The existing `SimOps Control` tab in `src/App.tsx` should become either:
-
-- an implementation stepping stone hidden inside the Simulator Workbench, or
-- an operator/control subview inside the Simulator Workbench.
-
-It should not remain the final top-level surface by itself. The final top-level surface should be the Simulator Workbench.
+The existing `SimOps Control` tab in `src/App.tsx` is absorbed as a Container Orchestration region inside Status Workbench. It should not return as a standalone top-level surface.
 
 ### Schemas And Examples
 
@@ -245,7 +240,7 @@ The twin is a consumer/projection. It should not be treated as a telemetry sourc
 
 ## Frontend Surface Plan
 
-The Simulator Workbench should be a top-level tab or route. It should not be a landing page. It should open directly into a usable workbench.
+Status Workbench should be a top-level tab or route. It should not be a landing page. It should open directly into a usable workbench.
 
 ### Recommended View Structure
 
@@ -255,7 +250,7 @@ The Simulator Workbench should be a top-level tab or route. It should not be a l
 | Measured State | Sensor/SCADA values grouped by subsystem or asset, with timestamp, unit, and data quality. |
 | Digital Twin | State view that may combine measured and imputed values, with confidence and input lineage visible. |
 | Simulation Results | Run-scoped computed values, projections, sensitivity outputs, and artifact references. |
-| Simulation Health | Worker lifecycle, queue/run state, resource pressure, stream quality, Redpanda offsets, artifact status, and failure causes. |
+| HPC Status Bay | Queue-driven worker lifecycle, run state, resource pressure, stream quality, checkpoint/artifact status, scheduler status, and failure causes. |
 | Lineage | Explains where the selected displayed value came from: source tag, model, run, artifact, table, and timestamp window. |
 
 ### What Not To Build
@@ -278,9 +273,9 @@ Measured panels may show:
 
 This is not a sensor health panel. It is the minimum truth needed to avoid displaying bad measured inputs as if they were good.
 
-## Simulation Health Panel Scope
+## HPC Status Bay Scope
 
-Simulation health remains in scope because the simulation workers are expensive, resource-sensitive, and run-scoped. The health panel should cover:
+Simulation health remains in scope because the simulation workers are expensive, resource-sensitive, and run-scoped. The Status Workbench HPC status bay should cover:
 
 - run lifecycle
 - selected scenario
@@ -439,21 +434,22 @@ Exit criteria:
 - Simulated results are linked by run/model/artifact.
 - UI can show why a value exists and whether it is measured, imputed, or simulated.
 
-### Phase 4: Simulator Workbench UI
+### Phase 4: Status Workbench UI
 
 Implement the top-level surface:
 
-1. Route or tab for Simulator Workbench.
+1. Route or tab for Status Workbench.
 2. Measured State panel.
 3. Digital Twin panel.
 4. Simulation Results panel.
-5. Simulation Health panel.
-6. Lineage panel.
+5. Lineage panel.
+6. Container Orchestration region.
+7. Queue-driven HPC Status Bay.
 
 Exit criteria:
 
 - Measured, imputed, and simulated values cannot be confused visually.
-- Simulation health is visible.
+- Queue-driven simulation/HPC status is visible.
 - Sensor/SCADA health remains out of scope except data quality/freshness.
 
 ### Phase 5: Evidence And Verification
@@ -469,16 +465,17 @@ Exit criteria:
 
 - `bun run ci` passes.
 - Docker-dependent smoke passes where required.
-- The Evidence Matrix can explain workbench claims without implying real plant data.
+- Evidence can explain workbench claims without implying real plant data.
 
 ## Acceptance Criteria For Final Vision
 
-- Simulator Workbench is a top-level surface.
+- Status Workbench is a top-level surface.
+- Compute Workbench and SimOps Control are not standalone top-level tabs.
 - Scientific simulation workers remain run-scoped and dynamically launched.
 - Sensor/SCADA stand-ins are resident measured-source abstractions.
 - Digital twin consumes measured and simulation data and materializes state.
 - The UI clearly distinguishes measured, imputed, and simulated values.
-- Simulation/computation health is first-class.
+- Simulation/computation health is first-class in the queue-driven HPC status bay.
 - Sensor/SCADA health is out of scope, except lightweight quality/freshness on measured values.
 - Data lake, Timescale/Postgres, Redpanda, and backend APIs preserve lineage and value basis.
 - No frontend credential leakage is introduced.
@@ -489,7 +486,7 @@ Exit criteria:
 1. Should the first resident source set be organized by plant-like subsystems, compute/fleet infrastructure analogs, or a small mixed set?
 2. Should digital twin state be primarily polled through HTTP first, with streaming added later, or should it be designed around the same WebTransport track model now that the SimOps data-plane gate is closed?
 3. Should measured telemetry and simulation telemetry use separate Iceberg namespaces, or one namespace with separate tables?
-4. Should the frontend preserve the existing `SimOps Control` tab during migration, or replace it once the top-level Simulator Workbench is usable?
+4. What additional evidence handoff records should the Status Workbench terminal name once the queue-driven HPC bay grows beyond static synthetic status?
 5. What is the smallest demo scenario that proves the value-basis split: measured flux/temp/pressure plus imputed internal state plus simulation result?
 
 ## Non-Goals

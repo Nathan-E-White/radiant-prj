@@ -6,14 +6,14 @@ This is public-safe demo material. It is not reactor design, safety analysis, li
 
 ## What It Shows
 
-- **Kaleidos Brief:** public-source product facts, a stylized cutaway, readiness milestones, and explicit claim boundaries.
-- **Compute Workbench:** deterministic toy transport, thermal, fleet, and infrastructure jobs with scheduler states, logs, artifacts, and diagnosis.
-- **Evidence Matrix:** requirements, verification methods, evidence packs, artifact hashes, deployment checks, and controlled change notes.
+- **Welcome:** public-source product facts, a stylized cutaway, readiness milestones, and explicit claim boundaries.
+- **Status Workbench:** fleet status, measured state, twin viewport, imputed state, simulated result state, lineage, scientific compute queue, SimOps orchestration, and the four-panel HPC status bay.
+- **Evidence:** requirements, verification methods, evidence packs, artifact hashes, deployment checks, and controlled change notes.
 - **DevOps Layer:** Docker Compose, dry-run Terraform, Ansible baseline templates, and CI checks for the synthetic hybrid compute environment.
 - **Version 3.0 Backend Gateway:** mock-first Go Slurm gateway handlers with mTLS identity checks, request validation, job status lookup, and Prometheus-format metrics.
 - **Simulation Ops Backend Slice:** Go run control endpoints, API polling events, Postgres-backed run state, Redpanda telemetry publication, Docker-launched Rust worker containers, WebTransport live-track delivery, and Iceberg-Go artifact commits.
 - **Simulation Ops Contract:** telemetry schemas, NDJSON examples, WebTransport live-track names, and scenario randomization blueprint for local worker swarms.
-- **Simulator Workbench Backend Dataflow:** resident measured SCADA stand-ins, separate simulated result ingest, twin imputed-state projection, Postgres read models, Iceberg tables, and read-only Workbench APIs.
+- **Status Workbench Backend Dataflow:** resident measured SCADA stand-ins, separate simulated result ingest, twin imputed-state projection, Postgres read models, Iceberg tables, and read-only Workbench APIs backed by the existing Simulator Workbench contracts.
 - **Controlled Quality Package:** controlled quality, design, verification, release, records documentation, and fixture-backed process evidence suitable for serious engineering review.
 
 ## Run Locally
@@ -110,9 +110,9 @@ The existing `scripts/checkpoint-v1.sh` remains available for the historical v1 
 - `deploy/slurm-gateway.compose.yml` defines the SimOps control-plane, Redpanda, Timescale/Postgres, MinIO, `simops-moq-gateway`, `simops-timescale-writer`, `simops-iceberg-writer`, Workbench writers, `twin-projector`, `scada-standins`, and smoke/demo Rust bucket service topology.
 - `deploy/postgres-init/001_simops.sql` defines the SimOps control-plane, Timescale telemetry hypertable, Workbench projection tables, twin lineage tables, consumer offsets, and Iceberg SQL-catalog tables used by the local deployment.
 - `docs/schemas/simulation-ops/` and `examples/simulation-ops/` define the Simulation Ops telemetry contract and canonical example run artifacts.
-- `docs/schemas/scada/`, `docs/schemas/digital-twin/`, `docs/schemas/simulator-workbench/`, `examples/scada/`, `examples/digital-twin/`, and `examples/simulator-workbench/` define the Simulator Workbench contracts and examples.
-- `docs/design/simulator-workbench-stub-ledger.md` tracks scaffold seams and acceptance criteria; `docs/design/simulator-workbench-backend-dataflow-slice.md` controls the backend dataflow proof; `docs/design/simulator-workbench-visual-draft.md` stores the first concept image notes.
-- `workers/scada-standins/` contains the resident measured-source service for Simulator Workbench backend dataflow work.
+- `docs/schemas/scada/`, `docs/schemas/digital-twin/`, `docs/schemas/simulator-workbench/`, `examples/scada/`, `examples/digital-twin/`, and `examples/simulator-workbench/` define the Status Workbench contracts and examples; the path names remain `simulator-workbench` for controlled backend/API continuity.
+- `docs/design/simulator-workbench-stub-ledger.md` tracks scaffold seams and acceptance criteria; `docs/design/simulator-workbench-backend-dataflow-slice.md` controls the backend dataflow proof; `docs/design/simulator-workbench-visual-draft.md` stores the first concept image notes; `docs/adr/adr-0006.md` records the user-facing Status Workbench IA decision.
+- `workers/scada-standins/` contains the resident measured-source service for Status Workbench backend dataflow work.
 - `docs/requirements/` contains the requirements, verification matrix, change log, and objective evidence index.
 - `docs/quality/` contains quality program, document control, configuration management, lifecycle, V&V, corrective action, records, tool, supplier, release readiness, and document-index procedures.
 - `docs/design/` contains software design and interface-control records.

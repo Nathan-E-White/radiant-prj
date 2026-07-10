@@ -1,15 +1,12 @@
 package gateway
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/segmentio/kafka-go"
 )
 
 const (
@@ -250,33 +247,4 @@ func (s SimopsConsumerMetricsSnapshot) Prometheus(prefix string) string {
 # TYPE %[1]s_subscriber_count gauge
 %[1]s_subscriber_count %d
 `, prefix, broker, s.LastConsumedOffset, s.FramesWritten, s.WriteFailures, s.BatchFlushes, s.SubscriberCount)
-}
-
-type SimopsKafkaReader interface {
-	FetchMessage(context.Context) (kafka.Message, error)
-	CommitMessages(context.Context, ...kafka.Message) error
-	Close() error
-}
-
-func NewSimopsKafkaReader(cfg SimopsConfig, groupID string) (SimopsKafkaReader, error) {
-	brokers := csvValues(cfg.RedpandaBrokers)
-	if len(brokers) == 0 {
-		return nil, fmt.Errorf("redpanda consumer requires brokers")
-	}
-	groupID = strings.TrimSpace(groupID)
-	if groupID == "" {
-		return nil, fmt.Errorf("redpanda consumer requires group id")
-	}
-	topic := strings.TrimSpace(cfg.RedpandaTopic)
-	if topic == "" {
-		return nil, fmt.Errorf("redpanda consumer requires topic")
-	}
-	return kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     brokers,
-		Topic:       topic,
-		GroupID:     groupID,
-		MinBytes:    1,
-		MaxBytes:    10e6,
-		StartOffset: kafka.FirstOffset,
-	}), nil
 }

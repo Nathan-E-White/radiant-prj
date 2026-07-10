@@ -24,3 +24,9 @@ export {
   type WorkbenchProjectionInput,
   type WorkbenchSelection
 } from "./projection";
+export {
+  type WorkbenchHealthRunState,
+  type WorkbenchStateView,
+  projectHealthCards
+} from "./workbenchHealthPanelProjection";
+export { createHealthTickDriver } from "./workbenchHealthTickDriver";

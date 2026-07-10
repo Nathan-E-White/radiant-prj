@@ -7,8 +7,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	"github.com/segmentio/kafka-go"
 )
 
 type WorkbenchEventLog interface {
@@ -84,33 +82,9 @@ type RedpandaWorkbenchEventLog struct {
 	ScadaTopic     string
 	ResultsTopic   string
 	TwinStateTopic string
-	scadaWriter    kafkaMessageWriter
-	resultWriter   kafkaMessageWriter
-	twinWriter     kafkaMessageWriter
-}
-
-func NewRedpandaWorkbenchEventLog(cfg WorkbenchConfig) (*RedpandaWorkbenchEventLog, error) {
-	brokers := csvValues(cfg.RedpandaBrokers)
-	if len(brokers) == 0 {
-		return nil, fmt.Errorf("workbench redpanda event log requires brokers")
-	}
-	writer := func(topic string) kafkaMessageWriter {
-		return &kafka.Writer{
-			Addr:         kafka.TCP(brokers...),
-			Topic:        topic,
-			Balancer:     &kafka.Hash{},
-			RequiredAcks: kafka.RequireOne,
-			Async:        false,
-		}
-	}
-	return &RedpandaWorkbenchEventLog{
-		ScadaTopic:     cfg.ScadaTopic,
-		ResultsTopic:   cfg.ResultsTopic,
-		TwinStateTopic: cfg.TwinStateTopic,
-		scadaWriter:    writer(cfg.ScadaTopic),
-		resultWriter:   writer(cfg.ResultsTopic),
-		twinWriter:     writer(cfg.TwinStateTopic),
-	}, nil
+	scadaWriter    simopsBrokerWriter
+	resultWriter   simopsBrokerWriter
+	twinWriter     simopsBrokerWriter
 }
 
 func (l *RedpandaWorkbenchEventLog) PublishScada(ctx context.Context, frame ScadaTelemetryFrame) error {
@@ -127,7 +101,7 @@ func (l *RedpandaWorkbenchEventLog) PublishTwinState(ctx context.Context, state 
 	return publishWorkbenchMessage(ctx, l.twinWriter, strings.TrimSpace(state.TwinID), state)
 }
 
-func publishWorkbenchMessage(ctx context.Context, writer kafkaMessageWriter, key string, payload any) error {
+func publishWorkbenchMessage(ctx context.Context, writer simopsBrokerWriter, key string, payload any) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -140,33 +114,10 @@ func publishWorkbenchMessage(ctx context.Context, writer kafkaMessageWriter, key
 	if err != nil {
 		return err
 	}
-	return writer.WriteMessages(ctx, kafka.Message{
+	return writer.WriteMessages(ctx, SimopsBrokerMessage{
 		Key:   []byte(key),
 		Value: raw,
 	})
-}
-
-func NewWorkbenchKafkaReader(cfg WorkbenchConfig, topic string, groupID string) (SimopsKafkaReader, error) {
-	brokers := csvValues(cfg.RedpandaBrokers)
-	if len(brokers) == 0 {
-		return nil, fmt.Errorf("workbench redpanda consumer requires brokers")
-	}
-	topic = strings.TrimSpace(topic)
-	if topic == "" {
-		return nil, fmt.Errorf("workbench redpanda consumer requires topic")
-	}
-	groupID = strings.TrimSpace(groupID)
-	if groupID == "" {
-		return nil, fmt.Errorf("workbench redpanda consumer requires group id")
-	}
-	return kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     brokers,
-		Topic:       topic,
-		GroupID:     groupID,
-		MinBytes:    1,
-		MaxBytes:    10e6,
-		StartOffset: kafka.FirstOffset,
-	}), nil
 }
 
 func ProjectScadaFrame(topic string, partition int, offset int64, raw json.RawMessage) (ScadaProjection, error) {

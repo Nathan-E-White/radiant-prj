@@ -30,6 +30,7 @@ terraform.tfstate*
 .worktrees/
 target/
 **/target/
+storybook-static/
 
 # Local certificate and Vault development material
 *.key

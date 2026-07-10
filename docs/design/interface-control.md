@@ -16,10 +16,9 @@ This document identifies internal and operational interfaces that are controlled
 
 | Interface | Inputs | Outputs | Control |
 | --- | --- | --- | --- |
-| Kaleidos Brief | Public facts and milestones | Source-linked fact cards and boundaries | Fixture validation |
-| Compute Workbench | Synthetic compute jobs | Job status, logs, outputs, diagnosis | Unit tests and fixture validation |
-| Simulator Workbench | Fixture-backed measured, imputed, simulated, and lineage examples | Value-basis grouped workbench, selected value lineage, and compact simulation health summary | Projection tests and Simulator Workbench contract check |
-| Evidence Matrix | Requirements, compute evidence packs, controlled evidence records, deployment checks | Traceability and evidence views | Verification matrix and generated evidence |
+| Welcome | Public facts and milestones | Source-linked fact cards and boundaries | Fixture validation |
+| Status Workbench | Fixture-backed fleet, measured, imputed, simulated, lineage, compute queue, SimOps orchestration, and HPC status examples | Value-basis grouped workbench, selected value lineage, queue-driven HPC status bay, and run orchestration subregions | Projection tests, frontend tests, and Simulator Workbench contract check |
+| Evidence | Requirements, compute evidence packs, controlled evidence records, deployment checks | Traceability and evidence views | Verification matrix and generated evidence |
 
 ## Fixture Interface
 
@@ -112,9 +111,9 @@ The contract uses NDJSON as the canonical example and local fixture format. Live
 | Simulated result | Synthetic worker result batch | `simops.result.v1` values with `valueBasis=simulated` | Result schema, contract check, and backend tests |
 | Digital twin state | Measured tags, simulated result state, imputed model state, and simulation references | `digital-twin.state.v1` values with lineage ids | Digital twin schema, backend tests, and dataflow smoke |
 | Workbench state | Contract refs and panel summaries | `simulator-workbench.state.v1` state summary | Workbench schema and contract check |
-| Workbench projection | Workbench state, measured frames, twin state, and lineage records | Grouped measured/imputed/simulated values, selected lineage, and compact simulation health summary | TypeScript projection tests |
+| Workbench projection | Workbench state, measured frames, twin state, lineage records, selected queue context, and SimOps status context | Grouped measured/imputed/simulated values, selected lineage, queue-driven HPC status bay, and run orchestration subregions | TypeScript projection and render tests |
 
-The frontend projection slice remains read-only. The backend dataflow slice now registers read-only `/api/simulator-workbench/*` APIs for the follow-up frontend-control thread. The simulation health output remains summary-only and does not expose detailed worker, Redpanda, Timescale, Iceberg, or WebTransport diagnostics.
+The user-facing frontend surface is now Status Workbench. The backend dataflow slice keeps read-only `/api/simulator-workbench/*` APIs for controlled route compatibility. The lower Status Workbench regions present queue, orchestration, and synthetic HPC status without exposing browser credentials for Redpanda, Timescale, Iceberg, Docker, or WebTransport internals.
 
 ## Infrastructure Interface
 

@@ -1,0 +1,558 @@
+import {
+  Activity,
+  AlertTriangle,
+  CheckCircle2,
+  Cpu,
+  FileText,
+  ExternalLink,
+  ServerCog,
+  HardDrive,
+  Network,
+  Play
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  deploymentScore,
+  diagnoseJob,
+  fixtures,
+  requirementCoverage,
+  runFleetTelemetryToy,
+  runPassiveThermalToy,
+  runTransportToy,
+  validateTraceability
+} from "../../domain/readiness";
+import type { ComputeJob, ControlledEvidenceRecord, DeploymentCheck, EvidencePack, Requirement, SchedulerState } from "../../domain/types";
+import { DeploymentCard, Finding, LogBlock, Metric, StatusPill } from "../shared/presentation";
+
+type BundleState = "ready" | "running" | "complete";
+
+export const scenarioOptions = [
+  "DOME synthetic full-power readiness bundle",
+  "Buckley synthetic remote-site readiness"
+];
+
+export function useReadinessConsoleState(params: { onRunBundleStarted?: () => void } = {}) {
+  const { onRunBundleStarted = () => undefined } = params;
+  const [bundleState, setBundleState] = useState<BundleState>("ready");
+  const [selectedScenario, setSelectedScenario] = useState(scenarioOptions[0]);
+  const [selectedJobId, setSelectedJobId] = useState("JOB-HPC-404");
+
+  const displayJobs = useMemo(
+    () =>
+      fixtures.computeJobs.map((job) => ({
+        ...job,
+        state: displayedState(job, bundleState)
+      })),
+    [bundleState]
+  );
+
+  const scenarioJobs = displayJobs.filter((job) => job.scenario === selectedScenario);
+  const selectedJob = displayJobs.find((job) => job.id === selectedJobId) ?? displayJobs[displayJobs.length - 1];
+
+  useEffect(() => {
+    if (bundleState !== "running") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => setBundleState("complete"), 720);
+    return () => window.clearTimeout(timer);
+  }, [bundleState]);
+
+  function runBundle() {
+    setBundleState("running");
+    setSelectedJobId("JOB-HPC-404");
+    onRunBundleStarted();
+  }
+
+  return {
+    selectedScenario,
+    setSelectedScenario,
+    bundleState,
+    selectedJob,
+    displayJobs,
+    scenarioJobs,
+    setSelectedJobId,
+    runBundle,
+    traceabilityProblems: validateTraceability(),
+    coverage: requirementCoverage(),
+    deploymentReadiness: deploymentScore(),
+    transportPeak: runTransportToy({
+      cells: 12,
+      sourceStrength: 1,
+      absorption: 0.16,
+      scatter: 0.62
+    }).peakScalarFlux,
+    thermalMargin: runPassiveThermalToy({
+      heatKw: 950,
+      ambientC: 42,
+      thermalResistanceCPerKw: 0.18,
+      limitC: 260
+    }).marginC,
+    fleetFlags: runFleetTelemetryToy({
+      values: [100, 101, 99, 100, 102, 98, 120, 101, 100],
+      zLimit: 2.2,
+      packetLossPct: 0.7,
+      missingPacketLimitPct: 1.5
+    }).channelsFlagged,
+    publicFacts: fixtures.publicFacts,
+    requirements: fixtures.requirements,
+    evidencePacks: fixtures.evidencePacks,
+    controlledEvidence: fixtures.controlledEvidence,
+    deploymentChecks: fixtures.deploymentChecks,
+    milestones: fixtures.milestones
+  };
+}
+
+export function BriefTab({
+  publicFacts,
+  transportPeak,
+  thermalMargin,
+  fleetFlags,
+  onRunBundle
+}: {
+  publicFacts: typeof fixtures.publicFacts;
+  transportPeak: number;
+  thermalMargin: number;
+  fleetFlags: number;
+  onRunBundle: () => void;
+}) {
+  return (
+    <section className="content-grid brief-grid">
+      <div className="panel cutaway-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Kaleidos public architecture</p>
+            <h2>Transportable HTGR briefing surface</h2>
+          </div>
+          <button className="icon-command" onClick={onRunBundle} type="button" title="Run synthetic readiness bundle">
+            <Play size={18} />
+          </button>
+        </div>
+        <KaleidosCutaway />
+      </div>
+
+      <div className="panel facts-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Controlled facts</p>
+            <h2>Public-source claim set</h2>
+          </div>
+          <StatusPill label="public-safe" state="completed" />
+        </div>
+        <div className="fact-list">
+          {publicFacts.map((fact) => (
+            <article className="fact-item" key={fact.id}>
+              <div>
+                <span className="record-id">{fact.id}</span>
+                <h3>{fact.topic}</h3>
+              </div>
+              <p>{fact.claim}</p>
+              <div className="fact-footer">
+                <span>{fact.boundary}</span>
+                <a href={fact.sourceUrl} target="_blank" rel="noreferrer">
+                  {fact.sourceTitle}
+                  <ExternalLink size={13} />
+                </a>
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel timeline-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Readiness path</p>
+            <h2>Milestones mirrored in the demo</h2>
+          </div>
+        </div>
+        <div className="timeline">
+          {fixtures.milestones.map((milestone) => (
+            <article className="timeline-item" key={milestone.id}>
+              <span className="timeline-dot" />
+              <div>
+                <span className="record-id">{milestone.id}</span>
+                <h3>{milestone.title}</h3>
+                <p>{milestone.note}</p>
+              </div>
+              <span className="phase-chip">{milestone.phase}</span>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel mini-results">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Synthetic outputs</p>
+            <h2>Demo calculation thread</h2>
+          </div>
+        </div>
+        <Metric icon={Activity} label="Transport peak flux proxy" value={transportPeak.toFixed(2)} tone="info" />
+        <Metric icon={CheckCircle2} label="Thermal toy margin" value={`${thermalMargin} C`} tone="good" />
+        <Metric icon={AlertTriangle} label="Fleet channels flagged" value={`${fleetFlags}`} tone="warn" />
+      </div>
+    </section>
+  );
+}
+
+export type ComputeQueuePanelProps = {
+  jobs: ComputeJob[];
+  scenario: string;
+  selectedJob: ComputeJob;
+  setScenario: (scenario: string) => void;
+  setSelectedJobId: (jobId: string) => void;
+  onRunBundle: () => void;
+};
+
+export function ComputeQueuePanel({
+  jobs,
+  scenario,
+  selectedJob,
+  setScenario,
+  setSelectedJobId,
+  onRunBundle
+}: ComputeQueuePanelProps) {
+  return (
+    <div className="panel queue-panel status-queue-panel">
+      <div className="panel-heading">
+        <div>
+          <p className="eyebrow">Scheduler emulator</p>
+          <h2>Scientific compute queue</h2>
+        </div>
+        <button className="primary-command" onClick={onRunBundle} type="button">
+          <Play size={16} />
+          Run Bundle
+        </button>
+      </div>
+
+      <div className="scenario-row" aria-label="Scenario selector">
+        {scenarioOptions.map((option) => (
+          <button
+            className={option === scenario ? "scenario active" : "scenario"}
+            key={option}
+            onClick={() => setScenario(option)}
+            type="button"
+          >
+            {option.replace(" synthetic ", " ")}
+          </button>
+        ))}
+      </div>
+
+      <div className="queue-table" role="table" aria-label="Compute jobs">
+        <div className="queue-row queue-head" role="row">
+          <span>Job</span>
+          <span>Discipline</span>
+          <span>Resources</span>
+          <span>State</span>
+        </div>
+        {jobs.map((job) => (
+          <button
+            className={selectedJob.id === job.id ? "queue-row selected" : "queue-row"}
+            key={job.id}
+            onClick={() => setSelectedJobId(job.id)}
+            type="button"
+            role="row"
+          >
+            <span>
+              <strong>{job.id}</strong>
+              <small>{job.title}</small>
+            </span>
+            <span>{job.discipline}</span>
+            <span>
+              {job.resources.nodes}n / {job.resources.ranks}r / {job.resources.storageGb}GB
+            </span>
+            <StatusPill label={job.state} state={job.state} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function WorkbenchTab({
+  bundleState,
+  jobs,
+  scenario,
+  scenarioJobs,
+  selectedJob,
+  setScenario,
+  setSelectedJobId,
+  onRunBundle
+}: {
+  bundleState: BundleState;
+  jobs: ComputeJob[];
+  scenario: string;
+  scenarioJobs: ComputeJob[];
+  selectedJob: ComputeJob;
+  setScenario: (scenario: string) => void;
+  setSelectedJobId: (jobId: string) => void;
+  onRunBundle: () => void;
+}) {
+  const diagnosis = diagnoseJob(selectedJob);
+
+  return (
+    <section className="content-grid workbench-grid">
+      <ComputeQueuePanel
+        jobs={jobs}
+        scenario={scenario}
+        selectedJob={selectedJob}
+        setScenario={setScenario}
+        setSelectedJobId={setSelectedJobId}
+        onRunBundle={onRunBundle}
+      />
+
+      <div className="panel job-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">{selectedJob.stakeholder}</p>
+            <h2>{selectedJob.title}</h2>
+          </div>
+          <StatusPill label={selectedJob.state} state={selectedJob.state} />
+        </div>
+        <div className="job-metrics">
+          <Metric icon={Cpu} label="Ranks" value={`${selectedJob.resources.ranks}`} tone="info" />
+          <Metric icon={HardDrive} label="Storage" value={`${selectedJob.resources.storageGb} GB`} tone="warn" />
+          <Metric icon={Network} label="Walltime" value={`${selectedJob.resources.walltimeMin} min`} tone="good" />
+        </div>
+        <div className="module-strip">
+          {selectedJob.resources.modules.map((moduleName) => (
+            <span key={moduleName}>{moduleName}</span>
+          ))}
+        </div>
+        <LogBlock logs={selectedJob.logs} />
+      </div>
+
+      <div className="panel diagnosis-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Failure analysis</p>
+            <h2>Root cause and control</h2>
+          </div>
+        </div>
+        <Finding label="Root cause" value={diagnosis.rootCause} />
+        <Finding label="Next action" value={diagnosis.nextAction} />
+        <Finding label="Preventative control" value={diagnosis.preventativeControl} />
+      </div>
+
+      <div className="panel scenario-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Bundle state</p>
+            <h2>{scenario}</h2>
+          </div>
+          <StatusPill
+            label={bundleState}
+            state={bundleState === "complete" ? "completed" : bundleState === "running" ? "running" : "queued"}
+          />
+        </div>
+        <div className="scenario-stack">
+          {scenarioJobs.map((job) => (
+            <div className="scenario-card" key={job.id}>
+              <span className={`status-led ${job.state}`} />
+              <div>
+                <strong>{job.id}</strong>
+                <p>{job.title}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function EvidenceTab({
+  requirements,
+  evidencePacks,
+  controlledEvidence,
+  deploymentChecks,
+  coverage,
+  traceabilityProblems,
+  deploymentReadiness
+}: {
+  requirements: Requirement[];
+  evidencePacks: EvidencePack[];
+  controlledEvidence: ControlledEvidenceRecord[];
+  deploymentChecks: DeploymentCheck[];
+  coverage: ReturnType<typeof requirementCoverage>;
+  traceabilityProblems: string[];
+  deploymentReadiness: number;
+}) {
+  return (
+    <section className="content-grid evidence-grid">
+      <div className="panel requirements-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Controlled requirements</p>
+            <h2>Traceability matrix</h2>
+          </div>
+          <StatusPill label={traceabilityProblems.length ? "hold" : "clean"} state={traceabilityProblems.length ? "held" : "completed"} />
+        </div>
+        <div className="requirements-table" role="table" aria-label="Requirements matrix">
+          <div className="requirements-row requirements-head" role="row">
+            <span>ID</span>
+            <span>Requirement</span>
+            <span>Verification</span>
+            <span>Links</span>
+          </div>
+          {requirements.map((requirement) => {
+            const coverageRecord = coverage.find((record) => record.id === requirement.id);
+            return (
+              <div className="requirements-row" key={requirement.id} role="row">
+                <span className="record-id">{requirement.id}</span>
+                <span>{requirement.text}</span>
+                <span>{requirement.verificationMethod}</span>
+                <span>
+                  {coverageRecord?.linkedJobs ?? 0} jobs / {coverageRecord?.linkedEvidence ?? 0} packs
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="panel evidence-pack-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Objective evidence</p>
+            <h2>Artifact and control index</h2>
+          </div>
+          <Metric icon={FileText} label="Controlled" value={`${controlledEvidence.length}`} tone="info" />
+        </div>
+        <div className="evidence-list">
+          {evidencePacks.map((pack) => (
+            <article className="evidence-card" key={pack.id}>
+              <div>
+                <span className="record-id">{pack.id}</span>
+                <h3>{pack.title}</h3>
+              </div>
+              <p>{pack.summary}</p>
+              <small>{pack.limitations}</small>
+              <div className="hash-grid">
+                {Object.entries(pack.artifactHashes).map(([artifact, hash]) => (
+                  <span key={artifact}>
+                    {artifact}
+                    <strong>{hash}</strong>
+                  </span>
+                ))}
+              </div>
+            </article>
+          ))}
+          {controlledEvidence.map((record) => (
+            <article className="evidence-card controlled-evidence-card" key={record.id}>
+              <div>
+                <span className="record-id">{record.id}</span>
+                <h3>{record.title}</h3>
+              </div>
+              <p>{record.summary}</p>
+              <small>{record.limitations}</small>
+              <div className="hash-grid">
+                {record.artifacts.map((artifact) => (
+                  <span key={artifact}>
+                    {artifact}
+                    <strong>{record.category}</strong>
+                  </span>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+
+      <div className="panel deployment-panel">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">Dry-run deployment controls</p>
+            <h2>Linux/HPC baseline checks</h2>
+          </div>
+          <Metric icon={ServerCog} label="Readiness" value={`${deploymentReadiness}%`} tone="warn" />
+        </div>
+        <div className="deployment-grid">
+          {deploymentChecks.map((check) => (
+            <DeploymentCard check={check} key={check.id} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function KaleidosCutaway() {
+  return (
+    <div className="cutaway-wrap">
+      <svg className="cutaway" viewBox="0 0 920 520" role="img" aria-labelledby="cutaway-title">
+        <title id="cutaway-title">Stylized Kaleidos public-safe cutaway</title>
+        <defs>
+          <linearGradient id="containerGradient" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stopColor="#e7ecea" />
+            <stop offset="100%" stopColor="#9aa6a2" />
+          </linearGradient>
+          <linearGradient id="coreGradient" x1="0" x2="1" y1="0" y2="1">
+            <stop offset="0%" stopColor="#f8d66d" />
+            <stop offset="100%" stopColor="#cf4b36" />
+          </linearGradient>
+        </defs>
+        <rect x="70" y="120" width="780" height="265" rx="12" fill="url(#containerGradient)" stroke="#283633" strokeWidth="3" />
+        <rect x="98" y="147" width="724" height="210" rx="8" fill="#f6f3ea" stroke="#60736d" strokeWidth="1.5" />
+        <rect x="130" y="175" width="146" height="154" rx="10" fill="#26332f" />
+        <rect x="158" y="196" width="90" height="112" rx="45" fill="#d8dedb" stroke="#70847e" strokeWidth="6" />
+        <circle cx="203" cy="252" r="34" fill="url(#coreGradient)" stroke="#7c2b22" strokeWidth="4" />
+        <path d="M185 226 L221 226 L236 252 L221 278 L185 278 L170 252 Z" fill="#3b4f49" opacity="0.42" />
+        <rect x="310" y="181" width="118" height="62" rx="10" fill="#a5c7c9" stroke="#31565d" strokeWidth="3" />
+        <rect x="310" y="263" width="118" height="62" rx="10" fill="#a5c7c9" stroke="#31565d" strokeWidth="3" />
+        <path d="M248 238 C274 206 287 202 310 212" fill="none" stroke="#cf4b36" strokeWidth="9" strokeLinecap="round" />
+        <path d="M248 272 C274 304 287 306 310 294" fill="none" stroke="#2f7c8c" strokeWidth="9" strokeLinecap="round" />
+        <rect x="470" y="174" width="112" height="158" rx="14" fill="#dde7e4" stroke="#536b65" strokeWidth="3" />
+        <circle cx="526" cy="220" r="27" fill="#2f7c8c" />
+        <circle cx="526" cy="286" r="27" fill="#2f7c8c" />
+        <path d="M512 220 h28 M526 206 v28 M512 286 h28 M526 272 v28" stroke="#f9fbf7" strokeWidth="5" strokeLinecap="round" />
+        <rect x="626" y="183" width="146" height="134" rx="12" fill="#2d3942" stroke="#151c22" strokeWidth="3" />
+        <path d="M650 282 C684 224 710 224 748 282" fill="none" stroke="#f8d66d" strokeWidth="10" strokeLinecap="round" />
+        <rect x="792" y="170" width="26" height="174" rx="6" fill="#677b74" />
+        <path d="M120 397 h690" stroke="#42514d" strokeWidth="5" strokeLinecap="round" strokeDasharray="12 16" />
+        <CutawayLabel x={203} y={82} text="TRISO fuel / prismatic graphite core" targetX={203} targetY={252} />
+        <CutawayLabel x={370} y={83} text="Primary heat exchangers" targetX={370} targetY={211} />
+        <CutawayLabel x={526} y={436} text="Helium circulators" targetX={526} targetY={286} />
+        <CutawayLabel x={700} y={84} text="Power conversion / cooling train" targetX={700} targetY={238} />
+        <CutawayLabel x={460} y={434} text="Containerized transport envelope" targetX={460} targetY={385} />
+      </svg>
+    </div>
+  );
+}
+
+function CutawayLabel({
+  x,
+  y,
+  text,
+  targetX,
+  targetY
+}: {
+  x: number;
+  y: number;
+  text: string;
+  targetX: number;
+  targetY: number;
+}) {
+  return (
+    <g>
+      <path d={`M${x} ${y + 16} L${targetX} ${targetY}`} stroke="#4d625c" strokeWidth="1.5" strokeDasharray="4 5" />
+      <rect x={x - 92} y={y - 8} width="184" height="42" rx="7" fill="#ffffff" stroke="#c5d0ca" />
+      <text x={x} y={y + 17} textAnchor="middle" fontSize="13" fill="#26332f" fontWeight="700">
+        {text}
+      </text>
+    </g>
+  );
+}
+
+export function displayedState(job: ComputeJob, bundleState: BundleState): SchedulerState {
+  if (bundleState === "ready") {
+    return job.id === "JOB-HPC-404" ? "held" : "queued";
+  }
+
+  if (bundleState === "running") {
+    return job.id === "JOB-HPC-404" ? "running" : "completed";
+  }
+
+  return job.state;
+}

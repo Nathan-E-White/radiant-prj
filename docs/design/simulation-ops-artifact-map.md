@@ -16,7 +16,7 @@ This map identifies what the integrated Simulation Ops mockup consumes, displays
 
 | Artifact | Role in mockup | Boundary |
 | --- | --- | --- |
-| Current app IA | Keeps Simulation Ops inside the existing Compute Workbench and Evidence Matrix flow | No new top-level product lane |
+| Current app IA | Places Simulation Ops inside the Status Workbench and Evidence flow | No separate SimOps top-level product lane |
 | `JOB-HPC-404` | Primary scenario anchor for scheduler/module drift and failure triage | Synthetic scheduler and module logs only |
 | `EP-HPC-404` | Existing evidence destination for HPC failure triage | Not evidence of actual Radiant infrastructure |
 | `SLURM-GATEWAY-001` | Backend seam for submit/status semantics and gateway verification | Mock-first; no browser-held private keys |
@@ -34,7 +34,7 @@ This map identifies what the integrated Simulation Ops mockup consumes, displays
 | Elastic cloud bursting | Synthetic hot-spot workload cue, ParallelCluster scaling, EFA drops, spot cost, topology graph | Scenario review note |
 | Fabric/MPI profiler | InfiniBand counters, message-size distribution, non-blocking overhead, node-link map | Deployment finding candidate and triage note |
 | Diagnostic log | Existing job logs and diagnosis model | `triage-note.md` |
-| Evidence handoff | Evidence packs and controlled evidence records | Evidence Matrix review |
+| Evidence handoff | Evidence packs and controlled evidence records | Evidence review |
 
 ## Proposed Design-Only Artifacts
 
@@ -50,14 +50,14 @@ These are named outputs in the mockup. They are not generated or implemented by 
 ## Data Flow Map
 
 ```text
-Compute Workbench selection
+Status Workbench queue selection
   -> JOB-HPC-404 fixture context
-  -> Simulation Ops stress mode mockup
+  -> Status Workbench HPC status bay
   -> scenario panels display scheduler, storage, cloud-burst, and fabric stress frames
   -> contract examples define NDJSON telemetry and run-summary artifacts
   -> Slurm gateway seam is referenced for submit/status behavior
   -> diagnostic and degraded-state notes are named
-  -> Evidence Matrix shows where reviewable artifacts would land
+  -> Evidence shows where reviewable artifacts would land
 ```
 
 ## Interface Boundaries
@@ -81,11 +81,11 @@ Compute Workbench selection
 | Checkpoint pressure | Deployment checks | Whether degraded evidence needs a controlled record type |
 | Elastic cloud bursting | Job-description infrastructure context | Whether cloud-burst topology and cost metrics stay visual-only |
 | Fabric/MPI profiling | Deployment checks and job-description context | Whether fabric metrics stay synthetic or become fixture-backed |
-| Evidence handoff | Evidence Matrix | Whether mockup artifacts become generated evidence inputs |
+| Evidence handoff | Evidence | Whether mockup artifacts become generated evidence inputs |
 
 ## Acceptance Checklist
 
-- The mockup integrates with the current Compute Workbench and Evidence Matrix.
+- The mockup integrates with the Status Workbench and Evidence.
 - Every displayed stress signal has a consumed artifact or an explicitly proposed future artifact.
 - No direct frontend Slurm credentials are implied.
 - No real infrastructure, safety, or validated-physics claim is made.

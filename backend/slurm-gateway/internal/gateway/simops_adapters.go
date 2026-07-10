@@ -4,14 +4,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"os/exec"
-	"path"
 	"strings"
 	"time"
-
-	"github.com/segmentio/kafka-go"
 )
 
 type SimopsSpooler interface {
@@ -95,27 +91,31 @@ func (s ContractSimopsSpooler) StopRun(ctx context.Context, runID string) error 
 }
 
 type DockerSimopsSpooler struct {
-	Image         string
-	ManifestRoot  string
-	IngestBaseURL string
-	FrameOverride int
-	Network       string
-	AutoRemove    bool
-	LaunchMode    string
-	CmdRunner     func(context.Context, ...string) (string, error)
+	Image               string
+	ManifestRoot        string
+	IngestBaseURL       string
+	FrameOverride       int
+	Network             string
+	KubernetesNamespace string
+	CleanupTTL          time.Duration
+	AutoRemove          bool
+	LaunchMode          string
+	CmdRunner           func(context.Context, ...string) (string, error)
 }
 
 func NewDockerSimopsSpooler(cfg SimopsConfig) DockerSimopsSpooler {
 	runner := runDockerCommand
 	return DockerSimopsSpooler{
-		Image:         cfg.WorkerImage,
-		ManifestRoot:  cfg.WorkerManifestRoot,
-		IngestBaseURL: cfg.WorkerIngestBaseURL,
-		FrameOverride: cfg.WorkerFrameOverride,
-		Network:       cfg.WorkerNetwork,
-		AutoRemove:    cfg.WorkerAutoRemove,
-		LaunchMode:    cfg.LaunchMode,
-		CmdRunner:     runner,
+		Image:               cfg.WorkerImage,
+		ManifestRoot:        cfg.WorkerManifestRoot,
+		IngestBaseURL:       cfg.WorkerIngestBaseURL,
+		FrameOverride:       cfg.WorkerFrameOverride,
+		Network:             cfg.WorkerNetwork,
+		KubernetesNamespace: cfg.WorkerKubernetesNamespace,
+		CleanupTTL:          cfg.WorkerCleanupTTL,
+		AutoRemove:          cfg.WorkerAutoRemove,
+		LaunchMode:          cfg.LaunchMode,
+		CmdRunner:           runner,
 	}
 }
 
@@ -138,12 +138,12 @@ func (s DockerSimopsSpooler) StartRun(ctx context.Context, run SimopsRunRecord, 
 	records := make([]SimopsWorkerRecord, 0, len(workers))
 	commands := make([]SimopsSpoolCommand, 0, len(workers))
 	for _, worker := range workers {
-		workerID := fmt.Sprintf("%s-01", worker)
-		containerName := fmt.Sprintf("simops-%s-%s", run.RunID, workerID)
-		manifest := path.Join(s.ManifestRoot, fmt.Sprintf("run-manifest.%s.json", run.ScenarioID))
-		ingestURL := s.ingestURL(run.RunID)
-		resultIngestURL := s.resultIngestURL(run.RunID)
-		containerID, err := s.startWorker(ctx, run.RunID, containerName, workerID, worker, manifest, ingestURL, resultIngestURL, run.IngestToken)
+		profile, err := BuildRunWorkerConnectionProfile(s.profileConfig(), run, worker)
+		if err != nil {
+			s.tryStopRunWorkers(ctx, run.RunID)
+			return nil, nil, err
+		}
+		containerID, err := s.startWorker(ctx, profile)
 		if err != nil {
 			s.tryStopRunWorkers(ctx, run.RunID)
 			return nil, nil, err
@@ -151,27 +151,29 @@ func (s DockerSimopsSpooler) StartRun(ctx context.Context, run SimopsRunRecord, 
 
 		records = append(records, SimopsWorkerRecord{
 			RunID:      run.RunID,
-			WorkerID:   workerID,
+			WorkerID:   profile.WorkerID,
 			WorkerKind: worker,
 			Lifecycle:  SimopsStarting,
 			LaunchMode: mode,
-			Endpoint:   ingestURL,
+			Endpoint:   profile.Gateway.IngestURL,
 			UpdatedAt:  time.Now().UTC(),
 			Labels: map[string]string{
-				"simops.runtime":       "docker",
-				"simops.worker_image":  s.Image,
-				"simops.container_id":  containerID,
-				"simops.worker_mode":   mode,
-				"simops.launch_script": "simops-generator",
+				"simops.runtime":              "docker",
+				"simops.worker_image":         profile.WorkerImage,
+				"simops.container_id":         containerID,
+				"simops.worker_mode":          mode,
+				"simops.launch_script":        "simops-generator",
+				"simops.docker_network":       profile.Runtime.Docker.Network,
+				"simops.kubernetes_namespace": profile.Runtime.Kubernetes.Namespace,
 			},
 		})
 		commands = append(commands, SimopsSpoolCommand{
-			CommandID: fmt.Sprintf("%s-%s-start", run.RunID, workerID),
+			CommandID: fmt.Sprintf("%s-%s-start", run.RunID, profile.WorkerID),
 			RunID:     run.RunID,
-			WorkerID:  workerID,
+			WorkerID:  profile.WorkerID,
 			Mode:      mode,
 			State:     SimopsStarting,
-			Message:   fmt.Sprintf("Worker container launched as %s", containerName),
+			Message:   fmt.Sprintf("Worker container launched as %s", profile.Runtime.Docker.ContainerName),
 			CreatedAt: time.Now().UTC(),
 			UpdatedAt: time.Now().UTC(),
 		})
@@ -189,15 +191,40 @@ func (s DockerSimopsSpooler) StopRun(ctx context.Context, runID string) error {
 	}
 }
 
-func (s DockerSimopsSpooler) startWorker(ctx context.Context, runID, containerName, workerID string, worker SimopsWorkerKind, manifestPath string, ingestURL string, resultIngestURL string, ingestToken string) (string, error) {
-	args := []string{"run", "-d", "--name", containerName, "--label", "simops.run_id=" + runID, "--label", "simops.worker_id=" + workerID, "--label", "simops.worker_kind=" + string(worker)}
-	if s.Network != "" {
-		args = append(args, "--network", s.Network)
+func (s DockerSimopsSpooler) profileConfig() SimopsConfig {
+	namespace := strings.TrimSpace(s.KubernetesNamespace)
+	if namespace == "" {
+		namespace = "radiant-simops"
 	}
-	if s.AutoRemove {
+	return SimopsConfig{
+		LaunchMode:                s.LaunchMode,
+		WorkerRuntime:             "docker",
+		WorkerImage:               s.Image,
+		WorkerManifestRoot:        s.ManifestRoot,
+		WorkerIngestBaseURL:       s.IngestBaseURL,
+		WorkerFrameOverride:       s.FrameOverride,
+		WorkerNetwork:             s.Network,
+		WorkerKubernetesNamespace: namespace,
+		WorkerCleanupTTL:          s.CleanupTTL,
+		WorkerAutoRemove:          s.AutoRemove,
+	}
+}
+
+func (s DockerSimopsSpooler) startWorker(ctx context.Context, profile RunConnectionProfile) (string, error) {
+	args := []string{"run", "-d", "--name", profile.Runtime.Docker.ContainerName, "--label", "simops.run_id=" + profile.RunID, "--label", "simops.worker_id=" + profile.WorkerID, "--label", "simops.worker_kind=" + string(profile.WorkerKind)}
+	for key, value := range profile.Labels {
+		if key == "simops.run_id" || key == "simops.worker_id" || key == "simops.worker_kind" {
+			continue
+		}
+		args = append(args, "--label", key+"="+value)
+	}
+	if profile.Runtime.Docker.Network != "" {
+		args = append(args, "--network", profile.Runtime.Docker.Network)
+	}
+	if profile.Runtime.Docker.AutoRemove {
 		args = append(args, "--rm")
 	}
-	args = append(args, s.Image, "--manifest", manifestPath, "--worker", string(worker), "--run-id", runID, "--ingest-url", ingestURL, "--ingest-token", ingestToken, "--result-ingest-url", resultIngestURL, "--result-ingest-token", ingestToken, "--output", "-")
+	args = append(args, profile.WorkerImage, "--manifest", profile.ManifestPath, "--worker", string(profile.WorkerKind), "--run-id", profile.RunID, "--ingest-url", profile.Gateway.IngestURL, "--ingest-token", profile.Gateway.IngestToken, "--result-ingest-url", profile.Gateway.ResultIngestURL, "--result-ingest-token", profile.Gateway.IngestToken, "--output", "-")
 	if s.FrameOverride > 0 {
 		args = append(args, "--frames", fmt.Sprintf("%d", s.FrameOverride))
 	}
@@ -211,16 +238,6 @@ func (s DockerSimopsSpooler) startWorker(ctx context.Context, runID, containerNa
 		return "", fmt.Errorf("empty container id returned from docker run")
 	}
 	return containerID, nil
-}
-
-func (s DockerSimopsSpooler) ingestURL(runID string) string {
-	base := strings.TrimRight(strings.TrimSpace(s.IngestBaseURL), "/")
-	return base + "/internal/simops/runs/" + strings.TrimSpace(runID) + "/ingest"
-}
-
-func (s DockerSimopsSpooler) resultIngestURL(runID string) string {
-	base := strings.TrimRight(strings.TrimSpace(s.IngestBaseURL), "/")
-	return base + "/internal/simops/runs/" + strings.TrimSpace(runID) + "/results"
 }
 
 func (s DockerSimopsSpooler) ensureImage(ctx context.Context) error {
@@ -305,67 +322,6 @@ func (l MemorySimopsEventLog) Publish(ctx context.Context, event SimopsEvent) er
 		return nil
 	}
 	return l.Store.SaveEvent(event)
-}
-
-type kafkaMessageWriter interface {
-	WriteMessages(ctx context.Context, msgs ...kafka.Message) error
-}
-
-type RedpandaEventLog struct {
-	Topic  string
-	Store  SimopsStore
-	Writer kafkaMessageWriter
-}
-
-func NewRedpandaEventLog(cfg SimopsConfig, store SimopsStore) (*RedpandaEventLog, error) {
-	brokers := csvValues(cfg.RedpandaBrokers)
-	if len(brokers) == 0 {
-		return nil, fmt.Errorf("redpanda event log requires brokers")
-	}
-	if strings.TrimSpace(cfg.RedpandaTopic) == "" {
-		return nil, fmt.Errorf("redpanda event log requires topic")
-	}
-	return &RedpandaEventLog{
-		Topic: cfg.RedpandaTopic,
-		Store: store,
-		Writer: &kafka.Writer{
-			Addr:         kafka.TCP(brokers...),
-			Topic:        cfg.RedpandaTopic,
-			Balancer:     &kafka.Hash{},
-			RequiredAcks: kafka.RequireOne,
-			Async:        false,
-		},
-	}, nil
-}
-
-func (l *RedpandaEventLog) Publish(ctx context.Context, event SimopsEvent) error {
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	default:
-	}
-	if l.Writer == nil {
-		return fmt.Errorf("redpanda event log requires writer")
-	}
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return err
-	}
-	key := event.RunID
-	if event.WorkerID != "" {
-		key += "|" + event.WorkerID
-	}
-	if err := l.Writer.WriteMessages(ctx, kafka.Message{
-		Key:   []byte(key),
-		Value: payload,
-		Time:  event.OccurredAt,
-	}); err != nil {
-		return err
-	}
-	if l.Store != nil {
-		return l.Store.SaveEvent(event)
-	}
-	return nil
 }
 
 func csvValues(raw string) []string {
