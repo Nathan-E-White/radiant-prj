@@ -6,6 +6,8 @@ require (
 	github.com/apache/arrow-go/v18 v18.6.0
 	github.com/apache/iceberg-go v0.6.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/quic-go/quic-go v0.60.0
+	github.com/quic-go/webtransport-go v0.11.1
 	github.com/segmentio/kafka-go v0.4.51
 )
 
@@ -97,8 +99,6 @@ require (
 	github.com/pterm/pterm v0.12.83 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/quic-go/qpack v0.6.0 // indirect
-	github.com/quic-go/quic-go v0.60.0 // indirect
-	github.com/quic-go/webtransport-go v0.11.1 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
 	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
@@ -129,7 +129,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.43.0 // indirect
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	gocloud.dev v0.45.0 // indirect
-	golang.org/x/crypto v0.51.0 // indirect
+	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
 	golang.org/x/mod v0.35.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
