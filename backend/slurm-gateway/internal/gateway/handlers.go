@@ -8,14 +8,11 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"regexp"
 	"strings"
 	"time"
 )
 
 const maxSubmitBodyBytes = 64 * 1024
-
-var scriptNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$`)
 
 type Gateway struct {
 	cfg       Config
@@ -35,9 +32,10 @@ func NewDefaultGateway(cfg Config) (*Gateway, error) {
 	var spooler SlurmSpooler = MockSpooler{}
 	if cfg.Mode == ModeSbatch {
 		spooler = SbatchSpooler{
-			Command:    cfg.SbatchBin,
-			ScriptRoot: cfg.ScriptRoot,
-			Runner:     RealCommandRunner{},
+			Command:        cfg.SbatchBin,
+			ScriptRoot:     cfg.ScriptRoot,
+			AllowedScripts: cfg.AllowedScripts,
+			Runner:         RealCommandRunner{},
 		}
 	}
 
@@ -247,8 +245,8 @@ func (g *Gateway) validateSubmitRequest(req *SubmitRequest) error {
 		req.RankCount = req.NodeCount
 	}
 
-	if !scriptNamePattern.MatchString(req.ScriptName) {
-		return errors.New("script_name must start with an alphanumeric character and contain only alphanumerics, underscores, or dashes")
+	if err := validateScriptNameComponent(req.ScriptName); err != nil {
+		return err
 	}
 	if _, ok := g.cfg.AllowedScripts[req.ScriptName]; !ok {
 		return errors.New("script_name is not in the configured allowlist")

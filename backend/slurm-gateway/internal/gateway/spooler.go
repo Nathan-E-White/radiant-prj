@@ -60,9 +60,10 @@ func (r RealCommandRunner) Run(ctx context.Context, name string, args []string) 
 }
 
 type SbatchSpooler struct {
-	Command    string
-	ScriptRoot string
-	Runner     CommandRunner
+	Command        string
+	ScriptRoot     string
+	AllowedScripts map[string]struct{}
+	Runner         CommandRunner
 }
 
 func (s SbatchSpooler) Submit(ctx context.Context, req SubmitRequest, identity string) (SubmitResult, error) {
@@ -71,7 +72,7 @@ func (s SbatchSpooler) Submit(ctx context.Context, req SubmitRequest, identity s
 		runner = RealCommandRunner{}
 	}
 
-	scriptPath, err := safeScriptPath(s.ScriptRoot, req.ScriptName)
+	scriptPath, err := safeScriptPath(s.ScriptRoot, s.AllowedScripts, req.ScriptName)
 	if err != nil {
 		return SubmitResult{}, err
 	}
@@ -131,13 +132,18 @@ func parseSbatchJobID(stdout string) (string, error) {
 	return output, nil
 }
 
-func safeScriptPath(root string, scriptName string) (string, error) {
+func safeScriptPath(root string, allowedScripts map[string]struct{}, scriptName string) (string, error) {
+	canonicalName, err := canonicalAllowedScriptName(allowedScripts, scriptName)
+	if err != nil {
+		return "", err
+	}
+
 	cleanRoot, err := filepath.Abs(root)
 	if err != nil {
 		return "", fmt.Errorf("resolve script root: %w", err)
 	}
 
-	candidate, err := filepath.Abs(filepath.Join(cleanRoot, scriptName+".sh"))
+	candidate, err := filepath.Abs(filepath.Join(cleanRoot, canonicalName+".sh"))
 	if err != nil {
 		return "", fmt.Errorf("resolve script path: %w", err)
 	}

@@ -38,14 +38,6 @@ func TestParseSbatchJobIDRejectsBadOutput(t *testing.T) {
 	}
 }
 
-func TestSafeScriptPathRejectsTraversal(t *testing.T) {
-	root := t.TempDir()
-
-	if _, err := safeScriptPath(root, "../outside"); err == nil {
-		t.Fatalf("expected traversal to be rejected")
-	}
-}
-
 func TestSbatchSpoolerBuildsBoundedArgsAndParsesOutput(t *testing.T) {
 	root := t.TempDir()
 	script := filepath.Join(root, "transport-toy.sh")
@@ -56,8 +48,9 @@ func TestSbatchSpoolerBuildsBoundedArgsAndParsesOutput(t *testing.T) {
 	var gotName string
 	var gotArgs []string
 	spooler := SbatchSpooler{
-		Command:    "sbatch",
-		ScriptRoot: root,
+		Command:        "sbatch",
+		ScriptRoot:     root,
+		AllowedScripts: csvSet("transport-toy"),
 		Runner: runnerFunc(func(ctx context.Context, name string, args []string) (string, string, error) {
 			gotName = name
 			gotArgs = append([]string{}, args...)
@@ -87,6 +80,41 @@ func TestSbatchSpoolerBuildsBoundedArgsAndParsesOutput(t *testing.T) {
 	}
 }
 
+func TestSbatchSpoolerRejectsUnsafeOrUnknownScripts(t *testing.T) {
+	root := t.TempDir()
+	spooler := SbatchSpooler{
+		Command:        "sbatch",
+		ScriptRoot:     root,
+		AllowedScripts: csvSet("transport-toy"),
+		Runner: runnerFunc(func(ctx context.Context, name string, args []string) (string, string, error) {
+			t.Fatalf("runner should not be called for rejected script %q", args)
+			return "", "", nil
+		}),
+	}
+
+	for _, scriptName := range []string{
+		"../outside",
+		"/absolute/path",
+		"nested/script",
+		`nested\script`,
+		"thermal-margin",
+		"",
+		"   ",
+	} {
+		t.Run(scriptName, func(t *testing.T) {
+			_, err := spooler.Submit(context.Background(), SubmitRequest{
+				ScriptName: scriptName,
+				Partition:  "transport",
+				NodeCount:  2,
+				RankCount:  8,
+			}, "react-backend-client")
+			if err == nil {
+				t.Fatalf("expected %q to be rejected", scriptName)
+			}
+		})
+	}
+}
+
 func TestSbatchSpoolerReportsTimeout(t *testing.T) {
 	root := t.TempDir()
 	script := filepath.Join(root, "transport-toy.sh")
@@ -98,8 +126,9 @@ func TestSbatchSpoolerReportsTimeout(t *testing.T) {
 	defer cancel()
 
 	spooler := SbatchSpooler{
-		Command:    "sbatch",
-		ScriptRoot: root,
+		Command:        "sbatch",
+		ScriptRoot:     root,
+		AllowedScripts: csvSet("transport-toy"),
 		Runner: runnerFunc(func(ctx context.Context, name string, args []string) (string, string, error) {
 			<-ctx.Done()
 			return "", "", ctx.Err()
