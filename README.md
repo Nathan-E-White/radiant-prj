@@ -46,6 +46,18 @@ bun run simulator-workbench:dataflow:smoke
 `bun run ci` runs the full local verification chain.
 `bun run simops:smoke:local` and `bun run simulator-workbench:dataflow:smoke` are Docker-dependent and intentionally stay outside default CI.
 
+## Dev Hygiene Size Audit
+
+The size audit helper reports local storage footprint without deleting files, pruning Docker objects, removing worktrees, or rewriting project state:
+
+```bash
+bun run hygiene:size
+```
+
+The report separates repo-local storage, registered Git worktrees, external toolchain caches, and Docker/OrbStack storage. Optional paths or tools that are unavailable are reported as skipped instead of failing the command.
+
+Use `bun run hygiene:size:check` to exercise the helper against fake Git, Docker, and Go binaries; it does not change real repo, cache, or Docker state.
+
 ## Docker Storage Pruning
 
 The Docker/OrbStack pruning helper defaults to dry-run and prints the selected prune commands without touching Docker state:
