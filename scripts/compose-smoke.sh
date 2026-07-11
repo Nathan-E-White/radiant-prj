@@ -56,6 +56,7 @@ repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
 run scripts/docker-up.sh --timeout "$TIMEOUT"
+run scripts/create-local-gateway-certs.sh
 run docker compose -f docker-compose.yml config --quiet
 run docker compose -f deploy/slurm-gateway.compose.yml config --quiet
 

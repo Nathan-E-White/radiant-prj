@@ -16,6 +16,9 @@ Outputs:
   .local/certs/client-authorized.key
   .local/certs/client-unauthorized.crt
   .local/certs/client-unauthorized.key
+  .local/compose-secrets/ca.crt
+  .local/compose-secrets/server.crt
+  .local/compose-secrets/server.key
 
 These files are local runtime secrets and are ignored by git.
 USAGE
@@ -40,6 +43,7 @@ done
 
 repo_root="$(git rev-parse --show-toplevel)"
 cert_dir="${repo_root}/.local/certs"
+compose_secret_dir="${repo_root}/.local/compose-secrets"
 days_valid="${LOCAL_GATEWAY_CERT_DAYS:-30}"
 
 mkdir -p "$cert_dir"
@@ -52,9 +56,25 @@ server_cert="${cert_dir}/server.crt"
 server_conf="${cert_dir}/server.openssl.cnf"
 client_conf="${cert_dir}/client.openssl.cnf"
 
+prepare_compose_secrets() {
+  mkdir -p "$compose_secret_dir"
+  cp "$ca_cert" "${compose_secret_dir}/ca.crt"
+  cp "$server_cert" "${compose_secret_dir}/server.crt"
+  cp "$server_key" "${compose_secret_dir}/server.key"
+  chmod 644 "${compose_secret_dir}/ca.crt" "${compose_secret_dir}/server.crt" "${compose_secret_dir}/server.key"
+}
+
+server_cert_has_compose_name() {
+  openssl x509 -in "$server_cert" -noout -text | grep -q "DNS:simops-moq-gateway"
+}
+
 if [[ "$FORCE" -eq 0 && -e "$server_cert" ]]; then
-  echo "Local gateway certificates already exist under ${cert_dir}. Use --force to recreate them."
-  exit 0
+  if server_cert_has_compose_name; then
+    prepare_compose_secrets
+    echo "Local gateway certificates already exist under ${cert_dir}. Compose smoke copies refreshed under ${compose_secret_dir}. Use --force to recreate them."
+    exit 0
+  fi
+  echo "Existing local gateway server certificate is missing simops-moq-gateway SAN; recreating local certificates."
 fi
 
 cat > "$server_conf" <<'EOF'
@@ -73,6 +93,7 @@ subjectAltName = @alt_names
 
 [alt_names]
 DNS.1 = localhost
+DNS.2 = simops-moq-gateway
 IP.1 = 127.0.0.1
 EOF
 
@@ -128,9 +149,11 @@ create_client_cert "client-unauthorized" "unauthorized-client"
 
 rm -f "$server_csr" "${cert_dir}"/*.csr "$server_conf" "$client_conf"
 chmod 600 "${cert_dir}"/*.key
+prepare_compose_secrets
 
 cat <<EOF
 Local gateway certificates created under ${cert_dir}.
+Compose smoke certificate copies created under ${compose_secret_dir}.
 
 Example server env:
   SLURM_GATEWAY_TLS_CERT_FILE=.local/certs/server.crt

@@ -2,18 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/sha256"
-	"crypto/tls"
-	"crypto/x509"
-	"crypto/x509/pkix"
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log"
-	"math/big"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -48,7 +39,10 @@ func main() {
 		}
 	}()
 
-	tlsConfig, fingerprint, err := localWebTransportTLSConfig()
+	tlsConfig, fingerprint, err := gateway.LoadWebTransportServerTLSConfig(
+		os.Getenv("SIMOPS_STREAM_GATEWAY_TLS_CERT_FILE"),
+		os.Getenv("SIMOPS_STREAM_GATEWAY_TLS_KEY_FILE"),
+	)
 	if err != nil {
 		log.Fatalf("prepare webtransport tls: %v", err)
 	}
@@ -207,43 +201,6 @@ func sendTrackMessage(ctx context.Context, session *webtransport.Session, messag
 		return err
 	}
 	return stream.Close()
-}
-
-func localWebTransportTLSConfig() (*tls.Config, string, error) {
-	cert, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, "", err
-	}
-	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
-	if err != nil {
-		return nil, "", err
-	}
-	template := x509.Certificate{
-		SerialNumber: serial,
-		Subject: pkix.Name{
-			CommonName: "radiant-simops-local-webtransport",
-		},
-		NotBefore:             time.Now().Add(-time.Minute),
-		NotAfter:              time.Now().Add(24 * time.Hour),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
-		BasicConstraintsValid: true,
-		DNSNames:              []string{"localhost"},
-		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
-	}
-	der, err := x509.CreateCertificate(rand.Reader, &template, &template, &cert.PublicKey, cert)
-	if err != nil {
-		return nil, "", err
-	}
-	fingerprint := sha256.Sum256(der)
-	return &tls.Config{
-		Certificates: []tls.Certificate{{
-			Certificate: [][]byte{der},
-			PrivateKey:  cert,
-		}},
-		NextProtos: []string{"h3"},
-		MinVersion: tls.VersionTLS13,
-	}, hex.EncodeToString(fingerprint[:]), nil
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

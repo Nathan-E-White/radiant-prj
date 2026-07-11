@@ -222,6 +222,7 @@ require_command curl
 require_command node
 
 run scripts/docker-up.sh --timeout "$TIMEOUT"
+run scripts/create-local-gateway-certs.sh
 echo "Checking Docker base-image metadata before SimOps services start..."
 for image in "${preflight_images[@]}"; do
   check_image_metadata "$image"
@@ -277,7 +278,7 @@ while [[ "$SECONDS" -lt "$deadline" ]]; do
     timescale_rows="$(psql_scalar "SELECT COUNT(*) FROM simops_telemetry_frames WHERE run_id = '${run_id}';" || true)"
     iceberg_tables="$(psql_scalar "SELECT COUNT(*) FROM iceberg_tables WHERE table_namespace = 'simops' AND table_name = 'telemetry_frames' AND metadata_location IS NOT NULL;" || true)"
     parquet_files="$(minio_parquet_count || true)"
-    if ! "${compose[@]}" run --rm --no-deps --entrypoint /app/simops-webtransport-probe simops-moq-gateway --endpoint https://simops-moq-gateway:9443/moq/simops --run-id "$run_id" --timeout 10s; then
+    if ! "${compose[@]}" run --rm --no-deps --entrypoint /app/simops-webtransport-probe simops-moq-gateway --endpoint https://simops-moq-gateway:9443/moq/simops --run-id "$run_id" --timeout 10s --ca-cert /run/secrets/simops_moq_gateway_ca_crt --server-name simops-moq-gateway; then
       sleep 2
       continue
     fi

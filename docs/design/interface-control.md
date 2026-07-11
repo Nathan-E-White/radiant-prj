@@ -40,7 +40,7 @@ This document identifies internal and operational interfaces that are controlled
 | `scripts/checkpoint-version.sh` | Release candidate branch and version tag | Version checkpoint commit/tag and optional push |
 | `scripts/cleanup-version-hygiene.sh` | Target branch, version tag, optional merged branch/worktree | Push/tag hygiene and optional local cleanup |
 | v2 wrapper scripts | Historical v2 commands | Compatibility calls into generic release scripts |
-| `scripts/create-local-gateway-certs.sh` | Local dev certificate request | Ignored `.local/certs/` CA, server, authorized client, and unauthorized client certificates |
+| `scripts/create-local-gateway-certs.sh` | Local dev certificate request | Ignored `.local/certs/` CA, server, authorized client, and unauthorized client certificates plus smoke-readable `.local/compose-secrets/` copies for the local MoQ gateway |
 
 ## Backend Gateway Interface
 
