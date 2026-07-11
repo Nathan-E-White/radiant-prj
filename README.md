@@ -46,6 +46,24 @@ bun run simulator-workbench:dataflow:smoke
 `bun run ci` runs the full local verification chain.
 `bun run simops:smoke:local` and `bun run simulator-workbench:dataflow:smoke` are Docker-dependent and intentionally stay outside default CI.
 
+## Docker Storage Pruning
+
+The Docker/OrbStack pruning helper defaults to dry-run and prints the selected prune commands without touching Docker state:
+
+```bash
+bun run docker:prune:plan
+scripts/docker-prune-hygiene.sh --images --build-cache --containers
+```
+
+Actual pruning requires `--execute` and explicit categories. `--all` includes volumes in the plan, but volume pruning also requires `--confirm-volumes` during execution because local volumes may hold runtime data:
+
+```bash
+scripts/docker-prune-hygiene.sh --images --build-cache --containers --execute
+scripts/docker-prune-hygiene.sh --volumes --confirm-volumes --execute
+```
+
+Use `bun run docker:prune:check` to exercise the helper against a fake Docker binary; it does not prune real images, build cache, containers, or volumes.
+
 ## Version 3.0 Backend Gateway
 
 The v3.0 backend lives under `backend/slurm-gateway`. It exposes `GET /healthz`, `GET /readyz`, `GET /metrics`, `POST /api/jobs/submit`, and `GET /api/jobs/{job_id}`.
