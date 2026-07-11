@@ -45,3 +45,6 @@ jobs:
 
       - name: Check ADR style
         run: bun run adr:check
+
+      - name: Check Docker prune hygiene helper
+        run: bun run docker:prune:check
