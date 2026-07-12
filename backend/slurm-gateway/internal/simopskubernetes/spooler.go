@@ -11,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -99,10 +100,10 @@ func (s Spooler) StartRunProfiles(ctx context.Context, run gateway.SimopsRunReco
 func jobForProfile(profile gateway.RunConnectionProfile, frameOverride int) *batchv1.Job {
 	backoffLimit := int32(0)
 	args := gateway.BuildRunWorkerCommand(profile, frameOverride)
-	jobLabels := cloneLabels(profile.Labels)
+	jobLabels, annotations := kubernetesMetadata(profile.Labels)
 	jobLabels["simops.runtime_adapter"] = "kubernetes-job"
 	return &batchv1.Job{
-		ObjectMeta: metav1.ObjectMeta{Name: profile.Runtime.Kubernetes.JobName, Namespace: profile.Runtime.Kubernetes.Namespace, Labels: jobLabels},
+		ObjectMeta: metav1.ObjectMeta{Name: profile.Runtime.Kubernetes.JobName, Namespace: profile.Runtime.Kubernetes.Namespace, Labels: jobLabels, Annotations: annotations},
 		Spec: batchv1.JobSpec{
 			BackoffLimit:            &backoffLimit,
 			TTLSecondsAfterFinished: ttlPointer(profile.Cleanup.TTLSecondsAfterFinished),
@@ -287,4 +288,17 @@ func cloneLabels(source map[string]string) map[string]string {
 		result[key] = value
 	}
 	return result
+}
+
+func kubernetesMetadata(source map[string]string) (map[string]string, map[string]string) {
+	jobLabels := make(map[string]string, len(source)+1)
+	annotations := make(map[string]string)
+	for key, value := range source {
+		if len(validation.IsQualifiedName(key)) == 0 && len(validation.IsValidLabelValue(value)) == 0 {
+			jobLabels[key] = value
+			continue
+		}
+		annotations[key] = value
+	}
+	return jobLabels, annotations
 }

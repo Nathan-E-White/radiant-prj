@@ -40,6 +40,27 @@ test("runtime-worker rejects missing observed runtime state", () => {
   assert.match(result.stderr, /observed_lifecycle/);
 });
 
+test("runtime-worker accepts observed Kubernetes worker state", () => {
+  const result = runHelper("runtime-worker", ["succeeded", "--frames", "--runtime", "kubernetes"], {
+    run_id: "RUN-KIND-001",
+    workers: [{
+      worker_id: "scheduler-01",
+      observed_lifecycle: "succeeded",
+      runtime: "kubernetes",
+      runtime_id: "radiant-simops/simops-run-kind-001-scheduler-01",
+      frames: 2,
+    }],
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /runtime=kubernetes/);
+});
+
+test("runtime-worker rejects unsupported runtime options", () => {
+  const result = runHelper("runtime-worker", ["active", "--runtime", "nomad"], {workers: []});
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /must be docker or kubernetes/);
+});
+
 test("container-proof accepts gateway-ingest-only worker env and redacts tokens", () => {
   const result = runHelper("container-proof", [], [
     {

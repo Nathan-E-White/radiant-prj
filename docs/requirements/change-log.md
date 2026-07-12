@@ -31,6 +31,7 @@
 | CHG-019 | 2026-07-10 | Proved the Docker/OrbStack SimOps runtime path through API-driven launch, lifecycle sync, gateway-only ingest, success cleanup, failure retention, and forced smoke cleanup. | SW-019, SIMOPS-DOCKER-ORBSTACK-E2E-001 | `bun run simops:smoke:json:test`, `bun run simops:smoke:docker-orbstack`, `bun run ci` |
 | CHG-020 | 2026-07-12 | Added the Docker/OrbStack storage policy, read-only reporting boundary, protected-volume rule, and policy guard for future scoped cleanup. | DEV-HYGIENE-001, #40 | `bun run docker:storage:check`, `bun run hygiene:size:check`, `bun run ci` |
 | CHG-021 | 2026-07-12 | Added the client-go Kubernetes Job runtime adapter with profile-based Job construction, gateway-only worker inputs, create/delete behavior, and runtime-neutral Job/Pod lifecycle mapping. | SW-020, #24 | `go test ./internal/simopskubernetes`, `bun run backend:test`, `bun run backend:deps:check`, `bun run ci` |
+| CHG-022 | 2026-07-12 | Added the Kind/OrbStack Kubernetes runtime smoke with API-driven Job launch, gateway-only worker proof, ingest and lifecycle evidence, TTL cleanup policy, failed-Job retention, and forced cleanup. | SW-021, SIMOPS-KIND-E2E-001, #25 | `bun run simops:smoke:kind:check`, `bun run simops:smoke:json:test`, elevated `bun run simops:smoke:kind -- --timeout 300 --build auto`, `bun run ci` |
 
 ## Control Note
 
