@@ -46,6 +46,47 @@ bun run simulator-workbench:dataflow:smoke
 `bun run ci` runs the full local verification chain.
 `bun run simops:smoke:local` and `bun run simulator-workbench:dataflow:smoke` are Docker-dependent and intentionally stay outside default CI.
 
+Worker Rust tests use named external Cargo target directories by default:
+
+```text
+/tmp/radiant-cargo-target/simops-generator
+/tmp/radiant-cargo-target/scada-standins
+```
+
+This keeps worker build artifacts out of `workers/*/target` while preserving the existing test commands. Set `CARGO_TARGET_DIR` explicitly when a one-off override is needed; otherwise keep the worker-specific defaults so caches do not get mixed between packages.
+
+## Dev Hygiene Size Audit
+
+The size audit helper reports local storage footprint without deleting files, pruning Docker objects, removing worktrees, or rewriting project state:
+
+```bash
+bun run hygiene:size
+```
+
+The report separates repo-local storage, registered Git worktrees, external toolchain caches, and Docker/OrbStack storage. Optional paths or tools that are unavailable are reported as skipped instead of failing the command.
+
+Use `bun run hygiene:size:check` to exercise the helper against fake Git, Docker, and Go binaries; it does not change real repo, cache, or Docker state.
+
+The reporting and cleanup boundary is documented in [`docs/design/docker-orbstack-storage-policy.md`](docs/design/docker-orbstack-storage-policy.md). Run `bun run docker:storage:check` to verify that the policy remains present and that the size audit stays read-only.
+
+## Docker Storage Pruning
+
+The Docker/OrbStack pruning helper defaults to dry-run and prints the selected prune commands without touching Docker state:
+
+```bash
+bun run docker:prune:plan
+scripts/docker-prune-hygiene.sh --images --build-cache --containers
+```
+
+Actual pruning requires `--execute` and explicit categories. `--all` includes volumes in the plan, but volume pruning also requires `--confirm-volumes` during execution because local volumes may hold runtime data:
+
+```bash
+scripts/docker-prune-hygiene.sh --images --build-cache --containers --scope-label com.radiant.owner=kaleidos --execute
+scripts/docker-prune-hygiene.sh --volumes --scope-label com.radiant.owner=kaleidos --confirm-volumes --execute
+```
+
+Use `bun run docker:prune:check` to exercise the helper against a fake Docker binary; it does not prune real images, build cache, containers, or volumes.
+
 ## Version 3.0 Backend Gateway
 
 The v3.0 backend lives under `backend/slurm-gateway`. It exposes `GET /healthz`, `GET /readyz`, `GET /metrics`, `POST /api/jobs/submit`, and `GET /api/jobs/{job_id}`.
@@ -125,3 +166,14 @@ The existing `scripts/checkpoint-v1.sh` remains available for the historical v1 
 ## Boundaries
 
 The transport, thermal, fleet, and infrastructure records are synthetic. They are designed to demonstrate engineering judgment, reproducibility, traceability, and HPC operations fluency without representing any real Kaleidos analysis or Radiant infrastructure.
+
+### Guarded hygiene cleanup
+
+`bun run hygiene:clean` prints a dry-run plan for generated outputs, Rust worker targets, dependency installs in registered worktrees, and named Radiant Go caches. It never deletes Git worktrees, Docker objects, volumes, or arbitrary paths. Select categories explicitly and add `--execute` only when removal is intended:
+
+```sh
+bun run hygiene:clean
+bun run hygiene:clean --generated --rust-targets --execute
+```
+
+The cleanup command prints each selected path before removal and refuses `--execute` without explicit category flags.

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 	"time"
 
 	"github.com/quic-go/quic-go"
-	"github.com/quic-go/quic-go/http3"
 	"github.com/quic-go/webtransport-go"
 
 	"radiant/slurm-gateway/internal/gateway"
@@ -23,6 +21,8 @@ func main() {
 	endpoint := flag.String("endpoint", "https://127.0.0.1:9443/moq/simops", "WebTransport endpoint URL")
 	runID := flag.String("run-id", "", "Run id to match")
 	timeout := flag.Duration("timeout", 20*time.Second, "Probe timeout")
+	caCert := flag.String("ca-cert", "", "PEM CA certificate file for the WebTransport server")
+	serverName := flag.String("server-name", "", "TLS server name override for WebTransport certificate verification")
 	flag.Parse()
 
 	if strings.TrimSpace(*runID) == "" {
@@ -32,19 +32,20 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
 	defer cancel()
-	if err := probe(ctx, *endpoint, *runID); err != nil {
+	if err := probe(ctx, *endpoint, *runID, *caCert, *serverName); err != nil {
 		fmt.Fprintf(os.Stderr, "SimOps WebTransport probe failed: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("SimOps WebTransport probe observed telemetry and quality tracks for %s.\n", *runID)
 }
 
-func probe(ctx context.Context, endpoint string, runID string) error {
+func probe(ctx context.Context, endpoint string, runID string, caCertFile string, serverName string) error {
+	tlsConfig, err := gateway.LoadWebTransportClientTLSConfig(caCertFile, serverName)
+	if err != nil {
+		return err
+	}
 	dialer := &webtransport.Dialer{
-		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
-			NextProtos:         []string{http3.NextProtoH3},
-		},
+		TLSClientConfig: tlsConfig,
 		QUICConfig: &quic.Config{
 			EnableDatagrams:                  true,
 			EnableStreamResetPartialDelivery: true,

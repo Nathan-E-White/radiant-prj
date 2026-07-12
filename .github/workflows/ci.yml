@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -45,3 +48,12 @@ jobs:
 
       - name: Check ADR style
         run: bun run adr:check
+
+      - name: Check Docker prune hygiene helper
+        run: bun run docker:prune:check
+
+      - name: Check Docker storage policy
+        run: bun run docker:storage:check
+
+      - name: Check guarded hygiene cleanup helper
+        run: bun run hygiene:clean:check

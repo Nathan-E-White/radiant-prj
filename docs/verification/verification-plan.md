@@ -36,6 +36,7 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 | Status Workbench backend dataflow smoke | `bun run simulator-workbench:dataflow:smoke` | Docker smoke output for Redpanda, Postgres, Iceberg, and read APIs |
 | Production build | `bun run build` | Build output |
 | Full local CI | `bun run ci` | Combined command output |
+| Docker/OrbStack storage policy | `bun run docker:storage:check`, `bun run hygiene:size:check`, `bun run docker:prune:check` | Read-only report and scoped cleanup guard output |
 
 ## Acceptance Criteria
 

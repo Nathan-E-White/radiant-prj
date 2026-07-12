@@ -374,6 +374,11 @@ func (c Config) Validate() error {
 	if len(c.AllowedScripts) == 0 {
 		return fmt.Errorf("at least one allowed script is required")
 	}
+	for scriptName := range c.AllowedScripts {
+		if err := validateScriptNameComponent(scriptName); err != nil {
+			return fmt.Errorf("allowed script %q is invalid: %w", scriptName, err)
+		}
+	}
 	if strings.TrimSpace(c.ScriptRoot) == "" {
 		return fmt.Errorf("script root is required")
 	}

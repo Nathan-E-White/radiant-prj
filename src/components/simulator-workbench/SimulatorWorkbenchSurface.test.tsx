@@ -23,6 +23,9 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(markup).toContain("Status Workbench");
     expect(markup).toContain("KAL-01");
     expect(markup).toContain("KAL-05");
+    expect(markup).toContain("Fleet Board");
+    expect(markup).toContain("30-day contract sprint");
+    expect(markup).toContain("TRISO Supply");
     expect(markup).toContain("Measured State");
     expect(markup).toContain("Imputed State");
     expect(markup).toContain("Simulated Result State");

@@ -988,6 +988,184 @@ a:hover {
   overflow-wrap: anywhere;
 }
 
+.fleet-board-shell {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(131, 156, 151, 0.24);
+  border-radius: 8px;
+  background: rgba(8, 20, 23, 0.84);
+  padding: 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.fleet-board-head,
+.fleet-board-readout,
+.fleet-board-layout,
+.fleet-board-score,
+.fleet-board-controls button {
+  min-width: 0;
+}
+
+.fleet-board-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+}
+
+.fleet-board-head .eyebrow {
+  color: #72d8b4;
+}
+
+.fleet-board-score {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid rgba(125, 158, 151, 0.24);
+  border-radius: 8px;
+  background: rgba(18, 38, 42, 0.78);
+  padding: 8px 10px;
+  color: #dcebe6;
+  font-size: 0.82rem;
+  font-weight: 900;
+}
+
+.fleet-board-score span,
+.fleet-board-readout span,
+.fleet-board-controls button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.fleet-board-score strong {
+  color: #f2d37a;
+  font-size: 1rem;
+}
+
+.fleet-board-readout {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(110px, 1fr));
+  gap: 8px;
+}
+
+.fleet-board-readout span {
+  min-height: 34px;
+  border: 1px solid rgba(125, 158, 151, 0.22);
+  border-radius: 7px;
+  background: rgba(10, 27, 30, 0.76);
+  color: #dcebe6;
+  padding: 7px 9px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+.fleet-board-readout .fleet-board-negative {
+  color: #ff9e87;
+}
+
+.fleet-board-layout {
+  display: grid;
+  grid-template-columns: 176px minmax(660px, 1fr) 220px;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.fleet-board-controls,
+.fleet-board-events {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  border: 1px solid rgba(125, 158, 151, 0.2);
+  border-radius: 8px;
+  background: rgba(7, 20, 23, 0.7);
+  padding: 10px;
+}
+
+.fleet-board-control-group {
+  display: grid;
+  gap: 7px;
+}
+
+.fleet-board-control-group h4,
+.fleet-board-events h4 {
+  margin: 0;
+  color: #f7fbf8;
+  font-size: 0.82rem;
+}
+
+.fleet-board-controls button {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid rgba(122, 162, 153, 0.26);
+  border-radius: 7px;
+  background: rgba(23, 48, 52, 0.86);
+  color: #dcebe6;
+  padding: 7px 9px;
+  font-size: 0.76rem;
+  font-weight: 900;
+  text-align: left;
+}
+
+.fleet-board-controls button:hover {
+  border-color: rgba(114, 216, 180, 0.55);
+  background: rgba(29, 63, 67, 0.94);
+}
+
+.fleet-board-modifiers {
+  display: grid;
+  gap: 6px;
+  color: #9fb3ae;
+  font-size: 0.72rem;
+  font-weight: 850;
+}
+
+.fleet-board-canvas {
+  min-height: 640px;
+  border: 1px solid rgba(125, 158, 151, 0.24);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 22% 16%, rgba(85, 221, 160, 0.12), transparent 28%),
+    radial-gradient(circle at 82% 74%, rgba(240, 166, 58, 0.1), transparent 26%),
+    #101922;
+  overflow: hidden;
+}
+
+.fleet-board-canvas canvas {
+  display: block;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.fleet-board-events {
+  max-height: 640px;
+  overflow: auto;
+}
+
+.fleet-board-events article {
+  display: grid;
+  gap: 4px;
+  border: 1px solid rgba(125, 158, 151, 0.18);
+  border-left: 3px solid rgba(240, 166, 58, 0.64);
+  border-radius: 7px;
+  background: rgba(10, 27, 30, 0.74);
+  padding: 8px;
+}
+
+.fleet-board-events span,
+.fleet-board-events p {
+  margin: 0;
+  color: #9fb3ae;
+  font-size: 0.7rem;
+}
+
+.fleet-board-events strong {
+  color: #f7fbf8;
+  font-size: 0.78rem;
+}
+
 .simwb-grid {
   display: grid;
   grid-template-columns: minmax(260px, 0.86fr) minmax(420px, 1.55fr) minmax(280px, 0.92fr);

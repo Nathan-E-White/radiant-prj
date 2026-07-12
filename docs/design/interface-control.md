@@ -37,12 +37,17 @@ This document identifies internal and operational interfaces that are controlled
 | `scripts/simops-smoke-json.mjs` | SimOps smoke JSON from API responses and Docker inspect | Pass/fail runtime proof parsing, gateway-ingest credential checks, and redacted evidence output |
 | `scripts/simops-docker-orbstack-smoke.sh` | Local Docker/OrbStack compose platform and optional `SIMOPS_SMOKE_BUILD=auto\|always\|never` image build mode | Pass/fail SimOps Runtime Proof for Docker worker launch, gateway-only ingest, observed lifecycle, zero-TTL success cleanup, failed-run retention, and smoke-forced cleanup |
 | `scripts/simulator-workbench-dataflow-smoke.sh` | Local Docker/OrbStack compose platform | Pass/fail backend dataflow proof for measured, telemetry, simulated, and imputed units |
+| `scripts/hygiene-size.mjs` | Local repo, Git worktree, cache, and Docker/OrbStack storage inspection | Read-only size report with skipped optional sections |
+| `scripts/check-hygiene-size.mjs` | Fake Git, Docker, Go, and cache fixtures | Pass/fail read-only size-report validation |
+| `scripts/check-docker-storage-policy.mjs` | Controlled storage-policy documentation and report source | Pass/fail policy and read-only boundary validation |
+| `bun run simops:generator:test` | `workers/simops-generator/Cargo.toml` | Rust tests with an external `/tmp/radiant-cargo-target/simops-generator` target directory by default |
+| `bun run scada:standins:test` | `workers/scada-standins/Cargo.toml` | Rust tests with an external `/tmp/radiant-cargo-target/scada-standins` target directory by default |
 | `scripts/checkpoint-wip.sh` | Git worktree state | WIP checkpoint commit and optional push |
 | `scripts/fold-branch.sh` | Source and target branches | No-fast-forward merge into target branch |
 | `scripts/checkpoint-version.sh` | Release candidate branch and version tag | Version checkpoint commit/tag and optional push |
 | `scripts/cleanup-version-hygiene.sh` | Target branch, version tag, optional merged branch/worktree | Push/tag hygiene and optional local cleanup |
 | v2 wrapper scripts | Historical v2 commands | Compatibility calls into generic release scripts |
-| `scripts/create-local-gateway-certs.sh` | Local dev certificate request | Ignored `.local/certs/` CA, server, authorized client, and unauthorized client certificates |
+| `scripts/create-local-gateway-certs.sh` | Local dev certificate request | Ignored `.local/certs/` CA, server, authorized client, and unauthorized client certificates plus smoke-readable `.local/compose-secrets/` copies for the local MoQ gateway |
 
 ## Backend Gateway Interface
 

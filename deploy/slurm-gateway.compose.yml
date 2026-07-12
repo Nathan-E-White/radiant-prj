@@ -106,8 +106,14 @@ services:
       SIMOPS_ICEBERG_CONSUMER_GROUP: "simops-iceberg-writer"
       SIMOPS_MOQ_CONSUMER_GROUP: "simops-moq-gateway"
       SIMOPS_MOQ_WEBTRANSPORT_URL: "https://127.0.0.1:9443/moq/simops"
+      SIMOPS_STREAM_GATEWAY_TLS_CERT_FILE: "/run/secrets/simops_moq_gateway_server_crt"
+      SIMOPS_STREAM_GATEWAY_TLS_KEY_FILE: "/run/secrets/simops_moq_gateway_server_key"
       SIMOPS_ICEBERG_CATALOG_DSN: "postgres://radiant:radiant@postgres:5432/radiant?sslmode=disable"
       SIMOPS_ICEBERG_S3_REGION: "local"
+    secrets:
+      - simops_moq_gateway_ca_crt
+      - simops_moq_gateway_server_crt
+      - simops_moq_gateway_server_key
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9443/healthz"]
       interval: 30s
@@ -511,6 +517,14 @@ volumes:
   postgres-data:
   redpanda-data:
   minio-data:
+
+secrets:
+  simops_moq_gateway_ca_crt:
+    file: ../.local/compose-secrets/ca.crt
+  simops_moq_gateway_server_crt:
+    file: ../.local/compose-secrets/server.crt
+  simops_moq_gateway_server_key:
+    file: ../.local/compose-secrets/server.key
 
 networks:
   default:

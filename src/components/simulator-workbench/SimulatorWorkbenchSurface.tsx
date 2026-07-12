@@ -1,13 +1,14 @@
+import type { CSSProperties, ReactNode } from "react";
 import { FleetStrip } from "./FleetStrip";
 import { LineagePanel } from "./LineagePanel";
 import { MeasuredStatePanel } from "./MeasuredStatePanel";
 import { SimulationResultsPanel } from "./SimulationResultsPanel";
 import { TwinStatePanel } from "./TwinStatePanel";
 import { TwinViewport } from "./TwinViewport";
-import type { CSSProperties, ReactNode } from "react";
+import { FleetBoardSurface } from "../fleet-board";
 import { diagnoseJob } from "../../domain/readiness";
-import type { ComputeJob } from "../../domain/types";
 import type { WorkbenchProjection } from "../../domain/simulator-workbench";
+import type { ComputeJob } from "../../domain/types";
 
 export function SimulatorWorkbenchSurface({
   projection,
@@ -54,6 +55,7 @@ export function SimulatorWorkbenchSurface({
       </div>
 
       <FleetStrip units={projection.fleetUnits} onSelectUnit={onSelectUnit} />
+      <FleetBoardSurface projection={projection} />
 
       <div className="simwb-grid">
         <aside className="simwb-stack">
