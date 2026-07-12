@@ -13,7 +13,14 @@ const dockerContext = process.env.DOCKER_CONTEXT || "orbstack";
 const duBin = process.env.DU_BIN || "du";
 const goBin = process.env.GO_BIN || "go";
 
-const generatedOutputDirs = ["storybook-static", "dist", "generated", ".local"];
+const generatedOutputDirs = [
+  "storybook-static",
+  "dist",
+  "test-results",
+  "generated",
+  ".local",
+  "target"
+];
 const scanSkipDirs = new Set([
   ".git",
   ".worktrees",
@@ -205,19 +212,17 @@ function relativeLabel(targetPath, rootPath = repoRoot) {
   return label && !label.startsWith("..") ? label : targetPath;
 }
 
-function collectPresentMeasurements(paths) {
-  return paths
-    .map((targetPath) => measurePath(targetPath))
-    .filter((measurement) => measurement.state === "present");
+function collectMeasurements(paths) {
+  return paths.map((targetPath) => measurePath(targetPath));
 }
 
 function collectGeneratedOutputs(rootPath) {
   const directOutputs = generatedOutputDirs.map((name) => join(rootPath, name));
-  return collectPresentMeasurements([...directOutputs, ...findTsBuildInfo(rootPath)]);
+  return collectMeasurements([...directOutputs, ...findTsBuildInfo(rootPath)]);
 }
 
 function collectRootDependencyInstall(rootPath) {
-  return collectPresentMeasurements([join(rootPath, "node_modules")]);
+  return collectMeasurements([join(rootPath, "node_modules")]);
 }
 
 function collectWorkerTargets(rootPath) {
@@ -230,7 +235,7 @@ function collectWorkerTargets(rootPath) {
     .filter((entry) => entry.isDirectory())
     .map((entry) => join(workersDir, entry.name, "target"));
 
-  return collectPresentMeasurements(targetPaths);
+  return collectMeasurements(targetPaths);
 }
 
 function findTsBuildInfo(rootPath) {
@@ -402,7 +407,12 @@ function printMeasurementList(measurements, options = {}) {
 
   const rootPath = options.rootPath || repoRoot;
   for (const measurement of measurements) {
-    console.log(`${indent}- ${relativeLabel(measurement.path, rootPath)}: ${formatBytes(measurement.bytes)} (${measurement.path})`);
+    const label = relativeLabel(measurement.path, rootPath);
+    if (measurement.state === "present") {
+      console.log(`${indent}- ${label}: ${formatBytes(measurement.bytes)} (${measurement.path})`);
+    } else {
+      console.log(`${indent}- ${label}: skipped (${measurement.reason}) (${measurement.path})`);
+    }
   }
 }
 
@@ -435,7 +445,7 @@ function main() {
   });
   console.log("- Generated and build-output paths");
   printMeasurementList(collectGeneratedOutputs(repoRoot), {
-    emptyText: "storybook-static, dist, generated, .local, and *.tsbuildinfo not present"
+    emptyText: "storybook-static, dist, test-results, generated, .local, target, and *.tsbuildinfo not present"
   });
   console.log("- Rust worker build output");
   printMeasurementList(collectWorkerTargets(repoRoot), {
