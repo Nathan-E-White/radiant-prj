@@ -119,6 +119,9 @@ func TestRunConnectionProfileMapsDockerAndKubernetesRuntimeNeeds(t *testing.T) {
 	if profile.Runtime.Kubernetes.JobName != "simops-run-profile-001-burst-01" {
 		t.Fatalf("unexpected Kubernetes job name %q", profile.Runtime.Kubernetes.JobName)
 	}
+	if profile.Runtime.Kubernetes.ServiceAccount != "simops-worker" {
+		t.Fatalf("unexpected Kubernetes service account %q", profile.Runtime.Kubernetes.ServiceAccount)
+	}
 	if profile.Cleanup.TTLSecondsAfterFinished != 600 {
 		t.Fatalf("unexpected cleanup TTL %d", profile.Cleanup.TTLSecondsAfterFinished)
 	}

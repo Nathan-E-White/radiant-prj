@@ -51,8 +51,9 @@ type DockerRunConnection struct {
 }
 
 type KubernetesRunConnection struct {
-	Namespace string
-	JobName   string
+	Namespace      string
+	JobName        string
+	ServiceAccount string
 }
 
 type RunCleanupPolicy struct {
@@ -174,8 +175,9 @@ func buildRunConnectionProfile(cfg SimopsConfig, run SimopsRunRecord, role RunCo
 				AutoRemove:    cfg.WorkerAutoRemove,
 			},
 			Kubernetes: KubernetesRunConnection{
-				Namespace: strings.TrimSpace(cfg.WorkerKubernetesNamespace),
-				JobName:   kubernetesRunJobName(runID, workerID),
+				Namespace:      strings.TrimSpace(cfg.WorkerKubernetesNamespace),
+				JobName:        kubernetesRunJobName(runID, workerID),
+				ServiceAccount: strings.TrimSpace(cfg.WorkerKubernetesServiceAccount),
 			},
 		},
 		Cleanup: RunCleanupPolicy{
