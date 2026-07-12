@@ -67,6 +67,8 @@ The report separates repo-local storage, registered Git worktrees, external tool
 
 Use `bun run hygiene:size:check` to exercise the helper against fake Git, Docker, and Go binaries; it does not change real repo, cache, or Docker state.
 
+The reporting and cleanup boundary is documented in [`docs/design/docker-orbstack-storage-policy.md`](docs/design/docker-orbstack-storage-policy.md). Run `bun run docker:storage:check` to verify that the policy remains present and that the size audit stays read-only.
+
 ## Docker Storage Pruning
 
 The Docker/OrbStack pruning helper defaults to dry-run and prints the selected prune commands without touching Docker state:
@@ -79,8 +81,8 @@ scripts/docker-prune-hygiene.sh --images --build-cache --containers
 Actual pruning requires `--execute` and explicit categories. `--all` includes volumes in the plan, but volume pruning also requires `--confirm-volumes` during execution because local volumes may hold runtime data:
 
 ```bash
-scripts/docker-prune-hygiene.sh --images --build-cache --containers --execute
-scripts/docker-prune-hygiene.sh --volumes --confirm-volumes --execute
+scripts/docker-prune-hygiene.sh --images --build-cache --containers --scope-label com.radiant.owner=kaleidos --execute
+scripts/docker-prune-hygiene.sh --volumes --scope-label com.radiant.owner=kaleidos --confirm-volumes --execute
 ```
 
 Use `bun run docker:prune:check` to exercise the helper against a fake Docker binary; it does not prune real images, build cache, containers, or volumes.

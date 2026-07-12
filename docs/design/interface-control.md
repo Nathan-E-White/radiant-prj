@@ -37,6 +37,7 @@ This document identifies internal and operational interfaces that are controlled
 | `scripts/simulator-workbench-dataflow-smoke.sh` | Local Docker/OrbStack compose platform | Pass/fail backend dataflow proof for measured, telemetry, simulated, and imputed units |
 | `scripts/hygiene-size.mjs` | Local repo, Git worktree, cache, and Docker/OrbStack storage inspection | Read-only size report with skipped optional sections |
 | `scripts/check-hygiene-size.mjs` | Fake Git, Docker, Go, and cache fixtures | Pass/fail read-only size-report validation |
+| `scripts/check-docker-storage-policy.mjs` | Controlled storage-policy documentation and report source | Pass/fail policy and read-only boundary validation |
 | `bun run simops:generator:test` | `workers/simops-generator/Cargo.toml` | Rust tests with an external `/tmp/radiant-cargo-target/simops-generator` target directory by default |
 | `bun run scada:standins:test` | `workers/scada-standins/Cargo.toml` | Rust tests with an external `/tmp/radiant-cargo-target/scada-standins` target directory by default |
 | `scripts/checkpoint-wip.sh` | Git worktree state | WIP checkpoint commit and optional push |

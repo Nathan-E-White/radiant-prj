@@ -100,6 +100,27 @@ for (const scenario of [
     dockerLog: ""
   },
   {
+    name: "unscoped execute",
+    args: ["--images", "--execute"],
+    status: 2,
+    stderr: ["--scope-label"],
+    dockerLog: ""
+  },
+  {
+    name: "non-Radiant scope",
+    args: ["--images", "--scope-label", "garbage", "--execute"],
+    status: 2,
+    stderr: ["Radiant-owned label"],
+    dockerLog: ""
+  },
+  {
+    name: "non-OrbStack context",
+    args: ["--images", "--scope-label", "com.radiant.owner=kaleidos", "--context", "default", "--execute"],
+    status: 2,
+    stderr: ["orbstack context"],
+    dockerLog: ""
+  },
+  {
     name: "missing context value",
     args: ["--images", "--context"],
     status: 2,
@@ -110,15 +131,15 @@ for (const scenario of [
   assertScenario(scenario);
 }
 
-const executeResult = runScenario(["--images", "--build-cache", "--containers", "--execute"]);
+const executeResult = runScenario(["--images", "--build-cache", "--containers", "--scope-label", "com.radiant.owner=kaleidos", "--execute"]);
 assert(executeResult.status === 0, `execute with fake Docker should pass: ${executeResult.stderr}`);
 assert(executeResult.dockerLog.includes("--context orbstack system df"), "execute should capture Docker storage before pruning");
-assert(executeResult.dockerLog.includes("--context orbstack image prune --all --force"), "execute should call image prune");
-assert(executeResult.dockerLog.includes("--context orbstack builder prune --force"), "execute should call builder prune");
-assert(executeResult.dockerLog.includes("--context orbstack container prune --force"), "execute should call container prune");
+assert(executeResult.dockerLog.includes("--context orbstack image prune --all --force --filter label=com.radiant.owner=kaleidos"), "execute should scope image prune");
+assert(executeResult.dockerLog.includes("--context orbstack builder prune --force --filter label=com.radiant.owner=kaleidos"), "execute should scope build-cache prune");
+assert(executeResult.dockerLog.includes("--context orbstack container prune --force --filter label=com.radiant.owner=kaleidos"), "execute should scope container prune");
 
-const volumeExecute = runScenario(["--volumes", "--confirm-volumes", "--execute"]);
+const volumeExecute = runScenario(["--volumes", "--scope-label", "com.radiant.owner=kaleidos", "--confirm-volumes", "--execute"]);
 assert(volumeExecute.status === 0, `confirmed volume execute with fake Docker should pass: ${volumeExecute.stderr}`);
-assert(volumeExecute.dockerLog.includes("--context orbstack volume prune --force"), "confirmed volume execute should call volume prune");
+assert(volumeExecute.dockerLog.includes("--context orbstack volume prune --force --filter label=com.radiant.owner=kaleidos"), "confirmed volume execute should scope volume prune");
 
 console.log("Docker prune hygiene script checks passed.");
