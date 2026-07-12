@@ -33,6 +33,9 @@ func TestStartRunProfilesCreatesGatewayOnlyJob(t *testing.T) {
 	if job.Labels["simops.run_id"] != run.RunID || job.Labels["simops.worker_id"] != profile.WorkerID || job.Labels["simops.worker_kind"] != string(profile.WorkerKind) {
 		t.Fatalf("unexpected labels %#v", job.Labels)
 	}
+	if _, ok := job.Labels["simops.worker_image"]; ok || job.Annotations["simops.worker_image"] != "simops-generator:test" {
+		t.Fatalf("expected image ref in annotations rather than invalid label: labels=%#v annotations=%#v", job.Labels, job.Annotations)
+	}
 	if job.Spec.Template.Spec.ServiceAccountName != "simops-worker" || job.Spec.Template.Spec.RestartPolicy != corev1.RestartPolicyNever {
 		t.Fatalf("unexpected pod policy %#v", job.Spec.Template.Spec)
 	}

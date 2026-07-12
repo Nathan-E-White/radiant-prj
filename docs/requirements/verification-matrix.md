@@ -39,6 +39,7 @@
 | SW-019 | Demonstration | Docker/OrbStack SimOps Runtime Proof for API-driven worker launch, gateway-only worker ingest, observed lifecycle sync, zero-TTL success cleanup, failed-run retention, and smoke-forced cleanup | `bun run simops:smoke:json:test`, `bun run simops:smoke:docker-orbstack` (`SIMOPS_SMOKE_BUILD=always` for forced image rebuild), `bun run infra:check`, `bun run ci` | SIMOPS-DOCKER-ORBSTACK-E2E-001 |
 | DEV-HYGIENE-001 | Configuration audit | Docker/OrbStack storage policy, read-only size reporting, scoped cleanup guard, and protected-volume confirmation | `bun run docker:storage:check`, `bun run hygiene:size:check`, `bun run docker:prune:check` | DOP-001 |
 | SW-020 | Test | client-go fake-client tests cover Kubernetes Job labels, gateway-only inputs, namespace, service account, TTL, create/delete errors, and Job/Pod lifecycle mapping | `go test ./internal/simopskubernetes`, `bun run backend:test`, `bun run backend:deps:check`, `bun run ci` | #24 |
+| SW-021 | Demonstration | Kind/OrbStack proof covers API-driven Kubernetes Job launch, required labels, gateway-only worker inputs, frame ingest, runtime lifecycle sync, TTL, failure retention, and forced cleanup | `bun run simops:smoke:kind:check`, `bun run simops:smoke:json:test`, elevated `bun run simops:smoke:kind -- --timeout 300 --build auto` | SIMOPS-KIND-E2E-001 |
 
 ## Acceptance Scenario
 

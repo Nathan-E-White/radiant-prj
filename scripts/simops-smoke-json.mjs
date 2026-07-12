@@ -53,6 +53,8 @@ function numeric(value) {
 function runtimeWorker(payload, options) {
   const expectedState = typeof options[0] === "string" ? options[0].trim() : "";
   const requireFrames = options.includes("--frames");
+  const runtimeIndex = options.indexOf("--runtime");
+  const expectedRuntime = runtimeIndex >= 0 ? options[runtimeIndex + 1] : "docker";
   if (!expectedState) {
     console.error("runtime-worker requires an observed lifecycle state.");
     process.exit(2);
@@ -64,12 +66,12 @@ function runtimeWorker(payload, options) {
     console.error(`No worker has observed_lifecycle=${expectedState}; observed_lifecycle values: ${observed}`);
     process.exit(1);
   }
-  if (worker.runtime !== "docker") {
-    console.error(`Expected Docker runtime worker, got runtime=${worker.runtime || "<missing>"}.`);
+  if (worker.runtime !== expectedRuntime) {
+    console.error(`Expected ${expectedRuntime} runtime worker, got runtime=${worker.runtime || "<missing>"}.`);
     process.exit(1);
   }
   if (typeof worker.runtime_id !== "string" || worker.runtime_id.trim() === "") {
-    console.error("Expected runtime_id for observed Docker worker.");
+    console.error(`Expected runtime_id for observed ${expectedRuntime} worker.`);
     process.exit(1);
   }
   const frames = numeric(worker.frames);
