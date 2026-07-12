@@ -36,6 +36,7 @@
 | Interface Control Document | Software | Draft for v3.0 review |
 | Simulation Ops Telemetry Contract | Software | Contract draft |
 | Simulator Workbench Backend Dataflow Slice | Software | Implemented backend slice |
+| Docker/OrbStack Storage Policy (DOP-001) | Software | Draft for v3.0 review |
 | Verification Plan | Quality | Draft for v3.0 review |
 | Test Report Template | Quality | Template |
 | Release Checklist | Quality | Template |

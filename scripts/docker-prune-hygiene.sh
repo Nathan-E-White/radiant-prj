@@ -18,7 +18,9 @@ Options:
   --all                 Select images, build cache, stopped containers, and volumes.
                         Executing volume pruning still requires --confirm-volumes.
   --confirm-volumes     Acknowledge volume pruning risk when --volumes is set.
-  --execute             Run the selected Docker prune commands.
+  --scope-label KEY=VALUE
+                        Required with --execute; limit cleanup to Radiant-owned resources.
+  --execute             Run the selected, scoped Docker prune commands.
   --dry-run             Print selected commands without running them. Default.
   --context NAME        Docker context to target. Default: orbstack.
   -h, --help            Show this help text.
@@ -29,8 +31,8 @@ Environment:
 
 Examples:
   scripts/docker-prune-hygiene.sh --all
-  scripts/docker-prune-hygiene.sh --images --build-cache --execute
-  scripts/docker-prune-hygiene.sh --volumes --confirm-volumes --execute
+  scripts/docker-prune-hygiene.sh --images --scope-label com.radiant.owner=kaleidos --execute
+  scripts/docker-prune-hygiene.sh --volumes --scope-label com.radiant.owner=kaleidos --confirm-volumes --execute
 USAGE
 }
 
@@ -42,6 +44,7 @@ PRUNE_BUILD_CACHE=0
 PRUNE_CONTAINERS=0
 PRUNE_VOLUMES=0
 CONFIRM_VOLUMES=0
+SCOPE_LABEL=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -56,6 +59,14 @@ while [[ $# -gt 0 ]]; do
       PRUNE_VOLUMES=1
       ;;
     --confirm-volumes) CONFIRM_VOLUMES=1 ;;
+    --scope-label)
+      if [[ $# -lt 2 || -z "${2:-}" ]]; then
+        echo "--scope-label requires KEY=VALUE." >&2
+        exit 2
+      fi
+      SCOPE_LABEL="${2:-}"
+      shift
+      ;;
     --execute) EXECUTE=1 ;;
     --dry-run) EXECUTE=0 ;;
     --context)
@@ -95,6 +106,21 @@ if [[ "$EXECUTE" -eq 1 && "$PRUNE_VOLUMES" -eq 1 && "$CONFIRM_VOLUMES" -ne 1 ]];
   exit 2
 fi
 
+if [[ "$EXECUTE" -eq 1 && -z "$SCOPE_LABEL" ]]; then
+  echo "Docker cleanup requires --scope-label KEY=VALUE to limit removal to Radiant-owned resources." >&2
+  exit 2
+fi
+
+if [[ "$EXECUTE" -eq 1 && ! "$SCOPE_LABEL" =~ ^com\.radiant\.[a-z0-9_.-]+=[a-z0-9_.-]+$ ]]; then
+  echo "Docker cleanup scope must use a Radiant-owned label: com.radiant.NAME=VALUE." >&2
+  exit 2
+fi
+
+if [[ "$EXECUTE" -eq 1 && "$DOCKER_CONTEXT" != "orbstack" ]]; then
+  echo "Docker cleanup requires the orbstack context." >&2
+  exit 2
+fi
+
 print_command() {
   printf '%q --context %q' "$DOCKER_BIN" "$DOCKER_CONTEXT"
   printf ' %q' "$@"
@@ -117,19 +143,19 @@ else
 fi
 
 if [[ "$PRUNE_IMAGES" -eq 1 ]]; then
-  run_docker image prune --all --force
+  run_docker image prune --all --force --filter "label=${SCOPE_LABEL}"
 fi
 
 if [[ "$PRUNE_BUILD_CACHE" -eq 1 ]]; then
-  run_docker builder prune --force
+  run_docker builder prune --force --filter "label=${SCOPE_LABEL}"
 fi
 
 if [[ "$PRUNE_CONTAINERS" -eq 1 ]]; then
-  run_docker container prune --force
+  run_docker container prune --force --filter "label=${SCOPE_LABEL}"
 fi
 
 if [[ "$PRUNE_VOLUMES" -eq 1 ]]; then
-  run_docker volume prune --force
+  run_docker volume prune --force --filter "label=${SCOPE_LABEL}"
 fi
 
 if [[ "$EXECUTE" -eq 1 ]]; then

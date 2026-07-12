@@ -34,6 +34,7 @@
 | SW-014 | Test | Resident source declaration, measured-only SCADA frames, token-gated ingest, `scada_measured_frames`, and `scada.measured_frames` | `bun run scada:standins:test`, `bun run backend:test`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
 | SW-015 | Test | `simops.result.v1` contract, simulated-only result ingest, twin imputed state, and lineage materialization | `bun run simops:generator:test`, `bun run backend:test`, `bun run simulator-workbench:dataflow:smoke` | WORKBENCH-DATAFLOW-001 |
 | SW-016 | Test | Status Workbench render test covers the three-page IA, preserved value-basis region, absorbed compute queue, SimOps orchestration subregion, and four-panel HPC status bay | `bun run typecheck`, `bun run test`, `bun run build-storybook` | VVR-001 |
+| DEV-HYGIENE-001 | Configuration audit | Docker/OrbStack storage policy, read-only size reporting, scoped cleanup guard, and protected-volume confirmation | `bun run docker:storage:check`, `bun run hygiene:size:check`, `bun run docker:prune:check` | DOP-001 |
 
 ## Acceptance Scenario
 
