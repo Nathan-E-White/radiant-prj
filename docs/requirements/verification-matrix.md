@@ -40,6 +40,7 @@
 | DEV-HYGIENE-001 | Configuration audit | Docker/OrbStack storage policy, read-only size reporting, scoped cleanup guard, and protected-volume confirmation | `bun run docker:storage:check`, `bun run hygiene:size:check`, `bun run docker:prune:check` | DOP-001 |
 | SW-020 | Test | client-go fake-client tests cover Kubernetes Job labels, gateway-only inputs, namespace, service account, TTL, create/delete errors, and Job/Pod lifecycle mapping | `go test ./internal/simopskubernetes`, `bun run backend:test`, `bun run backend:deps:check`, `bun run ci` | #24 |
 | SW-021 | Demonstration | Kind/OrbStack proof covers API-driven Kubernetes Job launch, required labels, gateway-only worker inputs, frame ingest, runtime lifecycle sync, TTL, failure retention, and forced cleanup | `bun run simops:smoke:kind:check`, `bun run simops:smoke:json:test`, elevated `bun run simops:smoke:kind -- --timeout 300 --build auto` | SIMOPS-KIND-E2E-001 |
+| SW-022 | Configuration audit | OpenTofu module and no-mutation preflight cover namespace, gateway/worker service accounts, scoped Job/Pod RBAC, runtime adapter ConfigMap values, and the explicit absence of per-run Jobs | `bun run simops:tofu:check`, `bun run simops:tofu:preflight` | SIMOPS-TOFU-SUBSTRATE-001 |
 
 ## Acceptance Scenario
 
