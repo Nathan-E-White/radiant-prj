@@ -47,7 +47,6 @@ export KUBECONFIG="${SIMOPS_KIND_KUBECONFIG:-/tmp/${CLUSTER_NAME}.kubeconfig}"
 manifest_file="$(mktemp /tmp/radiant-kind-manifest.XXXXXX.yaml)"
 port_forward_log="$(mktemp /tmp/radiant-kind-port-forward.XXXXXX.log)"
 port_forward_pid=""
-created_runs=()
 
 run() {
   printf '+ '; printf '%q ' "$@"; printf '\n'
@@ -200,7 +199,6 @@ create_run() {
   local scenario="$1" suffix="$2" response run_id
   response="$(curl -fsS -X POST http://127.0.0.1:18081/api/simops/runs -H 'Content-Type: application/json' --data "{\"scenario_id\":\"${scenario}\",\"worker_kinds\":[\"scheduler\"],\"launch_mode\":\"auto\",\"idempotency_key\":\"kind-${suffix}-$(date +%s)\"}")"
   run_id="$(node scripts/simops-smoke-json.mjs run-id <<<"$response")"
-  created_runs+=("$run_id")
   printf '%s' "$run_id"
 }
 
@@ -227,9 +225,15 @@ ttl="$(kubectl -n "$NAMESPACE" get job "$success_job" -o jsonpath='{.spec.ttlSec
 pod_name="$(kubectl -n "$NAMESPACE" get pods -l "simops.run_id=${success_run}" -o jsonpath='{.items[0].metadata.name}')"
 pod_json="$(kubectl -n "$NAMESPACE" get pod "$pod_name" -o json)"
 node -e '
-const pod=JSON.parse(process.argv[1]); const c=pod.spec.containers[0]; const text=[...(c.args||[]),...(c.env||[]).flatMap(e=>[e.name,e.value||""])].join(" ");
-for (const required of ["/internal/simops/runs/","/ingest","--ingest-token","--result-ingest-token"]) if (!text.includes(required)) process.exit(1);
-for (const forbidden of ["REDPANDA","POSTGRES","ICEBERG","AWS_"]) if (text.includes(forbidden)) process.exit(1);
+const pod=JSON.parse(process.argv[1]); const c=pod.spec.containers[0];
+const allowedEnv=new Set(["SIMOPS_RUN_ID","SIMOPS_WORKER_ID","SIMOPS_WORKER_KIND"]);
+for (const env of c.env||[]) if (!allowedEnv.has(env.name)) { console.error(`Unexpected worker env ${env.name}`); process.exit(1); }
+const flags=new Set(["--manifest","--worker","--run-id","--ingest-url","--ingest-token","--result-ingest-url","--result-ingest-token","--output","--frames"]);
+const args=c.args||[]; for (let i=0;i<args.length;i+=2) if (!flags.has(args[i]) || i+1>=args.length) { console.error(`Unexpected worker arg ${args[i]}`); process.exit(1); }
+const values=new Map(); for (let i=0;i<args.length;i+=2) values.set(args[i],args[i+1]);
+for (const key of ["--ingest-url","--ingest-token","--result-ingest-url","--result-ingest-token"]) if (!values.get(key)) process.exit(1);
+if (!values.get("--ingest-url").includes("/internal/simops/runs/") || !values.get("--ingest-url").endsWith("/ingest")) process.exit(1);
+if (!values.get("--result-ingest-url").includes("/internal/simops/runs/") || !values.get("--result-ingest-url").endsWith("/results")) process.exit(1);
 ' "$pod_json"
 
 wait_for_state "$success_run" succeeded --frames
@@ -244,6 +248,10 @@ failure_job="$(kubectl -n "$NAMESPACE" get jobs -l "simops.run_id=${failure_run}
 wait_for_state "$failure_run" image-pull-failed
 kubectl -n "$NAMESPACE" get job "$failure_job" >/dev/null
 echo "cluster_context=$(kubectl config current-context) namespace=${NAMESPACE} job_name=${failure_job} run_id=${failure_run} final_lifecycle=image-pull-failed retained=true"
-run kubectl -n "$NAMESPACE" delete job "$failure_job" --wait=true
+if [[ "$FORCE_CLEANUP" == "1" ]]; then
+  run kubectl -n "$NAMESPACE" delete job "$failure_job" --wait=true
+else
+  echo "Failed Job ${failure_job} retained because SIMOPS_KIND_FORCE_CLEANUP=0."
+fi
 
 echo "Kind/client-go SimOps smoke passed."

@@ -55,6 +55,12 @@ test("runtime-worker accepts observed Kubernetes worker state", () => {
   assert.match(result.stdout, /runtime=kubernetes/);
 });
 
+test("runtime-worker rejects unsupported runtime options", () => {
+  const result = runHelper("runtime-worker", ["active", "--runtime", "nomad"], {workers: []});
+  assert.equal(result.status, 2);
+  assert.match(result.stderr, /must be docker or kubernetes/);
+});
+
 test("container-proof accepts gateway-ingest-only worker env and redacts tokens", () => {
   const result = runHelper("container-proof", [], [
     {

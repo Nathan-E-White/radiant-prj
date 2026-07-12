@@ -59,6 +59,10 @@ function runtimeWorker(payload, options) {
     console.error("runtime-worker requires an observed lifecycle state.");
     process.exit(2);
   }
+  if (!new Set(["docker", "kubernetes"]).has(expectedRuntime)) {
+    console.error("runtime-worker --runtime must be docker or kubernetes.");
+    process.exit(2);
+  }
   const workers = Array.isArray(payload.workers) ? payload.workers : [];
   const worker = workers.find((item) => item?.observed_lifecycle === expectedState);
   if (!worker) {

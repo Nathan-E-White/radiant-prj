@@ -74,6 +74,8 @@ The script builds and loads:
 - `radiant-simops-generator:kind` from
   `deploy/simops-generator.Dockerfile`.
 
-Kind loads both local images into its control-plane node. The Kubernetes
-manifests set `imagePullPolicy: Never`, so a missing load fails visibly rather
-than pulling a similarly named registry image.
+Kind loads both local images into its control-plane node. The gateway Deployment
+sets `imagePullPolicy: Never`. The generated worker Job uses Kubernetes' default
+`IfNotPresent` policy for the non-`latest` `:kind` tag, so the loaded worker image
+is used without requiring a local registry. A missing worker load attempts a
+registry pull and is surfaced by the smoke as `image-pull-failed`.
