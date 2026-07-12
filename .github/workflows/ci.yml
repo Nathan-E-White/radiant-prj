@@ -51,3 +51,6 @@ jobs:
 
       - name: Check Docker prune hygiene helper
         run: bun run docker:prune:check
+
+      - name: Check guarded hygiene cleanup helper
+        run: bun run hygiene:clean:check

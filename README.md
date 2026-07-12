@@ -155,3 +155,14 @@ The existing `scripts/checkpoint-v1.sh` remains available for the historical v1 
 ## Boundaries
 
 The transport, thermal, fleet, and infrastructure records are synthetic. They are designed to demonstrate engineering judgment, reproducibility, traceability, and HPC operations fluency without representing any real Kaleidos analysis or Radiant infrastructure.
+
+### Guarded hygiene cleanup
+
+`bun run hygiene:clean` prints a dry-run plan for generated outputs, Rust worker targets, dependency installs in registered worktrees, and named Radiant Go caches. It never deletes Git worktrees, Docker objects, volumes, or arbitrary paths. Select categories explicitly and add `--execute` only when removal is intended:
+
+```sh
+bun run hygiene:clean
+bun run hygiene:clean --generated --rust-targets --execute
+```
+
+The cleanup command prints each selected path before removal and refuses `--execute` without explicit category flags.
