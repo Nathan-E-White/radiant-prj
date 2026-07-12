@@ -52,6 +52,8 @@ function runAudit(envOverrides = {}) {
 try {
   mkdirSync(join(fixtureRoot, "node_modules", "pkg"), { recursive: true });
   mkdirSync(join(fixtureRoot, "dist"), { recursive: true });
+  mkdirSync(join(fixtureRoot, "test-results"), { recursive: true });
+  mkdirSync(join(fixtureRoot, "target", "debug"), { recursive: true });
   mkdirSync(join(fixtureRoot, "workers", "simops-generator", "target", "debug"), { recursive: true });
   mkdirSync(join(fixtureWorktree, "node_modules", "dep"), { recursive: true });
   mkdirSync(join(fixtureWorktree, "generated"), { recursive: true });
@@ -63,6 +65,8 @@ try {
 
   writeFileSync(join(fixtureRoot, "node_modules", "pkg", "index.js"), "console.log('fixture');\n");
   writeFileSync(join(fixtureRoot, "dist", "bundle.js"), "bundle\n");
+  writeFileSync(join(fixtureRoot, "test-results", "results.json"), "{}\n");
+  writeFileSync(join(fixtureRoot, "target", "debug", "app"), "app\n");
   writeFileSync(join(fixtureRoot, "app.tsbuildinfo"), "{}\n");
   writeFileSync(join(fixtureRoot, "workers", "simops-generator", "target", "debug", "worker"), "worker\n");
   writeFileSync(join(fixtureWorktree, "node_modules", "dep", "index.js"), "dep\n");
@@ -147,11 +151,15 @@ exit 1
   assertIncludes(result.stdout, "Repo-local storage", "report should include repo-local storage");
   assertIncludes(result.stdout, "node_modules", "report should include dependency installs");
   assertIncludes(result.stdout, "dist", "report should include generated/build output");
+  assertIncludes(result.stdout, "test-results", "report should include test output");
+  assertIncludes(result.stdout, "target", "report should include Rust target output");
   assertIncludes(result.stdout, "app.tsbuildinfo", "report should include tsbuildinfo files");
   assertIncludes(result.stdout, "workers/simops-generator/target", "report should include Rust worker target output");
   assertIncludes(result.stdout, "Registered Git worktrees", "report should include worktrees");
   assertIncludes(result.stdout, fixtureWorktree, "report should include the second worktree path");
+  assertIncludes(result.stdout, "State: clean (0 changed paths)", "report should include clean worktree state");
   assertIncludes(result.stdout, "State: dirty (1 changed path)", "report should include dirty worktree state");
+  assertIncludes(result.stdout, "storybook-static: skipped (not present)", "report should mark absent output paths as skipped");
   assertIncludes(result.stdout, "External toolchain caches", "report should include external caches");
   assertIncludes(result.stdout, namedGoCache, "report should include named Go cache");
   assertIncludes(result.stdout, ".bun/install/cache", "report should include Bun cache");

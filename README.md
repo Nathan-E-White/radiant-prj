@@ -46,6 +46,15 @@ bun run simulator-workbench:dataflow:smoke
 `bun run ci` runs the full local verification chain.
 `bun run simops:smoke:local` and `bun run simulator-workbench:dataflow:smoke` are Docker-dependent and intentionally stay outside default CI.
 
+Worker Rust tests use named external Cargo target directories by default:
+
+```text
+/tmp/radiant-cargo-target/simops-generator
+/tmp/radiant-cargo-target/scada-standins
+```
+
+This keeps worker build artifacts out of `workers/*/target` while preserving the existing test commands. Set `CARGO_TARGET_DIR` explicitly when a one-off override is needed; otherwise keep the worker-specific defaults so caches do not get mixed between packages.
+
 ## Dev Hygiene Size Audit
 
 The size audit helper reports local storage footprint without deleting files, pruning Docker objects, removing worktrees, or rewriting project state:
