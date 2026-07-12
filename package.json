@@ -35,6 +35,8 @@
     "docker:prune:check": "node scripts/check-docker-prune-hygiene.mjs",
     "hygiene:size": "node scripts/hygiene-size.mjs",
     "hygiene:size:check": "node scripts/check-hygiene-size.mjs",
+    "hygiene:clean": "node scripts/hygiene-clean.mjs",
+    "hygiene:clean:check": "node scripts/check-hygiene-clean.mjs",
     "mock:worker": "node scripts/mock-worker.mjs",
     "checkpoint:wip": "scripts/checkpoint-wip.sh",
     "fold:branch": "scripts/fold-branch.sh",
@@ -43,7 +45,7 @@
     "fold:v2": "scripts/archive/fold-v2-to-main.sh",
     "checkpoint:v2": "scripts/archive/checkpoint-v2.sh",
     "cleanup:v2": "scripts/archive/cleanup-v2-hygiene.sh",
-    "ci": "\"$npm_execpath\" run typecheck && \"$npm_execpath\" run test && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run backend:deps:check && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run infra:check && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run simops:contract:check && \"$npm_execpath\" run simulator-workbench:contract:check && \"$npm_execpath\" run docker:prune:check && \"$npm_execpath\" run hygiene:size:check && \"$npm_execpath\" run simops:generator:test && \"$npm_execpath\" run scada:standins:test",
+    "ci": "\"$npm_execpath\" run typecheck && \"$npm_execpath\" run test && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run backend:deps:check && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run infra:check && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run simops:contract:check && \"$npm_execpath\" run simulator-workbench:contract:check && \"$npm_execpath\" run docker:prune:check && \"$npm_execpath\" run hygiene:size:check && \"$npm_execpath\" run hygiene:clean:check && \"$npm_execpath\" run simops:generator:test && \"$npm_execpath\" run scada:standins:test",
     "ci:full": "\"$npm_execpath\" run ci && \"$npm_execpath\" run compose:smoke"
   },
   "dependencies": {
