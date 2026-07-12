@@ -28,6 +28,8 @@ This document defines software and deployment requirements for the interview dem
 | SW-014 | Resident public-safe SCADA stand-ins shall declare measured sources and emit deterministic measured frames into Redpanda, Postgres projection storage, and Iceberg tables. | Long-running measured sources need their own resident flow independent of run-scoped simulation workers. | Test | Verified |
 | SW-015 | SimOps workers shall emit separate synthetic simulated result frames that the twin projector consumes to materialize imputed twin state and lineage. | The full backend slice must prove result-to-imputation flow before frontend controls are added. | Test | Verified |
 | SW-016 | The Status Workbench front-end shall consolidate the prior Compute Workbench queue and SimOps Control surface below the value-basis workbench, with a queue-driven four-panel HPC status bay. | The app should present one operational status surface instead of scattering related compute, orchestration, and simulation state across top-level tabs. | Test | Verified |
+| SW-017 | The Simulation Ops Docker worker launcher shall use a Docker SDK runtime adapter that consumes run connection profiles, preserves run/worker labels and metadata, and stops only matching run-scoped worker containers. | Local Docker/OrbStack startup must avoid shell-command assembly while keeping the control-plane contract and cleanup targeting traceable. | Test | Verified |
+| SW-018 | The Simulation Ops runtime adapter shall support run synchronization that reports runtime-neutral observed worker lifecycle separately from worker telemetry, artifact status, and data-plane health. | Runtime resource observation needs a narrow control-plane contract without turning telemetry, Redpanda, Postgres, or Iceberg status into worker lifecycle. | Test | Verified |
 
 ## Interface Summary
 
@@ -48,7 +50,7 @@ This document defines software and deployment requirements for the interview dem
 - `infra/terraform/` declares infrastructure intent only.
 - `infra/ansible/` targets a local dry-run root under `/tmp/kaleidos-readiness`.
 - `backend/slurm-gateway/` contains the mock-first Go Slurm gateway.
-- `backend/slurm-gateway/internal/gateway/simops_*.go` contains the Simulation Ops control-plane, spooler, ingest, Redpanda consumers, WebTransport track routing, Timescale projection, and Iceberg-Go append/readback contracts.
+- `backend/slurm-gateway/internal/gateway/simops_*.go` and `backend/slurm-gateway/internal/simopsdocker/` contain the Simulation Ops control-plane, runtime adapter seam, runtime-neutral sync observation model, Docker SDK worker launcher, ingest, Redpanda consumers, WebTransport track routing, Timescale projection, and Iceberg-Go append/readback contracts.
 - `backend/slurm-gateway/internal/gateway/*workbench*.go` contains SCADA source ingest, simulated result ingest, Workbench projections, twin projection, lineage materialization, Iceberg append/readback, and read-only Workbench APIs.
 - `deploy/slurm-gateway.compose.yml` defines local SimOps services for the Go control plane, WebTransport gateway, Timescale writer, Iceberg writer, Redpanda, Timescale/Postgres, MinIO, Prometheus, and Rust bucket containers.
 - `docs/` contains controlled requirements, design, quality, verification, and release records.

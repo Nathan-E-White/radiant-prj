@@ -91,12 +91,14 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 			return SimopsRunRecord{}, false, err
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO simops_workers (
-				run_id, worker_id, worker_kind, lifecycle, launch_mode,
-				endpoint, frames, labels, updated_at
-			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
-		`,
+				INSERT INTO simops_workers (
+					run_id, worker_id, worker_kind, lifecycle, launch_mode,
+					endpoint, frames, labels, observed_lifecycle, observed_reason,
+					observed_message, runtime, runtime_id, observed_exit_code,
+					observed_at, updated_at
+				)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16)
+			`,
 			record.RunID,
 			worker.WorkerID,
 			string(worker.WorkerKind),
@@ -105,6 +107,13 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 			nullableString(worker.Endpoint),
 			worker.Frames,
 			labels,
+			nullableString(string(worker.ObservedLifecycle)),
+			nullableString(worker.ObservedReason),
+			nullableString(worker.ObservedMessage),
+			nullableString(worker.Runtime),
+			nullableString(worker.RuntimeID),
+			nullableInt(worker.ObservedExitCode),
+			nullableTime(worker.ObservedAt),
 			worker.UpdatedAt,
 		); err != nil {
 			return SimopsRunRecord{}, false, err
@@ -112,11 +121,15 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 	}
 
 	for _, command := range commands {
+		metadata, err := marshalLabels(command.Metadata)
+		if err != nil {
+			return SimopsRunRecord{}, false, err
+		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO simops_spool_commands (
-				command_id, run_id, worker_id, mode, state, message, created_at, updated_at
+				command_id, run_id, worker_id, mode, state, message, metadata, created_at, updated_at
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
 		`,
 			command.CommandID,
 			command.RunID,
@@ -124,6 +137,7 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 			command.Mode,
 			string(command.State),
 			command.Message,
+			metadata,
 			command.CreatedAt,
 			command.UpdatedAt,
 		); err != nil {
@@ -161,14 +175,16 @@ func (s *PostgresSimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO simops_workers (
-				run_id, worker_id, worker_kind, lifecycle, launch_mode,
-				endpoint, frames, labels, updated_at
-			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9)
-			ON CONFLICT (run_id, worker_id) DO UPDATE
-			SET worker_kind = EXCLUDED.worker_kind,
-			    lifecycle = CASE
+				INSERT INTO simops_workers (
+					run_id, worker_id, worker_kind, lifecycle, launch_mode,
+					endpoint, frames, labels, observed_lifecycle, observed_reason,
+					observed_message, runtime, runtime_id, observed_exit_code,
+					observed_at, updated_at
+				)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16)
+				ON CONFLICT (run_id, worker_id) DO UPDATE
+				SET worker_kind = EXCLUDED.worker_kind,
+				    lifecycle = CASE
 			      WHEN simops_workers.frames > EXCLUDED.frames THEN simops_workers.lifecycle
 			      ELSE EXCLUDED.lifecycle
 			    END,
@@ -185,6 +201,13 @@ func (s *PostgresSimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 			nullableString(worker.Endpoint),
 			worker.Frames,
 			labels,
+			nullableString(string(worker.ObservedLifecycle)),
+			nullableString(worker.ObservedReason),
+			nullableString(worker.ObservedMessage),
+			nullableString(worker.Runtime),
+			nullableString(worker.RuntimeID),
+			nullableInt(worker.ObservedExitCode),
+			nullableTime(worker.ObservedAt),
 			worker.UpdatedAt,
 		); err != nil {
 			return err
@@ -192,14 +215,19 @@ func (s *PostgresSimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 	}
 
 	for _, command := range commands {
+		metadata, err := marshalLabels(command.Metadata)
+		if err != nil {
+			return err
+		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO simops_spool_commands (
-				command_id, run_id, worker_id, mode, state, message, created_at, updated_at
+				command_id, run_id, worker_id, mode, state, message, metadata, created_at, updated_at
 			)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+			VALUES ($1,$2,$3,$4,$5,$6,$7::jsonb,$8,$9)
 			ON CONFLICT (command_id) DO UPDATE
 			SET state = EXCLUDED.state,
 			    message = EXCLUDED.message,
+			    metadata = EXCLUDED.metadata,
 			    updated_at = EXCLUDED.updated_at
 		`,
 			command.CommandID,
@@ -208,6 +236,7 @@ func (s *PostgresSimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 			command.Mode,
 			string(command.State),
 			command.Message,
+			metadata,
 			command.CreatedAt,
 			command.UpdatedAt,
 		); err != nil {
@@ -247,7 +276,9 @@ func (s *PostgresSimopsStore) ListWorkers(runID string) ([]SimopsWorkerRecord, e
 	defer cancel()
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT run_id, worker_id, worker_kind, lifecycle, launch_mode,
-		       endpoint, frames, labels, updated_at
+		       endpoint, frames, labels, observed_lifecycle, observed_reason,
+		       observed_message, runtime, runtime_id, observed_exit_code,
+		       observed_at, updated_at
 		FROM simops_workers
 		WHERE run_id = $1
 		ORDER BY worker_id
@@ -262,8 +293,28 @@ func (s *PostgresSimopsStore) ListWorkers(runID string) ([]SimopsWorkerRecord, e
 		var worker SimopsWorkerRecord
 		var kind, lifecycle string
 		var endpoint sql.NullString
+		var observedLifecycle, observedReason, observedMessage, runtime, runtimeID sql.NullString
+		var observedExitCode sql.NullInt64
+		var observedAt sql.NullTime
 		var labelsRaw []byte
-		if err := rows.Scan(&worker.RunID, &worker.WorkerID, &kind, &lifecycle, &worker.LaunchMode, &endpoint, &worker.Frames, &labelsRaw, &worker.UpdatedAt); err != nil {
+		if err := rows.Scan(
+			&worker.RunID,
+			&worker.WorkerID,
+			&kind,
+			&lifecycle,
+			&worker.LaunchMode,
+			&endpoint,
+			&worker.Frames,
+			&labelsRaw,
+			&observedLifecycle,
+			&observedReason,
+			&observedMessage,
+			&runtime,
+			&runtimeID,
+			&observedExitCode,
+			&observedAt,
+			&worker.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		worker.WorkerKind = SimopsWorkerKind(kind)
@@ -276,6 +327,29 @@ func (s *PostgresSimopsStore) ListWorkers(runID string) ([]SimopsWorkerRecord, e
 			if err := json.Unmarshal(labelsRaw, &worker.Labels); err != nil {
 				return nil, err
 			}
+		}
+		if observedLifecycle.Valid {
+			worker.ObservedLifecycle = ObservedWorkerState(observedLifecycle.String)
+		}
+		if observedReason.Valid {
+			worker.ObservedReason = observedReason.String
+		}
+		if observedMessage.Valid {
+			worker.ObservedMessage = observedMessage.String
+		}
+		if runtime.Valid {
+			worker.Runtime = runtime.String
+		}
+		if runtimeID.Valid {
+			worker.RuntimeID = runtimeID.String
+		}
+		if observedExitCode.Valid {
+			exitCode := int(observedExitCode.Int64)
+			worker.ObservedExitCode = &exitCode
+		}
+		if observedAt.Valid {
+			observedAtTime := observedAt.Time
+			worker.ObservedAt = &observedAtTime
 		}
 		workers = append(workers, worker)
 	}
@@ -294,7 +368,7 @@ func (s *PostgresSimopsStore) ListCommands(runID string) ([]SimopsSpoolCommand, 
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT command_id, run_id, worker_id, mode, state, message, created_at, updated_at
+		SELECT command_id, run_id, worker_id, mode, state, message, metadata, created_at, updated_at
 		FROM simops_spool_commands
 		WHERE run_id = $1
 		ORDER BY created_at, command_id
@@ -308,10 +382,16 @@ func (s *PostgresSimopsStore) ListCommands(runID string) ([]SimopsSpoolCommand, 
 	for rows.Next() {
 		var command SimopsSpoolCommand
 		var state string
-		if err := rows.Scan(&command.CommandID, &command.RunID, &command.WorkerID, &command.Mode, &state, &command.Message, &command.CreatedAt, &command.UpdatedAt); err != nil {
+		var metadataRaw []byte
+		if err := rows.Scan(&command.CommandID, &command.RunID, &command.WorkerID, &command.Mode, &state, &command.Message, &metadataRaw, &command.CreatedAt, &command.UpdatedAt); err != nil {
 			return nil, err
 		}
 		command.State = SimopsLifecycle(state)
+		if len(metadataRaw) > 0 {
+			if err := json.Unmarshal(metadataRaw, &command.Metadata); err != nil {
+				return nil, err
+			}
+		}
 		commands = append(commands, command)
 	}
 	if err := rows.Err(); err != nil {
@@ -381,9 +461,36 @@ func (s *PostgresSimopsStore) UpdateWorkerFrames(runID string, workerID string, 
 	defer cancel()
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE simops_workers
-		SET lifecycle = $3, frames = frames + $4, updated_at = $5
+		SET lifecycle = $3,
+		    frames = frames + $4,
+		    updated_at = $5
 		WHERE run_id = $1 AND worker_id = $2
 	`, runID, workerID, string(lifecycle), framesDelta, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	return requireAffected(result, ErrSimopsRunNotFound)
+}
+
+func (s *PostgresSimopsStore) UpdateWorkerObservedLifecycle(observation ObservedWorkerLifecycle) error {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	observedAt := observation.ObservedAt.UTC()
+	if observedAt.IsZero() {
+		observedAt = time.Now().UTC()
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE simops_workers
+		SET observed_lifecycle = $3,
+		    observed_reason = $4,
+		    observed_message = $5,
+		    runtime = $6,
+		    runtime_id = $7,
+		    observed_exit_code = $8,
+		    observed_at = $9,
+		    updated_at = $9
+		WHERE run_id = $1 AND worker_id = $2
+	`, observation.RunID, observation.WorkerID, nullableString(string(observation.State)), nullableString(observation.Reason), nullableString(observation.Message), nullableString(observation.Runtime), nullableString(observation.RuntimeID), nullableInt(observation.ExitCode), observedAt)
 	if err != nil {
 		return err
 	}
@@ -547,6 +654,20 @@ func simopsSQLContext() (context.Context, context.CancelFunc) {
 
 func nullableString(value string) sql.NullString {
 	return sql.NullString{String: value, Valid: value != ""}
+}
+
+func nullableTime(value *time.Time) sql.NullTime {
+	if value == nil || value.IsZero() {
+		return sql.NullTime{}
+	}
+	return sql.NullTime{Time: value.UTC(), Valid: true}
+}
+
+func nullableInt(value *int) sql.NullInt64 {
+	if value == nil {
+		return sql.NullInt64{}
+	}
+	return sql.NullInt64{Int64: int64(*value), Valid: true}
 }
 
 func marshalLabels(labels map[string]string) (string, error) {

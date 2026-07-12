@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -51,8 +52,9 @@ type DockerRunConnection struct {
 }
 
 type KubernetesRunConnection struct {
-	Namespace string
-	JobName   string
+	Namespace      string
+	JobName        string
+	ServiceAccount string
 }
 
 type RunCleanupPolicy struct {
@@ -86,6 +88,23 @@ type RunIcebergConnection struct {
 	S3SecretKey   string
 }
 
+func BuildRunWorkerCommand(profile RunConnectionProfile, frameOverride int) []string {
+	args := []string{
+		"--manifest", profile.ManifestPath,
+		"--worker", string(profile.WorkerKind),
+		"--run-id", profile.RunID,
+		"--ingest-url", profile.Gateway.IngestURL,
+		"--ingest-token", profile.Gateway.IngestToken,
+		"--result-ingest-url", profile.Gateway.ResultIngestURL,
+		"--result-ingest-token", profile.Gateway.IngestToken,
+		"--output", "-",
+	}
+	if frameOverride > 0 {
+		args = append(args, "--frames", strconv.Itoa(frameOverride))
+	}
+	return args
+}
+
 func BuildRunWorkerConnectionProfiles(cfg SimopsConfig, run SimopsRunRecord, workers []SimopsWorkerKind) ([]RunConnectionProfile, error) {
 	profiles := make([]RunConnectionProfile, 0, len(workers))
 	for _, worker := range workers {
@@ -103,6 +122,25 @@ func BuildRunWorkerConnectionProfile(cfg SimopsConfig, run SimopsRunRecord, work
 		return RunConnectionProfile{}, fmt.Errorf("worker kind %q is not supported", worker)
 	}
 	return buildRunConnectionProfile(cfg, run, RunConnectionRoleOrdinaryWorker, fmt.Sprintf("%s-01", worker), worker, false)
+}
+
+func BuildRunWorkerConnectionProfileForRecord(cfg SimopsConfig, run SimopsRunRecord, worker SimopsWorkerRecord) (RunConnectionProfile, error) {
+	if !allowedWorker(worker.WorkerKind) {
+		return RunConnectionProfile{}, fmt.Errorf("worker kind %q is not supported", worker.WorkerKind)
+	}
+	return buildRunConnectionProfile(cfg, run, RunConnectionRoleOrdinaryWorker, worker.WorkerID, worker.WorkerKind, false)
+}
+
+func BuildRunWorkerConnectionProfilesForRecords(cfg SimopsConfig, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]RunConnectionProfile, error) {
+	profiles := make([]RunConnectionProfile, 0, len(workers))
+	for _, worker := range workers {
+		profile, err := BuildRunWorkerConnectionProfileForRecord(cfg, run, worker)
+		if err != nil {
+			return nil, err
+		}
+		profiles = append(profiles, profile)
+	}
+	return profiles, nil
 }
 
 func BuildTrustedRunConnectionProfile(cfg SimopsConfig, run SimopsRunRecord, role RunConnectionRole) (RunConnectionProfile, error) {
@@ -155,8 +193,9 @@ func buildRunConnectionProfile(cfg SimopsConfig, run SimopsRunRecord, role RunCo
 				AutoRemove:    cfg.WorkerAutoRemove,
 			},
 			Kubernetes: KubernetesRunConnection{
-				Namespace: strings.TrimSpace(cfg.WorkerKubernetesNamespace),
-				JobName:   kubernetesRunJobName(runID, workerID),
+				Namespace:      strings.TrimSpace(cfg.WorkerKubernetesNamespace),
+				JobName:        kubernetesRunJobName(runID, workerID),
+				ServiceAccount: strings.TrimSpace(cfg.WorkerKubernetesServiceAccount),
 			},
 		},
 		Cleanup: RunCleanupPolicy{

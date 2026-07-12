@@ -229,6 +229,10 @@ func (s *countingSimopsSpooler) StopRun(ctx context.Context, runID string) error
 	return s.delegate.StopRun(ctx, runID)
 }
 
+func (s *countingSimopsSpooler) SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
+	return s.delegate.SyncRun(ctx, run, workers)
+}
+
 func telemetryBatch(runID string, workerID string) string {
 	return `{"frames":[{"schemaVersion":"simops.telemetry.v1","runId":"` + runID + `","scenarioId":"scheduler-drift","workerId":"` + workerID + `","workerKind":"scheduler","sequence":1,"emittedAt":"2026-07-04T12:00:00.000Z","payloadType":"schedulerCoScheduling","payload":{}}]}`
 }

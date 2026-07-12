@@ -4,6 +4,8 @@ import (
 	"log"
 
 	"radiant/slurm-gateway/internal/gateway"
+	"radiant/slurm-gateway/internal/simopsdocker"
+	"radiant/slurm-gateway/internal/simopskubernetes"
 )
 
 func main() {
@@ -12,7 +14,23 @@ func main() {
 		log.Fatalf("invalid gateway configuration: %v", err)
 	}
 
-	app, err := gateway.NewDefaultGateway(cfg)
+	var simopsSpooler gateway.SimopsSpooler
+	if cfg.Simops.Enabled && cfg.Simops.WorkerRuntime == "docker" {
+		spooler, err := simopsdocker.NewSpooler(cfg.Simops)
+		if err != nil {
+			log.Fatalf("failed to initialize Docker SimOps runtime adapter: %v", err)
+		}
+		simopsSpooler = spooler
+	}
+	if cfg.Simops.Enabled && cfg.Simops.WorkerRuntime == "kubernetes" {
+		spooler, err := simopskubernetes.NewSpooler(cfg.Simops)
+		if err != nil {
+			log.Fatalf("failed to initialize Kubernetes SimOps runtime adapter: %v", err)
+		}
+		simopsSpooler = spooler
+	}
+
+	app, err := gateway.NewDefaultGatewayWithSimopsSpooler(cfg, simopsSpooler)
 	if err != nil {
 		log.Fatalf("failed to initialize gateway: %v", err)
 	}

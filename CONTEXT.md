@@ -38,6 +38,33 @@ _Avoid_: Log, trace, breadcrumb
 A compact trust summary for simulation result state, covering run completion and artifact disposition at a glance.
 _Avoid_: Detailed health panel, SCADA health panel, infrastructure diagnostics
 
+**Run-Scoped Simulation Worker**:
+A worker that exists for a single Simulation Ops run and produces operational telemetry or simulated result state for that run.
+_Avoid_: Resident source, data-plane service, permanent worker
+
+**Run Connection Profile**:
+The per-run launch contract that carries worker identity, ingest connectivity, runtime labels, cleanup policy, and credential boundaries for a run-scoped worker or trusted data-plane role.
+_Avoid_: Docker config, job spec, environment blob
+
+**SimOps Runtime Adapter**:
+The runtime-specific launcher that turns a Run Connection Profile into an external worker execution record while preserving the Simulation Ops run interface.
+_Avoid_: Shell launcher, worker script, data-plane adapter
+
+**Observed Worker Lifecycle**:
+The runtime-resource state observed for a run-scoped worker, such as pending, active, succeeded, failed, missing, image-pull-failed, or stopped.
+It is not telemetry health, artifact disposition, data-plane health, or simulated result quality.
+_Avoid_: Telemetry health, artifact health, infrastructure health
+
+**Gateway-Only Worker Ingest**:
+The rule that an ordinary Run-Scoped Simulation Worker sends operational telemetry and simulated result state through Simulation Ops gateway ingest URLs and tokens, without receiving direct Redpanda, Postgres, Iceberg, Docker, or Kubernetes credentials.
+Trusted data-plane roles may receive the credentials their role requires; ordinary run-scoped workers may not.
+_Avoid_: Direct data-plane worker, credentialed simulation worker
+
+**SimOps Runtime Proof**:
+A verification claim that a SimOps Runtime Adapter can launch, observe, and clean up Run-Scoped Simulation Workers through the existing Simulation Ops run interface while preserving Gateway-Only Worker Ingest.
+It is narrower than full data-plane or lakehouse validation.
+_Avoid_: Full lakehouse proof, browser UX proof, platform provisioning proof
+
 **Kaleidos Unit**:
 The single standardized reactor unit represented by the Simulator Workbench: a public-safe Kaleidos-style prismatic HTGR with TRISO/prismatic graphite core, helium primary loop, control drum, turbomachinery/cooling, reactor/shielding, vessel/container boundary, and heat/electric output context.
 _Avoid_: Generic reactor, reactor zoo, pebble-bed variant
