@@ -35,9 +35,11 @@ tofu validate
 tofu plan -no-color -input=false -lock=false -refresh=false
 ```
 
-It never runs `tofu apply`. The plan file and transient data directory are
-deleted on exit. The shared provider cache remains under `/tmp` for reuse by
-later verification and can be deleted without touching repository state.
+It never runs `tofu apply`. The committed provider lockfile is used read-only.
+The plan file and unique transient data directory are deleted on exit. The
+shared provider cache remains under `/tmp` for reuse by later verification and
+can be deleted without touching repository state. Evidence values are read from
+the saved plan JSON and checked against the Go adapter environment contract.
 
 ## Evidence captured 2026-07-12
 

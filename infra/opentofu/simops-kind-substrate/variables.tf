@@ -20,6 +20,11 @@ variable "worker_cleanup_ttl" {
   description = "Default successful-Job TTL exposed to the Kubernetes runtime adapter."
   type        = string
   default     = "60s"
+
+  validation {
+    condition     = can(regex("^([0-9]+(ns|us|µs|ms|s|m|h))+$", var.worker_cleanup_ttl))
+    error_message = "worker_cleanup_ttl must use Go duration units such as 60s, 10m, or 1h30m."
+  }
 }
 
 variable "kubeconfig_path" {

@@ -6,7 +6,7 @@ const moduleDir = path.join(root, "infra", "opentofu", "simops-kind-substrate");
 const preflightPath = path.join(root, "scripts", "simops-opentofu-preflight.sh");
 const problems = [];
 
-for (const file of ["versions.tf", "variables.tf", "main.tf", "outputs.tf", "README.md"]) {
+for (const file of [".terraform.lock.hcl", "versions.tf", "variables.tf", "main.tf", "outputs.tf", "README.md"]) {
   if (!fs.existsSync(path.join(moduleDir, file))) problems.push(`OpenTofu substrate module missing ${file}`);
 }
 
