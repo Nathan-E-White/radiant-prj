@@ -250,7 +250,7 @@ func (s Spooler) startWorker(ctx context.Context, profile gateway.RunConnectionP
 			Image:  profile.WorkerImage,
 			Labels: containerLabels(profile),
 			Env:    dockerEnv(profile),
-			Cmd:    dockerCommand(profile, s.Config.WorkerFrameOverride),
+			Cmd:    gateway.BuildRunWorkerCommand(profile, s.Config.WorkerFrameOverride),
 		},
 		dockerHostConfig(profile),
 		dockerNetworking(profile),
@@ -475,23 +475,6 @@ func (s Spooler) now() time.Time {
 		return s.Now().UTC()
 	}
 	return time.Now().UTC()
-}
-
-func dockerCommand(profile gateway.RunConnectionProfile, frameOverride int) []string {
-	args := []string{
-		"--manifest", profile.ManifestPath,
-		"--worker", string(profile.WorkerKind),
-		"--run-id", profile.RunID,
-		"--ingest-url", profile.Gateway.IngestURL,
-		"--ingest-token", profile.Gateway.IngestToken,
-		"--result-ingest-url", profile.Gateway.ResultIngestURL,
-		"--result-ingest-token", profile.Gateway.IngestToken,
-		"--output", "-",
-	}
-	if frameOverride > 0 {
-		args = append(args, "--frames", strconv.Itoa(frameOverride))
-	}
-	return args
 }
 
 func dockerEnv(profile gateway.RunConnectionProfile) []string {

@@ -47,8 +47,8 @@ func NewDefaultSimopsControllerWithSpooler(cfg SimopsConfig, spooler SimopsSpool
 		switch cfg.WorkerRuntime {
 		case "contract":
 			spooler = ContractSimopsSpooler{Mode: cfg.LaunchMode}
-		case "docker":
-			return nil, fmt.Errorf("SIMOPS_WORKER_RUNTIME=docker requires an injected SimOps runtime adapter")
+		case "docker", "kubernetes":
+			return nil, fmt.Errorf("SIMOPS_WORKER_RUNTIME=%s requires an injected SimOps runtime adapter", cfg.WorkerRuntime)
 		}
 	}
 

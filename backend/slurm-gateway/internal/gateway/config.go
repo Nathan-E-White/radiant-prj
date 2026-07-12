@@ -454,13 +454,13 @@ func (c SimopsConfig) Validate() error {
 	}
 	if c.WorkerRuntime == "docker" || c.WorkerRuntime == "kubernetes" {
 		if strings.TrimSpace(c.WorkerImage) == "" {
-			return fmt.Errorf("SIMOPS_WORKER_IMAGE is required when SIMOPS_WORKER_RUNTIME=docker")
+			return fmt.Errorf("SIMOPS_WORKER_IMAGE is required when SIMOPS_WORKER_RUNTIME=%s", c.WorkerRuntime)
 		}
 		if strings.TrimSpace(c.WorkerManifestRoot) == "" {
-			return fmt.Errorf("SIMOPS_WORKER_MANIFEST_ROOT is required when SIMOPS_WORKER_RUNTIME=docker")
+			return fmt.Errorf("SIMOPS_WORKER_MANIFEST_ROOT is required when SIMOPS_WORKER_RUNTIME=%s", c.WorkerRuntime)
 		}
 		if strings.TrimSpace(c.WorkerIngestBaseURL) == "" {
-			return fmt.Errorf("SIMOPS_WORKER_INGEST_BASE_URL is required when SIMOPS_WORKER_RUNTIME=docker")
+			return fmt.Errorf("SIMOPS_WORKER_INGEST_BASE_URL is required when SIMOPS_WORKER_RUNTIME=%s", c.WorkerRuntime)
 		}
 		if strings.TrimSpace(c.WorkerKubernetesNamespace) == "" {
 			return fmt.Errorf("SIMOPS_WORKER_KUBERNETES_NAMESPACE is required for configured worker runtime")

@@ -107,6 +107,30 @@ func TestSyncRunProfilesMapsJobAndPodLifecycle(t *testing.T) {
 	}
 }
 
+func TestSyncRunProfilesMapsPodPhases(t *testing.T) {
+	run, profile := testRunAndProfile(t)
+	job := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: profile.Runtime.Kubernetes.JobName, Namespace: profile.Runtime.Kubernetes.Namespace, Labels: profile.Labels}, Status: batchv1.JobStatus{Active: 1}}
+	for _, test := range []struct {
+		name  string
+		phase corev1.PodPhase
+		want  gateway.ObservedWorkerState
+	}{
+		{name: "pending", phase: corev1.PodPending, want: gateway.ObservedWorkerPending},
+		{name: "running", phase: corev1.PodRunning, want: gateway.ObservedWorkerActive},
+		{name: "succeeded", phase: corev1.PodSucceeded, want: gateway.ObservedWorkerSucceeded},
+		{name: "failed", phase: corev1.PodFailed, want: gateway.ObservedWorkerFailed},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: profile.Runtime.Kubernetes.JobName + "-pod", Namespace: profile.Runtime.Kubernetes.Namespace, Labels: profile.Labels}, Status: corev1.PodStatus{Phase: test.phase}}
+			spooler := Spooler{Config: testConfig(), Client: fake.NewClientset(job, pod), Now: fixedNow}
+			observations, err := spooler.SyncRunProfiles(context.Background(), run, []gateway.RunConnectionProfile{profile})
+			if err != nil || len(observations) != 1 || observations[0].State != test.want {
+				t.Fatalf("phase %s: observations=%#v err=%v", test.phase, observations, err)
+			}
+		})
+	}
+}
+
 func TestStartRunProfilesReturnsCreateError(t *testing.T) {
 	run, profile := testRunAndProfile(t)
 	client := fake.NewClientset()

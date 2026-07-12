@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -85,6 +86,23 @@ type RunIcebergConnection struct {
 	S3Region      string
 	S3AccessKeyID string
 	S3SecretKey   string
+}
+
+func BuildRunWorkerCommand(profile RunConnectionProfile, frameOverride int) []string {
+	args := []string{
+		"--manifest", profile.ManifestPath,
+		"--worker", string(profile.WorkerKind),
+		"--run-id", profile.RunID,
+		"--ingest-url", profile.Gateway.IngestURL,
+		"--ingest-token", profile.Gateway.IngestToken,
+		"--result-ingest-url", profile.Gateway.ResultIngestURL,
+		"--result-ingest-token", profile.Gateway.IngestToken,
+		"--output", "-",
+	}
+	if frameOverride > 0 {
+		args = append(args, "--frames", strconv.Itoa(frameOverride))
+	}
+	return args
 }
 
 func BuildRunWorkerConnectionProfiles(cfg SimopsConfig, run SimopsRunRecord, workers []SimopsWorkerKind) ([]RunConnectionProfile, error) {

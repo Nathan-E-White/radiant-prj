@@ -98,19 +98,7 @@ func (s Spooler) StartRunProfiles(ctx context.Context, run gateway.SimopsRunReco
 
 func jobForProfile(profile gateway.RunConnectionProfile, frameOverride int) *batchv1.Job {
 	backoffLimit := int32(0)
-	args := []string{
-		"--manifest", profile.ManifestPath,
-		"--worker", string(profile.WorkerKind),
-		"--run-id", profile.RunID,
-		"--ingest-url", profile.Gateway.IngestURL,
-		"--ingest-token", profile.Gateway.IngestToken,
-		"--result-ingest-url", profile.Gateway.ResultIngestURL,
-		"--result-ingest-token", profile.Gateway.IngestToken,
-		"--output", "-",
-	}
-	if frameOverride > 0 {
-		args = append(args, "--frames", fmt.Sprintf("%d", frameOverride))
-	}
+	args := gateway.BuildRunWorkerCommand(profile, frameOverride)
 	jobLabels := cloneLabels(profile.Labels)
 	jobLabels["simops.runtime_adapter"] = "kubernetes-job"
 	return &batchv1.Job{
@@ -194,9 +182,11 @@ func (s Spooler) SyncRunProfiles(ctx context.Context, run gateway.SimopsRunRecor
 			return nil, fmt.Errorf("list Pods for Kubernetes Job %s/%s: %w", ref.Namespace, ref.JobName, err)
 		}
 		for i := range pods.Items {
-			if state, reason, message, ok := podFailure(&pods.Items[i]); ok {
+			if state, reason, message, ok := podLifecycle(&pods.Items[i]); ok {
 				obs.State, obs.Reason, obs.Message = state, reason, message
-				break
+				if state == gateway.ObservedWorkerImagePullFailed || state == gateway.ObservedWorkerFailed {
+					break
+				}
 			}
 		}
 		observations = append(observations, obs)
@@ -246,7 +236,7 @@ func jobMessage(job *batchv1.Job) string {
 	return "Kubernetes Job lifecycle observed"
 }
 
-func podFailure(pod *corev1.Pod) (gateway.ObservedWorkerState, string, string, bool) {
+func podLifecycle(pod *corev1.Pod) (gateway.ObservedWorkerState, string, string, bool) {
 	for _, status := range pod.Status.ContainerStatuses {
 		if waiting := status.State.Waiting; waiting != nil {
 			switch waiting.Reason {
@@ -255,10 +245,24 @@ func podFailure(pod *corev1.Pod) (gateway.ObservedWorkerState, string, string, b
 			}
 		}
 	}
-	if pod.Status.Phase == corev1.PodFailed {
-		return gateway.ObservedWorkerFailed, string(pod.Status.Reason), pod.Status.Message, true
+	switch pod.Status.Phase {
+	case corev1.PodPending:
+		return gateway.ObservedWorkerPending, podReason(pod, "PodPending"), pod.Status.Message, true
+	case corev1.PodRunning:
+		return gateway.ObservedWorkerActive, podReason(pod, "PodRunning"), pod.Status.Message, true
+	case corev1.PodSucceeded:
+		return gateway.ObservedWorkerSucceeded, podReason(pod, "PodSucceeded"), pod.Status.Message, true
+	case corev1.PodFailed:
+		return gateway.ObservedWorkerFailed, podReason(pod, "PodFailed"), pod.Status.Message, true
 	}
 	return "", "", "", false
+}
+
+func podReason(pod *corev1.Pod, fallback string) string {
+	if reason := strings.TrimSpace(pod.Status.Reason); reason != "" {
+		return reason
+	}
+	return fallback
 }
 
 func observation(profile gateway.RunConnectionProfile, state gateway.ObservedWorkerState, reason, message string, now time.Time) gateway.ObservedWorkerLifecycle {

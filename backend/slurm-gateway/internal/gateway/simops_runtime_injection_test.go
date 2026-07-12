@@ -17,6 +17,17 @@ func TestDefaultSimopsControllerRequiresInjectedDockerRuntime(t *testing.T) {
 	}
 }
 
+func TestDefaultSimopsControllerRequiresInjectedKubernetesRuntime(t *testing.T) {
+	cfg := testRunConnectionProfileConfig()
+	cfg.WorkerRuntime = "kubernetes"
+	cfg.WorkerKubernetesServiceAccount = "simops-worker"
+
+	_, err := NewDefaultSimopsController(cfg)
+	if err == nil || !strings.Contains(err.Error(), "kubernetes requires an injected SimOps runtime adapter") {
+		t.Fatalf("expected injected Kubernetes runtime adapter error, got %v", err)
+	}
+}
+
 func TestDefaultSimopsControllerUsesInjectedRuntime(t *testing.T) {
 	cfg := testRunConnectionProfileConfig()
 	spooler := &recordingSimopsSpooler{}
