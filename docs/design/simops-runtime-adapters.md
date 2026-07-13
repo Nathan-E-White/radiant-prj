@@ -111,8 +111,18 @@ Plan: 6 to add, 0 to change, 0 to destroy.
 namespace=radiant-simops service_account=simops-worker runtime_config_map=simops-runtime-adapter mutation=false
 ```
 
-`bun run ci`, `bun run build`, backend dependency isolation, documentation,
-storage-policy, size, and guarded-cleanup checks also passed.
+The final ordinary quality suites reported:
+
+```text
+bun run ci: 13 Vitest files passed, 43 tests passed
+backend:test: internal/gateway, internal/simopsdocker, and internal/simopskubernetes passed; command packages had no test files
+simops:generator:test: 14 library tests and 2 contract tests passed
+scada:standins:test: 4 contract tests passed
+bun run build: TypeScript compilation and Vite production build passed
+```
+
+Backend dependency isolation, documentation, storage-policy, size, and
+guarded-cleanup checks also passed as part of `bun run ci`.
 
 ## Deferred work
 

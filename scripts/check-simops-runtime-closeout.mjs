@@ -27,6 +27,11 @@ const requiredByFile = {
     "Tekton",
     "host-facing Redpanda",
     "production hardening",
+    "13 Vitest files passed, 43 tests passed",
+    "internal/gateway, internal/simopsdocker, and internal/simopskubernetes passed",
+    "14 library tests and 2 contract tests passed",
+    "4 contract tests passed",
+    "Vite production build passed",
   ],
   "docs/design/interface-control.md": [
     "Docker sync maps container existence",
