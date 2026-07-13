@@ -33,6 +33,9 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 | Resident SCADA stand-in tests | `bun run scada:standins:test` | Rust test output |
 | SimOps generator tests | `bun run simops:generator:test` | Rust test output |
 | Docker/OrbStack SimOps runtime smoke | `bun run simops:smoke:docker-orbstack` (`SIMOPS_SMOKE_BUILD=always` for forced image rebuild) | Docker/OrbStack launch, gateway-ingest, lifecycle sync, zero-TTL success cleanup, failed-worker retention/log evidence, and smoke-forced cleanup output |
+| Kind/client-go SimOps runtime smoke | `bun run simops:smoke:kind -- --timeout 300 --build auto` | Kind context, namespace, Job names, run IDs, gateway-only worker inputs, frame ingest, success/image-pull lifecycle, TTL, retention, and cleanup output |
+| OpenTofu substrate preflight | `bun run simops:tofu:preflight` | Fmt/init/validate and `6 to add, 0 to change, 0 to destroy` no-mutation plan with adapter configuration evidence |
+| Runtime closeout documentation | `bun run simops:runtime:closeout:check` | Implemented runtime lanes, credential/cleanup boundaries, commands, and deferred items remain explicit |
 | Status Workbench backend dataflow smoke | `bun run simulator-workbench:dataflow:smoke` | Docker smoke output for Redpanda, Postgres, Iceberg, and read APIs |
 | Production build | `bun run build` | Build output |
 | Full local CI | `bun run ci` | Combined command output |
@@ -46,6 +49,9 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 - Slurm gateway handlers reject missing or unauthorized certificates and validate job requests before spooling.
 - Simulation Ops contract examples validate against the documented envelope, payload, manifest, and summary schemas.
 - Docker/OrbStack runtime proof launches workers through the SimOps API, verifies gateway-only worker ingest, observes runtime lifecycle, removes succeeded workers through the configured zero-TTL cleanup policy, retains failed-worker evidence before forced cleanup, and removes labeled failed-worker containers after smoke cleanup; fresh-image verification sets `SIMOPS_SMOKE_BUILD=always`.
+- Kind runtime proof launches Jobs through the same SimOps API, verifies labels and Gateway-Only Worker Ingest, observes successful and image-pull-failed lifecycle states, records frames and runtime identifiers, and cleans the cluster after evidence capture.
+- OpenTofu preflight plans only static namespace, service-account, RBAC, and ConfigMap substrate and never applies per-run Jobs.
+- CRD/operator, Argo, Tekton, host-facing Redpanda listeners, and production hardening remain deferred.
 - Status Workbench backend dataflow proves measured SCADA frames, SimOps telemetry, simulated results, and imputed twin state through Redpanda, Postgres, Iceberg, and read-only APIs.
 - Release scripts pass dry-run checks.
 - No blocking findings remain open in release records.

@@ -36,6 +36,9 @@ This document identifies internal and operational interfaces that are controlled
 | `scripts/check-simulator-workbench-contract.mjs` | Simulator Workbench, SCADA stand-in, and digital twin schemas/examples | Pass/fail scaffold contract validation |
 | `scripts/simops-smoke-json.mjs` | SimOps smoke JSON from API responses and Docker inspect | Pass/fail runtime proof parsing, gateway-ingest credential checks, and redacted evidence output |
 | `scripts/simops-docker-orbstack-smoke.sh` | Local Docker/OrbStack compose platform and optional `SIMOPS_SMOKE_BUILD=auto\|always\|never` image build mode | Pass/fail SimOps Runtime Proof for Docker worker launch, gateway-only ingest, observed lifecycle, zero-TTL success cleanup, failed-run retention, and smoke-forced cleanup |
+| `scripts/simops-kind-smoke.sh` | Local Kind cluster on OrbStack, gateway and worker images, optional build mode | Pass/fail client-go Job launch, Gateway-Only Worker Ingest, lifecycle sync, TTL, failed-Job retention, and forced cleanup evidence |
+| `scripts/simops-opentofu-preflight.sh` | OpenTofu module, committed provider lockfile, isolated synthetic kubeconfig | No-mutation fmt/init/validate/plan evidence for namespace, service accounts, RBAC, and runtime adapter ConfigMap |
+| `scripts/check-simops-runtime-closeout.mjs` | Runtime design, interface, verification, and traceability docs | Pass/fail final runtime adapter documentation coverage |
 | `scripts/simulator-workbench-dataflow-smoke.sh` | Local Docker/OrbStack compose platform | Pass/fail backend dataflow proof for measured, telemetry, simulated, and imputed units |
 | `scripts/hygiene-size.mjs` | Local repo, Git worktree, cache, and Docker/OrbStack storage inspection | Read-only size report with skipped optional sections |
 | `scripts/check-hygiene-size.mjs` | Fake Git, Docker, Go, and cache fixtures | Pass/fail read-only size-report validation |
@@ -88,7 +91,7 @@ Simulation Ops public handlers use the same backend trust boundary. Browser-loca
 
 The contract uses NDJSON as the canonical example and local fixture format. Live browser transport for v1 is WebTransport with a MoQ-compatible SimOps namespace/track envelope; `GET /api/simops/runs/{run_id}/events` is recovery/inspection only and is not the live telemetry stream.
 
-Observed runtime-worker lifecycle is separate from telemetry stream health, artifact disposition, Redpanda status, Postgres status, and Iceberg write health. Docker sync maps container existence and inspected container state into the neutral state set. Kubernetes sync will use the same state set: Job `Complete` maps to `succeeded`, Job `Failed` maps to `failed`, Pod `Pending` maps to `pending`, Pod `Running` maps to `active`, Pod `Succeeded` maps to `succeeded`, Pod `Failed` maps to `failed`, `ErrImagePull`/`ImagePullBackOff` maps to `image-pull-failed`, and missing/deleted resources map to `missing` unless the run is already stopped.
+Observed runtime-worker lifecycle is separate from telemetry stream health, artifact disposition, Redpanda status, Postgres status, and Iceberg write health. Docker sync maps container existence and inspected container state into the neutral state set. Kubernetes sync uses the same state set: Job `Complete` maps to `succeeded`, Job `Failed` maps to `failed`, Pod `Pending` maps to `pending`, Pod `Running` maps to `active`, Pod `Succeeded` maps to `succeeded`, Pod `Failed` maps to `failed`, `ErrImagePull`/`ImagePullBackOff` maps to `image-pull-failed`, and missing/deleted resources map to `missing` unless the run is already stopped.
 
 Run inspection remains available when a runtime sync attempt fails; in that case the handler returns the stored run and worker records without fresh observed lifecycle updates.
 
@@ -131,7 +134,7 @@ The user-facing frontend surface is now Status Workbench. The backend dataflow s
 
 ## Infrastructure Interface
 
-Docker, Terraform, Ansible, Slurm gateway compose, SimOps compose services, Prometheus, and local certificate helper files describe local-safe infrastructure intent. They are validated by static checks and optional tool-native checks when the relevant tools are installed.
+Docker, OpenTofu/Terraform, Ansible, Slurm gateway compose, SimOps compose services, Prometheus, and local certificate helper files describe local-safe infrastructure intent. OpenTofu owns static Kubernetes substrate only; the Go runtime adapter owns run-scoped Jobs. Infrastructure artifacts are validated by static checks and optional tool-native checks when the relevant tools are installed.
 
 ## External Source Interface
 
