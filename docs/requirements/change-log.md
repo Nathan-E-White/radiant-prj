@@ -33,6 +33,7 @@
 | CHG-021 | 2026-07-12 | Added the client-go Kubernetes Job runtime adapter with profile-based Job construction, gateway-only worker inputs, create/delete behavior, and runtime-neutral Job/Pod lifecycle mapping. | SW-020, #24 | `go test ./internal/simopskubernetes`, `bun run backend:test`, `bun run backend:deps:check`, `bun run ci` |
 | CHG-022 | 2026-07-12 | Added the Kind/OrbStack Kubernetes runtime smoke with API-driven Job launch, gateway-only worker proof, ingest and lifecycle evidence, TTL cleanup policy, failed-Job retention, and forced cleanup. | SW-021, SIMOPS-KIND-E2E-001, #25 | `bun run simops:smoke:kind:check`, `bun run simops:smoke:json:test`, elevated `bun run simops:smoke:kind -- --timeout 300 --build auto`, `bun run ci` |
 | CHG-023 | 2026-07-12 | Added the OpenTofu Kubernetes substrate lane for namespace, service accounts, scoped RBAC, and runtime adapter config, with a no-mutation plan preflight. | SW-022, SIMOPS-TOFU-SUBSTRATE-001, #26 | `bun run simops:tofu:check`, `bun run simops:tofu:preflight`, `bun run ci` |
+| CHG-024 | 2026-07-12 | Closed the v3 runtime adapter documentation and verification spine across profile, Docker SDK, SyncRun, client-go/Kind, OpenTofu, credential, cleanup, and deferred-scope boundaries. | SW-023, SIMOPS-RUNTIME-CLOSEOUT-001, #27 | `bun run simops:runtime:closeout:check`, `bun run backend:test`, elevated Docker/Kind smokes, `bun run simops:tofu:preflight`, `bun run ci`, `bun run build` |
 
 ## Control Note
 

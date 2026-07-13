@@ -41,6 +41,7 @@
 | SW-020 | Test | client-go fake-client tests cover Kubernetes Job labels, gateway-only inputs, namespace, service account, TTL, create/delete errors, and Job/Pod lifecycle mapping | `go test ./internal/simopskubernetes`, `bun run backend:test`, `bun run backend:deps:check`, `bun run ci` | #24 |
 | SW-021 | Demonstration | Kind/OrbStack proof covers API-driven Kubernetes Job launch, required labels, gateway-only worker inputs, frame ingest, runtime lifecycle sync, TTL, failure retention, and forced cleanup | `bun run simops:smoke:kind:check`, `bun run simops:smoke:json:test`, elevated `bun run simops:smoke:kind -- --timeout 300 --build auto` | SIMOPS-KIND-E2E-001 |
 | SW-022 | Configuration audit | OpenTofu module and no-mutation preflight cover namespace, gateway/worker service accounts, scoped Job/Pod RBAC, runtime adapter ConfigMap values, and the explicit absence of per-run Jobs | `bun run simops:tofu:check`, `bun run simops:tofu:preflight` | SIMOPS-TOFU-SUBSTRATE-001 |
+| SW-023 | Review and demonstration | Consolidated runtime docs match implemented RunConnectionProfile, Docker SDK, SyncRun, client-go/Kind, OpenTofu, credential and cleanup boundaries; final local commands cover both runtime smokes and no-mutation substrate plan | `bun run simops:runtime:closeout:check`, `bun run backend:test`, elevated `bun run simops:smoke:docker-orbstack`, elevated `bun run simops:smoke:kind -- --timeout 300 --build auto`, `bun run simops:tofu:preflight`, `bun run ci`, `bun run build` | SIMOPS-RUNTIME-CLOSEOUT-001 |
 
 ## Acceptance Scenario
 
