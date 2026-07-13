@@ -6,6 +6,7 @@ test-results/
 storybook-static/
 package-lock.json
 scripts/archive
+storybook-static/
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
