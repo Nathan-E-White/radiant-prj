@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "style": "hybrid-tabletop-schematic",
+  "provenance": {
+    "generator": "OpenAI built-in image generation",
+    "generatedOn": "2026-07-13",
+    "source": "/Users/nathanwhite/.codex/generated_images/019f5e0f-4673-7cd0-a757-0c5db5a897d3/exec-4f8ff362-645b-4d85-ac9e-7fe20eec9556.png",
+    "promptSummary": "Eight-cell V2 local simulation economy atlas on flat magenta chroma key, matching the existing dark-slate tabletop schematic pack; no text, logos, safety controls, or Artifact Forge imagery.",
+    "transparency": "Chroma key removed with the bundled imagegen remove_chroma_key.py helper using border auto-key, soft matte, thresholds 12/220, and despill."
+  },
+  "atlas": "fleet-board-v2-simulation-atlas.png",
+  "assets": [
+    {
+      "semanticKey": "simulation-container-token",
+      "file": "simulation-container-token.png",
+      "width": 128,
+      "height": 128,
+      "state": "capacity-token"
+    },
+    {
+      "semanticKey": "reactor-slot-rail-empty",
+      "file": "reactor-slot-rail-empty.png",
+      "width": 256,
+      "height": 256,
+      "state": "empty"
+    },
+    {
+      "semanticKey": "reactor-slot-rail-idle",
+      "file": "reactor-slot-rail-idle.png",
+      "width": 256,
+      "height": 256,
+      "state": "idle"
+    },
+    {
+      "semanticKey": "reactor-slot-rail-queued",
+      "file": "reactor-slot-rail-queued.png",
+      "width": 256,
+      "height": 256,
+      "state": "queued"
+    },
+    {
+      "semanticKey": "reactor-slot-rail-running",
+      "file": "reactor-slot-rail-running.png",
+      "width": 256,
+      "height": 256,
+      "state": "running"
+    },
+    {
+      "semanticKey": "simulation-job-completed",
+      "file": "simulation-job-completed.png",
+      "width": 256,
+      "height": 256,
+      "state": "completed-job"
+    },
+    {
+      "semanticKey": "insight-token",
+      "file": "insight-token.png",
+      "width": 128,
+      "height": 128,
+      "state": "insight-reward"
+    }
+  ],
+  "preview": "fleet-board-v2-simulation-pack-preview.png",
+  "qa": {
+    "file": "docs/design/fleet-board/fleet-board-v2-simulation-assets-qa.png",
+    "order": [
+      "simulation-container-token",
+      "reactor-slot-rail-empty",
+      "reactor-slot-rail-idle",
+      "reactor-slot-rail-queued",
+      "reactor-slot-rail-running",
+      "simulation-job-completed",
+      "insight-token",
+      "board-scale-group"
+    ],
+    "checkerboard": true
+  },
+  "deferred": ["artifact-forge"]
+}
