@@ -52,6 +52,14 @@ try {
 }
 
 if (backendGameBoundary) {
+  for (const field of [
+    "| Document ID | ADR-0007 |",
+    "| Status | Accepted |",
+    "## Status\n\nAccepted",
+  ]) {
+    requireText(backendGameBoundaryPath, backendGameBoundary, field, `accepted decision marker ${field}`);
+  }
+
   for (const heading of [
     "## Backend Execution Boundary",
     "## Stream And Identity Boundary",
@@ -78,6 +86,10 @@ if (backendGameBoundary) {
     "Reactor Telemetry Worker Set",
     "Configured Data Flush",
     "Workbench Snapshot",
+    "registerDynamicReactor",
+    "removeDynamicReactor",
+    "24-hour rolling retention",
+    "allowFixtureFallback",
   ]) {
     requireText(backendGameBoundaryPath, backendGameBoundary, term, `boundary term ${term}`);
   }

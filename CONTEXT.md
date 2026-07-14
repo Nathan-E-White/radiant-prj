@@ -127,7 +127,7 @@ Operational telemetry, failed Runs, incomplete artifacts, and missing Lineage ar
 _Avoid_: Telemetry reward, automatic backend launch, evidence generator
 
 **Reactor Telemetry Worker Set**:
-A bounded group of public-safe Resident Source workers associated with one player-added reactor and game session. It produces reactor-scoped Measured State through source-scoped Gateway-Only Worker Ingest and is not a Run-Scoped Simulation Worker set or production SCADA.
+A bounded group of public-safe Resident Source workers associated with one player-added reactor and game session. It produces reactor-scoped Measured State through source-scoped, reactor-bound gateway ingest credentials and is not a Run-Scoped Simulation Worker set or production SCADA.
 _Avoid_: Simulation worker pool, production telemetry, per-run worker set
 
 **Configured Data Flush**:
