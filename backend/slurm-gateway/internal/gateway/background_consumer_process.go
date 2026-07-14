@@ -97,7 +97,7 @@ func (p *BackgroundConsumerProcess) Run(ctx context.Context) error {
 
 	select {
 	case consumerErr := <-consumerResult:
-		if ctx.Err() != nil && (consumerErr == nil || errors.Is(consumerErr, context.Canceled)) {
+		if ctx.Err() != nil {
 			return p.shutdown(server, consumerResult, true)
 		}
 		if consumerErr == nil {
@@ -134,17 +134,27 @@ func (p *BackgroundConsumerProcess) shutdown(server *http.Server, consumerResult
 			consumerDone = true
 		case err := <-serverDone:
 			serverDone = nil
-			if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+				return p.forceCloseAfterDeadline(server, shutdownCtx.Err())
+			}
+			if err != nil {
 				return fmt.Errorf("shut down background consumer %s HTTP server: %w", p.cfg.Name, err)
 			}
 		case <-shutdownCtx.Done():
-			_ = server.Close()
-			err := &BackgroundConsumerShutdownError{Process: p.cfg.Name, Cause: shutdownCtx.Err()}
-			p.recordFailure(err)
-			return err
+			return p.forceCloseAfterDeadline(server, shutdownCtx.Err())
 		}
 	}
 	return nil
+}
+
+func (p *BackgroundConsumerProcess) forceCloseAfterDeadline(server *http.Server, cause error) error {
+	_ = server.Close()
+	if cause == nil {
+		cause = context.DeadlineExceeded
+	}
+	err := &BackgroundConsumerShutdownError{Process: p.cfg.Name, Cause: cause}
+	p.recordFailure(err)
+	return err
 }
 
 func (p *BackgroundConsumerProcess) recordFailure(err error) {

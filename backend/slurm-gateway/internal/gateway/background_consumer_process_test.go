@@ -130,6 +130,59 @@ func TestBackgroundConsumerProcessBoundsUncooperativeConsumerShutdown(t *testing
 	close(release)
 }
 
+func TestBackgroundConsumerProcessBoundsActiveHTTPHandlerShutdown(t *testing.T) {
+	metrics := NewSimopsConsumerMetrics()
+	handlerStarted := make(chan struct{})
+	releaseHandler := make(chan struct{})
+	process, err := NewBackgroundConsumerProcess(BackgroundConsumerProcessConfig{
+		Name: "blocked-handler-writer", Address: "127.0.0.1:0", MetricsPrefix: "blocked_handler_writer",
+		Metrics: metrics, ShutdownTimeout: 20 * time.Millisecond,
+		ReadyDetails: func() map[string]any {
+			close(handlerStarted)
+			<-releaseHandler
+			return nil
+		},
+		Consume: func(ctx context.Context) error {
+			metrics.MarkBrokerConnected(true)
+			<-ctx.Done()
+			return ctx.Err()
+		},
+	})
+	if err != nil {
+		t.Fatalf("construct process: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	result := make(chan error, 1)
+	go func() { result <- process.Run(ctx) }()
+	waitForProcessStart(t, process)
+	requestDone := make(chan struct{})
+	go func() {
+		defer close(requestDone)
+		response, requestErr := http.Get(process.URL() + "/readyz") //nolint:gosec -- loopback test server
+		if requestErr == nil {
+			response.Body.Close()
+		}
+	}()
+	<-handlerStarted
+
+	started := time.Now()
+	cancel()
+	select {
+	case err := <-result:
+		var shutdownErr *BackgroundConsumerShutdownError
+		if !errors.As(err, &shutdownErr) || !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("expected bounded HTTP shutdown error, got %T %v", err, err)
+		}
+		if time.Since(started) > time.Second {
+			t.Fatalf("HTTP shutdown exceeded bound: %v", time.Since(started))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("active HTTP handler escaped shutdown bound")
+	}
+	close(releaseHandler)
+	<-requestDone
+}
+
 func TestBackgroundConsumerProcessRejectsIncompleteConfiguration(t *testing.T) {
 	valid := BackgroundConsumerProcessConfig{
 		Name: "writer", Address: "127.0.0.1:0", MetricsPrefix: "writer",
