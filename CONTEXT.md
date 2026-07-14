@@ -117,6 +117,27 @@ _Avoid_: Container pool, scheduler queue, Kubernetes capacity, reactor control
 A deterministic Fleet Board local-game lifecycle queued on one idle Simulation Container Token. It starts on the next day tick, completes after three advances, and remains local game state rather than a SimOps Run, Slurm job, backend artifact, or evidence record.
 _Avoid_: SimOps Run, Slurm job, backend submission, objective evidence
 
+**SimOps Run**:
+A backend Simulation Ops execution lifecycle with its own run, worker, event, and artifact outcomes. An eligible Fleet Board intent may request or associate a Run through Artifact Forge, but a local Simulation Job never becomes the Run.
+_Avoid_: Simulation Job, game tick, local job state
+
+**Artifact Forge**:
+The server-side boundary that validates one explicit Fleet Board forge request, associates it with one SimOps Run, and may translate one eligible simulation artifact with Simulated Result State and complete Lineage into one versioned game outcome.
+Operational telemetry, failed Runs, incomplete artifacts, and missing Lineage are ineligible.
+_Avoid_: Telemetry reward, automatic backend launch, evidence generator
+
+**Reactor Telemetry Worker Set**:
+A bounded group of public-safe Resident Source workers associated with one player-added reactor and game session. It produces reactor-scoped Measured State through source-scoped Gateway-Only Worker Ingest and is not a Run-Scoped Simulation Worker set or production SCADA.
+_Avoid_: Simulation worker pool, production telemetry, per-run worker set
+
+**Configured Data Flush**:
+A dry-run-first clearing of accepted local-demo runtime records that preserves schemas, source declarations, credentials, required topics, Compose wiring, platform configuration, and protected volumes while opening a new coherent data generation.
+_Avoid_: Environment teardown, volume pruning, factory reset
+
+**Workbench Snapshot**:
+One coherent read generation of independently labeled Measured State, Simulated Result State, Twin State, and Lineage returned through the read-only Workbench interface. Live, stale, recovering, and fixture Snapshots must never be field-wise mixed.
+_Avoid_: Best-effort aggregate, mixed-generation response, fixture patch
+
 **Insight Token**:
 A reactor-scoped Fleet Board local-game reward produced when a Simulation Job completes. One token automatically absorbs one Inspector or Trouble non-refueling outage for its reactor; fuel-driven refueling never spends it. This is a game rule, not a safety claim, operating recommendation, or backend simulation result.
 _Avoid_: Safety credit, validated result, operational recommendation, backend artifact
