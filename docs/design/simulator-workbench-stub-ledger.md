@@ -16,7 +16,7 @@ This ledger records the Status Workbench scaffold, backend dataflow promotion, a
 
 - Scaffold-only items still must not claim real plant telemetry, safety behavior, actuation, alarm management, or validated physics.
 - Backend routes, resident SCADA service wiring, Compose services, and database migrations are controlled by `SWB-DATAFLOW-001` rather than this scaffold ledger.
-- The frontend projection mounts the Status Workbench backed by local examples, not live backend read APIs.
+- The frontend projection now prefers one coherent live Workbench Snapshot. Local examples remain an explicit whole-Snapshot development fallback only when the initial read is unavailable or empty.
 - The presentational digital-twin slice uses a horizontal Kaleidos Fleet strip, selected-unit context, a shared beauty plate, React SVG semantic overlays, and a bottom explanation rail.
 - Measured, imputed, and simulated values remain separate through `valueBasis`; they must not be flattened into generic metrics.
 - SCADA stand-ins are public-safe resident source abstractions. They are not real plant data, sensor diagnostics, calibration workflows, alarm management, or control-room behavior.
@@ -41,7 +41,7 @@ This ledger records the Status Workbench scaffold, backend dataflow promotion, a
 
 ## Next Implementation Threads
 
-1. Wire the presentational projection to the read-only backend APIs in a separate frontend-control thread.
+1. Keep the live read path on the generation-bound read-only Snapshot; do not rebuild a UI generation from component endpoints.
 2. Add live-backed HPC status presentations after the static status bay has a backend source.
 3. Refine the embedded Container Orchestration region without resurrecting a SimOps Control top-level tab.
-4. Consider a live Workbench stream only after the read-only API path remains stable.
+4. Consider a live Workbench stream only if the generation-bound Snapshot refresh no longer meets presentation needs.

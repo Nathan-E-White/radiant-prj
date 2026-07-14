@@ -14,6 +14,9 @@ export default defineConfig({
   },
   webServer: {
     command: "bun run dev -- --port 5174",
+    env: {
+      VITE_WORKBENCH_ALLOW_FIXTURE_FALLBACK: "true"
+    },
     url: "http://127.0.0.1:5174",
     reuseExistingServer: false,
     timeout: 120_000

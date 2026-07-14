@@ -99,6 +99,13 @@ func (g *Gateway) handleSimulatorWorkbench(w http.ResponseWriter, r *http.Reques
 
 	path := strings.TrimPrefix(r.URL.Path, "/api/simulator-workbench/")
 	switch {
+	case path == "snapshot":
+		snapshot, err := g.workbench.Snapshot()
+		if err != nil {
+			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to read coherent workbench snapshot", Code: "workbench_failed"})
+			return
+		}
+		writeJSON(w, http.StatusOK, snapshot)
 	case path == "state":
 		snapshot, err := g.workbench.Snapshot()
 		if err != nil {

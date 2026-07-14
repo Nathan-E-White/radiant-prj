@@ -7,11 +7,13 @@ import { TwinStatePanel } from "./TwinStatePanel";
 import { TwinViewport } from "./TwinViewport";
 import { FleetBoardSurface } from "../fleet-board";
 import { diagnoseJob } from "../../domain/readiness";
-import type { WorkbenchProjection } from "../../domain/simulator-workbench";
+import { workbenchReadLabel, type WorkbenchProjection, type WorkbenchReadState } from "../../domain/simulator-workbench";
 import type { ComputeJob } from "../../domain/types";
 
 export function SimulatorWorkbenchSurface({
   projection,
+  readState,
+  onRefresh,
   onSelectUnit,
   onSelectValue,
   computeQueue,
@@ -22,6 +24,8 @@ export function SimulatorWorkbenchSurface({
   orchestrationPanel
 }: {
   projection: WorkbenchProjection;
+  readState: WorkbenchReadState;
+  onRefresh: () => void;
   onSelectUnit: (unitId: string, commercialBasisId: string) => void;
   onSelectValue: (valueId: string) => void;
   computeQueue: ReactNode;
@@ -42,6 +46,11 @@ export function SimulatorWorkbenchSurface({
 
   return (
     <section className="simwb-shell" aria-label="Status Workbench">
+      <div className={`workbench-read-status ${readState.phase}`} role="status" aria-live="polite">
+        <strong>{workbenchReadLabel(readState)}</strong>
+        <span>{readState.message}</span>
+        <button type="button" onClick={onRefresh}>Refresh live Snapshot</button>
+      </div>
       <div className="simwb-head">
         <div>
           <p className="eyebrow">Status Workbench</p>

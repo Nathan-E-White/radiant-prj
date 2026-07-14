@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { fixtures } from "../../domain/readiness";
 import { buildWorkbenchProjection, loadFixtureWorkbenchData } from "../../domain/simulator-workbench";
+import type { WorkbenchReadState } from "../../domain/simulator-workbench";
 import { SimulatorWorkbenchSurface } from "./SimulatorWorkbenchSurface";
 
 describe("SimulatorWorkbenchSurface", () => {
@@ -11,6 +12,8 @@ describe("SimulatorWorkbenchSurface", () => {
         onSelectUnit={vi.fn()}
         onSelectValue={vi.fn()}
         projection={buildWorkbenchProjection(loadFixtureWorkbenchData())}
+        readState={fixtureReadState()}
+        onRefresh={vi.fn()}
         computeQueue={<div>Scientific compute queue</div>}
         selectedJob={fixtures.computeJobs.find((job) => job.id === "JOB-HPC-404") ?? fixtures.computeJobs[0]}
         scenario="DOME synthetic full-power readiness bundle"
@@ -21,6 +24,8 @@ describe("SimulatorWorkbenchSurface", () => {
     );
 
     expect(markup).toContain("Status Workbench");
+    expect(markup).toContain("Fixture fallback");
+    expect(markup).toContain("Refresh live Snapshot");
     expect(markup).toContain("KAL-01");
     expect(markup).toContain("KAL-05");
     expect(markup).toContain("Fleet Board");
@@ -60,6 +65,8 @@ describe("SimulatorWorkbenchSurface", () => {
         onSelectUnit={vi.fn()}
         onSelectValue={vi.fn()}
         projection={projection}
+        readState={fixtureReadState()}
+        onRefresh={vi.fn()}
         computeQueue={<div>Scientific compute queue</div>}
         selectedJob={fixtures.computeJobs[0]}
         scenario="DOME synthetic full-power readiness bundle"
@@ -78,3 +85,16 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(markup).not.toContain("Redpanda");
   });
 });
+
+function fixtureReadState(): WorkbenchReadState {
+  return {
+    phase: "fixture",
+    model: {
+      generation: 0,
+      source: "fixture",
+      input: loadFixtureWorkbenchData(),
+      acceptedAt: "2026-07-14T12:00:00Z"
+    },
+    message: "Using the explicit local-demo fixture Snapshot."
+  };
+}

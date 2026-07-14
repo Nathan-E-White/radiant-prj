@@ -8,7 +8,15 @@ export default defineConfig({
       "/api": {
         target: "http://127.0.0.1:8080",
         changeOrigin: true,
-        secure: false
+        secure: false,
+        configure(proxy) {
+          proxy.on("error", (_error, _request, response) => {
+            if ("writeHead" in response && !response.headersSent) {
+              response.writeHead(503, { "Content-Type": "application/json" });
+              response.end(JSON.stringify({ error: "Local Workbench gateway unavailable", code: "workbench_unavailable" }));
+            }
+          });
+        }
       }
     }
   },

@@ -1,5 +1,3 @@
-import type { WorkbenchDataAdapter } from "../domain/simulator-workbench/projection";
-
 export type WorkbenchValueBasis = "measured" | "imputed" | "simulated";
 export type AvailabilityPhase =
   | "online generation"
@@ -7,13 +5,15 @@ export type AvailabilityPhase =
   | "cooldown"
   | "planned maintenance outage"
   | "unplanned maintenance outage"
-  | "refueling outage";
+  | "refueling outage"
+  | "status not provided";
 export type CommercialMode =
   | "PPA electric"
   | "direct unit sale"
   | "facility heat"
   | "desalination heat"
-  | "resilience backup";
+  | "resilience backup"
+  | "commercial basis not provided";
 export type TwinViewportEntity =
   | "core"
   | "controlDrums"
@@ -46,6 +46,7 @@ export type WorkbenchValue = {
 export type MeasuredTelemetryFrame = {
   schemaVersion: "scada.telemetry.v1";
   sourceId: string;
+  reactorId?: string;
   tagId: string;
   assetId: string;
   signalKind: "flux" | "temperature" | "pressure" | "flow" | "actuatorState" | "electricalState" | "comms";
@@ -78,7 +79,14 @@ export type WorkbenchLineage = {
   valueId: string;
   valueBasis: WorkbenchValueBasis;
   inputs: Array<{
-    sourceKind: "scada-tag" | "digital-twin-model" | "simulation-run" | "artifact";
+    sourceKind:
+      | "scada-tag"
+      | "digital-twin-model"
+      | "simulation-run"
+      | "artifact"
+      | "game-session"
+      | "fleet-reactor"
+      | "simulation-recipe";
     sourceId: string;
     valueBasis: WorkbenchValueBasis;
   }>;
@@ -95,13 +103,13 @@ export type SimulatorWorkbenchState = {
   generatedAt: string;
   snapshotGeneration?: number;
   scenarioId: string;
-  selectedUnitId: string;
+  selectedUnitId?: string;
   valueBasisSummary: Record<WorkbenchValueBasis, number>;
   measuredStateRefs: string[];
   twinStateRef: string;
   lineageRefs: string[];
-  fleetUnitRefs: string[];
-  commercialDisplayBasisRefs: string[];
+  fleetUnitRefs?: string[];
+  commercialDisplayBasisRefs?: string[];
   activeSimulationRuns: Array<{
     runId: string;
     scenarioId: string;
@@ -198,12 +206,6 @@ export async function getWorkbenchLineage(valueId: string): Promise<WorkbenchLin
     })
   );
 }
-
-export const httpWorkbenchDataAdapter: WorkbenchDataAdapter = {
-  async load() {
-    throw new Error("HTTP Simulator Workbench data adapter is parked for this presentational slice.");
-  }
-};
 
 async function readJsonResponse<T>(response: Response): Promise<T> {
   const raw = await response.text();

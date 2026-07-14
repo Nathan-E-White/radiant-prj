@@ -148,7 +148,9 @@ export function buildWorkbenchProjection(
 ): WorkbenchProjection {
   const normalizedSelection = normalizeSelection(selection);
   const selectedUnitId = selectUnitId(input, normalizedSelection.selectedUnitId);
-  const selectedMeasuredFrames = input.measured.filter((frame) => frame.assetId.startsWith(`${selectedUnitId}-`));
+  const selectedMeasuredFrames = input.measured.filter((frame) =>
+    frame.reactorId ? frame.reactorId === selectedUnitId : frame.assetId.startsWith(`${selectedUnitId}-`)
+  );
   const lineagesByValue = new Map(input.lineages.map((lineage) => [lineage.valueId, lineage]));
   const latestMeasuredQuality = latestMeasuredQualityByTag(selectedMeasuredFrames);
   const allValues = projectValues(input, latestMeasuredQuality, lineagesByValue);
