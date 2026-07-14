@@ -14,13 +14,12 @@ test("player buys bounded reactor-scoped Simulation Container Tokens as local ga
   await expect(page.getByTestId("fleet-board-simulation-budget")).toContainText("6 Simulation Budget");
   await expect(page.getByText("Local game state only", { exact: false })).toBeVisible();
 
-  const box = await canvas.boundingBox();
-  expect(box).not.toBeNull();
-  if (!box) {
-    throw new Error("Fleet Board capacity harness has no canvas bounds");
-  }
-  await page.mouse.click(box.x + 424, box.y + 196);
+  const reactorSelector = page.getByLabel("Choose reactor for local simulation capacity");
+  await reactorSelector.selectOption("reactor-2");
   await expect(page.getByTestId("fleet-board-selected-reactor")).toHaveText("Selected reactor-2");
+  await expect(page.getByTestId("fleet-board-selected-reactor-rail")).toHaveText(
+    "0 of 2 Reactor Slot Rail positions installed"
+  );
   await expect(buyButton).toBeEnabled();
   const emptyRail = await sampleRail(canvas);
 
@@ -37,11 +36,21 @@ test("player buys bounded reactor-scoped Simulation Container Tokens as local ga
   await buyButton.click();
   await expect(page.getByTestId("fleet-board-simulation-budget")).toContainText("2 Simulation Budget");
   await expect(page.getByTestId("fleet-board-simulation-container-tokens")).toContainText("2 Simulation Container Tokens");
+  await expect(page.getByTestId("fleet-board-selected-reactor-rail")).toHaveText(
+    "2 of 2 Reactor Slot Rail positions installed"
+  );
 
   await buyButton.click();
   await expect(page.getByTestId("fleet-board-simulation-budget")).toContainText("2 Simulation Budget");
   await expect(page.getByTestId("fleet-board-simulation-container-tokens")).toContainText("2 Simulation Container Tokens");
   await expect(page.getByText("Reactor Slot Rail is full", { exact: false })).toBeVisible();
+
+  await page.getByRole("button", { name: "Reactor", exact: true }).click();
+  await reactorSelector.selectOption("reactor-5");
+  await buyButton.click();
+  await expect(page.getByTestId("fleet-board-simulation-budget")).toContainText("0 Simulation Budget");
+  await buyButton.click();
+  await expect(page.getByText("Simulation Budget is exhausted", { exact: false })).toBeVisible();
 });
 
 async function canvasHasNonBlankPixels(canvas: Locator) {

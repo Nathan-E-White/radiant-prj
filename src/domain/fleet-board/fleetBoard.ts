@@ -249,6 +249,13 @@ export function applyFleetBoardAction(state: FleetBoardState, action: FleetBoard
 }
 
 export function summarizeFleetBoard(state: FleetBoardState) {
+  const simulationContainerTokensByReactorId = Object.values(state.simulation.containerTokens).reduce<
+    Record<string, number>
+  >((counts, token) => {
+    counts[token.reactorId] = (counts[token.reactorId] ?? 0) + 1;
+    return counts;
+  }, {});
+
   return {
     day: state.day,
     cash: Math.round(state.resources.cash),
@@ -261,7 +268,10 @@ export function summarizeFleetBoard(state: FleetBoardState) {
     removed: state.removed,
     complete: state.complete,
     simulationBudget: state.simulation.budget,
-    simulationContainerTokens: Object.keys(state.simulation.containerTokens).length
+    simulationContainerTokens: Object.keys(state.simulation.containerTokens).length,
+    simulationContainerTokensByReactorId,
+    simulationContainerTokenCost: state.config.simulationContainerTokenCost,
+    simulationContainerTokenCapPerReactor: state.config.simulationContainerTokenCapPerReactor
   };
 }
 

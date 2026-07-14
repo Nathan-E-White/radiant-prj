@@ -128,7 +128,13 @@ describe("fleet board game reducer", () => {
     });
 
     expect(summarizeFleetBoard(state)).toEqual(
-      expect.objectContaining({ simulationBudget: 2, simulationContainerTokens: 2 })
+      expect.objectContaining({
+        simulationBudget: 2,
+        simulationContainerTokens: 2,
+        simulationContainerTokensByReactorId: { "reactor-1": 2 },
+        simulationContainerTokenCost: 2,
+        simulationContainerTokenCapPerReactor: 2
+      })
     );
     expect(Object.values(state.simulation.containerTokens)).toEqual([
       expect.objectContaining({ reactorId: "reactor-1" }),

@@ -13,6 +13,8 @@ describe("FleetBoardSurface simulation capacity", () => {
     expect(markup).toContain("No reactor selected");
     expect(markup).toContain("Buy Simulation Container Token (2 budget)");
     expect(markup).toContain("Local game state only");
+    expect(markup).toContain("Choose reactor for local simulation capacity");
+    expect(markup).toContain("Select a reactor to inspect its Reactor Slot Rail");
     expect(markup).toContain("disabled");
   });
 });
