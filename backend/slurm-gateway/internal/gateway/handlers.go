@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -15,13 +16,14 @@ import (
 const maxSubmitBodyBytes = 64 * 1024
 
 type Gateway struct {
-	cfg       Config
-	spooler   SlurmSpooler
-	store     JobStore
-	metrics   *Metrics
-	simops    *SimopsController
-	workbench *WorkbenchController
-	now       func() time.Time
+	cfg              Config
+	spooler          SlurmSpooler
+	store            JobStore
+	metrics          *Metrics
+	simops           *SimopsController
+	workbench        *WorkbenchController
+	reactorTelemetry *ReactorTelemetryManager
+	now              func() time.Time
 }
 
 func NewDefaultGateway(cfg Config) (*Gateway, error) {
@@ -29,6 +31,10 @@ func NewDefaultGateway(cfg Config) (*Gateway, error) {
 }
 
 func NewDefaultGatewayWithSimopsSpooler(cfg Config, simopsSpooler SimopsSpooler) (*Gateway, error) {
+	return NewDefaultGatewayWithRuntimes(cfg, simopsSpooler, nil)
+}
+
+func NewDefaultGatewayWithRuntimes(cfg Config, simopsSpooler SimopsSpooler, reactorRuntime ReactorTelemetryRuntime) (*Gateway, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -54,6 +60,31 @@ func NewDefaultGatewayWithSimopsSpooler(cfg Config, simopsSpooler SimopsSpooler)
 		return nil, err
 	}
 	app.workbench = workbench
+	if cfg.ReactorTelemetry.Enabled {
+		if workbench != nil {
+			workbench.dynamicMeasuredRetention = cfg.ReactorTelemetry.MeasuredRetention
+		}
+		if reactorRuntime == nil {
+			if cfg.ReactorTelemetry.Runtime != "contract" {
+				return nil, fmt.Errorf("REACTOR_TELEMETRY_RUNTIME=%s requires an injected runtime adapter", cfg.ReactorTelemetry.Runtime)
+			}
+			reactorRuntime = ContractReactorTelemetryRuntime{}
+		}
+		var telemetryStore ReactorTelemetryStore = NewInMemoryReactorTelemetryStore()
+		if cfg.ReactorTelemetry.ControlStore == "postgres" {
+			postgresStore, err := NewPostgresReactorTelemetryStore(cfg.ReactorTelemetry.PostgresDSN)
+			if err != nil {
+				return nil, err
+			}
+			telemetryStore = postgresStore
+		}
+		app.reactorTelemetry = NewReactorTelemetryManager(cfg.ReactorTelemetry, telemetryStore, reactorRuntime, workbench)
+		reconcileContext, cancel := context.WithTimeout(context.Background(), cfg.RequestTimeout)
+		defer cancel()
+		if err := app.reactorTelemetry.ReconcileActive(reconcileContext); err != nil {
+			return nil, fmt.Errorf("reconcile Reactor Telemetry Worker Sets: %w", err)
+		}
+	}
 	return app, nil
 }
 
@@ -90,9 +121,23 @@ func (g *Gateway) Handler() http.Handler {
 		mux.HandleFunc("/internal/scada/", g.handleInternalScada)
 		mux.HandleFunc("/api/simulator-workbench/", g.handleSimulatorWorkbench)
 	}
+	if g.reactorTelemetry != nil {
+		mux.HandleFunc("/api/fleet-board/intents", g.handleFleetBoardIntent)
+	}
 	mux.HandleFunc("/api/jobs/submit", g.handleSubmitJob)
 	mux.HandleFunc("/api/jobs/", g.handleJobStatus)
 	return mux
+}
+
+func (g *Gateway) ReconcileExpiredReactorTelemetry(ctx context.Context) error {
+	var reconcileErr error
+	if g.reactorTelemetry != nil {
+		reconcileErr = errors.Join(reconcileErr, g.reactorTelemetry.ReconcileExpired(ctx))
+	}
+	if g.workbench != nil {
+		reconcileErr = errors.Join(reconcileErr, g.workbench.ReconcileDynamicMeasuredRetention())
+	}
+	return reconcileErr
 }
 
 func (g *Gateway) handleHealth(w http.ResponseWriter, r *http.Request) {

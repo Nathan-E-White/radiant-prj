@@ -48,8 +48,13 @@ jobs:
       - name: Check Fleet Board V2 simulation assets
         run: bun run fleet-board:v2-assets:check
 
+      - name: Build Reactor Telemetry worker image
+        run: docker build -f deploy/scada-standins.Dockerfile -t radiant-scada-standins:ci .
+
       - name: Backend gateway tests
         run: bun run backend:test
+        env:
+          REACTOR_TELEMETRY_TEST_IMAGE: radiant-scada-standins:ci
 
       - name: Postgres coherent Snapshot tests
         run: bun run backend:snapshot:postgres:test

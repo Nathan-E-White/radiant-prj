@@ -326,8 +326,9 @@ CREATE TABLE scada_measured_frames (
   observed_at TIMESTAMPTZ NOT NULL, sampled_at TIMESTAMPTZ NOT NULL, source_id TEXT NOT NULL,
   tag_id TEXT NOT NULL, asset_id TEXT NOT NULL, signal_kind TEXT NOT NULL, sequence BIGINT NOT NULL,
   unit TEXT NOT NULL, quality TEXT NOT NULL, value_basis TEXT NOT NULL, synthetic_status TEXT NOT NULL,
-  value JSONB NOT NULL, frame JSONB NOT NULL, redpanda_topic TEXT NOT NULL,
-  redpanda_partition INTEGER NOT NULL, redpanda_offset BIGINT NOT NULL
+	value JSONB NOT NULL, frame JSONB NOT NULL, redpanda_topic TEXT NOT NULL,
+	redpanda_partition INTEGER NOT NULL, redpanda_offset BIGINT NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE TABLE simops_result_values (
   produced_at TIMESTAMPTZ NOT NULL, received_at TIMESTAMPTZ NOT NULL, run_id TEXT NOT NULL,

@@ -16,10 +16,11 @@ import (
 const maxWorkbenchBodyBytes = 256 * 1024
 
 type WorkbenchController struct {
-	cfg      WorkbenchConfig
-	store    WorkbenchStore
-	eventLog WorkbenchEventLog
-	now      func() time.Time
+	cfg                      WorkbenchConfig
+	store                    WorkbenchStore
+	eventLog                 WorkbenchEventLog
+	now                      func() time.Time
+	dynamicMeasuredRetention time.Duration
 }
 
 func NewDefaultWorkbenchController(cfg WorkbenchConfig) (*WorkbenchController, error) {
@@ -56,10 +57,11 @@ func NewWorkbenchController(cfg WorkbenchConfig, store WorkbenchStore, eventLog 
 		eventLog = &MemoryWorkbenchEventLog{Store: store}
 	}
 	return &WorkbenchController{
-		cfg:      cfg,
-		store:    store,
-		eventLog: eventLog,
-		now:      time.Now,
+		cfg:                      cfg,
+		store:                    store,
+		eventLog:                 eventLog,
+		now:                      time.Now,
+		dynamicMeasuredRetention: 24 * time.Hour,
 	}
 }
 
@@ -112,11 +114,29 @@ func (c *WorkbenchController) IngestResults(ctx context.Context, run SimopsRunRe
 }
 
 func (c *WorkbenchController) Snapshot() (WorkbenchSnapshot, error) {
+	if err := c.pruneExpiredDynamicMeasured(); err != nil {
+		return WorkbenchSnapshot{}, err
+	}
 	return c.store.Snapshot()
 }
 
 func (c *WorkbenchController) Measured() ([]ScadaTelemetryFrame, error) {
+	if err := c.pruneExpiredDynamicMeasured(); err != nil {
+		return nil, err
+	}
 	return c.store.LatestMeasuredFrames(100)
+}
+
+func (c *WorkbenchController) pruneExpiredDynamicMeasured() error {
+	retentionStore, ok := c.store.(workbenchDynamicMeasuredRetentionStore)
+	if !ok {
+		return nil
+	}
+	return retentionStore.PruneDynamicMeasured(c.now().UTC().Add(-c.dynamicMeasuredRetention))
+}
+
+func (c *WorkbenchController) ReconcileDynamicMeasuredRetention() error {
+	return c.pruneExpiredDynamicMeasured()
 }
 
 func (c *WorkbenchController) Twin() (DigitalTwinState, error) {
@@ -143,6 +163,12 @@ func (c *WorkbenchController) validateScadaFrame(frame ScadaTelemetryFrame) erro
 	}
 	if tag.ValueBasis != WorkbenchValueMeasured {
 		return fmt.Errorf("resident source tag must be measured")
+	}
+	if tag.SourceID != "" && frame.SourceID != tag.SourceID {
+		return fmt.Errorf("scada telemetry sourceId does not match resident tag declaration")
+	}
+	if tag.ReactorID != frame.ReactorID {
+		return fmt.Errorf("scada telemetry reactorId does not match resident tag declaration")
 	}
 	if frame.ValueBasis != WorkbenchValueMeasured {
 		return fmt.Errorf("scada telemetry must stay valueBasis=measured")
@@ -184,6 +210,12 @@ func validateResidentSource(source ScadaResidentSourceDeclaration) error {
 	for _, tag := range source.Tags {
 		if tag.ValueBasis != WorkbenchValueMeasured {
 			return fmt.Errorf("resident source tag %s must stay valueBasis=measured", tag.TagID)
+		}
+		if tag.SourceID != "" && tag.SourceID != source.SourceID {
+			return fmt.Errorf("resident source tag %s sourceId must match its declaration", tag.TagID)
+		}
+		if tag.ReactorID != "" && tag.ReactorID != source.ReactorID {
+			return fmt.Errorf("resident source tag %s reactorId must match its declaration", tag.TagID)
 		}
 	}
 	return nil

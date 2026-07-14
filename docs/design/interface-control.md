@@ -67,8 +67,9 @@ This document identifies internal and operational interfaces that are controlled
 | `/api/simops/runs/{run_id}/stop` | POST | Run id path segment | Controlled stop lifecycle update | mTLS identity check and Go tests |
 | `/internal/simops/runs/{run_id}/ingest` | POST | Token-gated telemetry frame batch | Validated ingest count and lifecycle/telemetry event append | Internal token validation and Go tests |
 | `/internal/simops/runs/{run_id}/results` | POST | Token-gated simulated result batch | Validated simulated result count and Workbench event publication | Internal token validation and Go tests |
-| `/internal/scada/sources` | POST | Workbench token-gated resident source declaration | Accepted source id and resident tag registration | Internal token validation and Go tests |
-| `/internal/scada/telemetry` | POST | Workbench token-gated measured frame batch | Accepted measured frame count and Workbench event publication | Internal token validation and Go tests |
+| `/api/fleet-board/intents` | POST | Authenticated `registerDynamicReactor` or `removeDynamicReactor` with opaque session/reactor identity and idempotency key | Bounded Reactor Telemetry Worker Set lifecycle without worker credentials | mTLS identity check, ADR caps, Postgres recovery, Docker adapter, and Go tests |
+| `/internal/scada/sources` | POST | Platform-token or source-scoped reactor-bound resident source declaration | Accepted source id and resident tag registration | Source/reactor credential binding and Go tests |
+| `/internal/scada/telemetry` | POST | Platform-token or source-scoped reactor-bound measured frame batch | Accepted measured frame count and Workbench event publication | Source/reactor credential binding, Value Basis validation, and Go tests |
 | `/api/simulator-workbench/state` | GET | Authorized client request | Compact Workbench state summary | mTLS identity check and Go tests |
 | `/api/simulator-workbench/measured` | GET | Authorized client request | Latest measured frames | mTLS identity check and Go tests |
 | `/api/simulator-workbench/twin` | GET | Authorized client request | Current digital twin state | mTLS identity check and Go tests |

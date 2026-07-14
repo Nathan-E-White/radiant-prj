@@ -93,6 +93,13 @@ if (existsSync("deploy/slurm-gateway.compose.yml")) {
     "SIMOPS_WORKER_FRAME_OVERRIDE",
     "SIMOPS_WORKER_CLEANUP_TTL",
     "SIMOPS_WORKER_AUTO_REMOVE",
+    "REACTOR_TELEMETRY_ENABLED",
+    "REACTOR_TELEMETRY_CONTROL_STORE",
+    "REACTOR_TELEMETRY_RUNTIME",
+    "REACTOR_TELEMETRY_WORKER_IMAGE",
+    "REACTOR_TELEMETRY_CREDENTIAL_SIGNING_KEY",
+    "REACTOR_TELEMETRY_WORKERS_PER_SET",
+    "REACTOR_TELEMETRY_RECONCILE_INTERVAL",
     "SIMOPS_GO_BUILDER_IMAGE",
     "SIMOPS_GATEWAY_RUNTIME_IMAGE",
     "SIMOPS_RUST_BUILDER_IMAGE",
@@ -197,7 +204,7 @@ if (existsSync("deploy/prometheus.yml")) {
 
 if (existsSync("deploy/postgres-init/001_simops.sql")) {
   const sql = readFileSync("deploy/postgres-init/001_simops.sql", "utf8");
-  for (const token of ["timescaledb", "create_hypertable", "simops_runs", "ingest_token", "simops_workers", "simops_events", "simops_artifacts", "simops_telemetry_frames", "simops_consumer_offsets", "simops_processed_messages", "workbench_twin_publications", "iceberg_catalog", "iceberg_tables", "iceberg_namespace_properties"]) {
+  for (const token of ["timescaledb", "create_hypertable", "simops_runs", "ingest_token", "simops_workers", "simops_events", "simops_artifacts", "simops_telemetry_frames", "simops_consumer_offsets", "simops_processed_messages", "workbench_twin_publications", "reactor_telemetry_worker_sets", "iceberg_catalog", "iceberg_tables", "iceberg_namespace_properties"]) {
     if (!sql.includes(token)) {
       problems.push(`SimOps Postgres init SQL missing ${token}`);
     }
