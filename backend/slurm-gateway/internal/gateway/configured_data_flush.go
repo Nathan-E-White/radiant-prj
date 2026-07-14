@@ -137,6 +137,8 @@ type configuredDataFlushTargetDefinition struct {
 }
 
 var configuredDataFlushTargetRegistry = []configuredDataFlushTargetDefinition{
+	{Name: "artifact_forge_requests", RecordClass: "Fleet Board game intent and outcome records", Selection: "all local-demo Artifact Forge ledger records", CountSQL: `SELECT count(*) FROM artifact_forge_requests`, DeleteSQL: `DELETE FROM artifact_forge_requests`},
+	{Name: "artifact_forge_result_artifacts", RecordClass: "Artifact Forge simulated-result eligibility records", Selection: "all durably projected local-demo result artifacts", CountSQL: `SELECT count(*) FROM artifact_forge_result_artifacts`, DeleteSQL: `DELETE FROM artifact_forge_result_artifacts`},
 	{Name: "simops_events", RecordClass: "SimOps event records", Selection: "all accepted local-demo records", CountSQL: `SELECT count(*) FROM simops_events`, DeleteSQL: `DELETE FROM simops_events`},
 	{Name: "simops_telemetry_frames", RecordClass: "operational telemetry", Selection: "all accepted local-demo records", CountSQL: `SELECT count(*) FROM simops_telemetry_frames`, DeleteSQL: `DELETE FROM simops_telemetry_frames`},
 	{Name: "scada_measured_frames", RecordClass: "Measured State projections", Selection: "all frames; Resident Source declarations remain protected", CountSQL: `SELECT count(*) FROM scada_measured_frames`, DeleteSQL: `DELETE FROM scada_measured_frames`},

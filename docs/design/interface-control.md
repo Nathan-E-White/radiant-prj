@@ -69,7 +69,7 @@ This document identifies internal and operational interfaces that are controlled
 | `/api/simops/runs/{run_id}/stop` | POST | Run id path segment | Controlled stop lifecycle update | mTLS identity check and Go tests |
 | `/internal/simops/runs/{run_id}/ingest` | POST | Token-gated telemetry frame batch | Validated ingest count and lifecycle/telemetry event append | Internal token validation and Go tests |
 | `/internal/simops/runs/{run_id}/results` | POST | Token-gated simulated result batch | Validated simulated result count and Workbench event publication | Internal token validation and Go tests |
-| `/api/fleet-board/intents` | POST | Authenticated `registerDynamicReactor` or `removeDynamicReactor` with opaque session/reactor identity and idempotency key | Bounded Reactor Telemetry Worker Set lifecycle without worker credentials | mTLS identity check, ADR caps, Postgres recovery, Docker adapter, and Go tests |
+| `/api/fleet-board/intents` | POST | Authenticated `registerDynamicReactor`, `removeDynamicReactor`, or explicit `requestArtifactForge` with opaque domain identities and idempotency key | Bounded Reactor Telemetry lifecycle or one distinct SimOps Run association and explicit Artifact Forge decision/outcome trace | mTLS identity check, ADR caps, Postgres recovery, eligibility allowlist, and Go tests |
 | `/internal/scada/sources` | POST | Platform-token or source-scoped reactor-bound resident source declaration | Accepted source id and resident tag registration | Source/reactor credential binding and Go tests |
 | `/internal/scada/telemetry` | POST | Platform-token or source-scoped reactor-bound measured frame batch | Accepted measured frame count and Workbench event publication | Source/reactor credential binding, Value Basis validation, and Go tests |
 | `/api/simulator-workbench/state` | GET | Authorized client request | Compact Workbench state summary | mTLS identity check and Go tests |
@@ -90,6 +90,7 @@ Simulation Ops public handlers use the same backend trust boundary. Browser-loca
 | Payload schemas | Scheduler, storage, elastic bursting, and fabric profiler metrics | Panel-ready metric structures | Payload schemas and example NDJSON |
 | Run summary | Completed telemetry stream and scenario events | Reviewable run artifact for future evidence handoff | `simops-run-summary.v1` schema |
 | Simulated result envelope | Run-scoped synthetic engineering result values | `simops.result.v1` frames with `valueBasis=simulated` | `simops-result-envelope.v1` schema |
+| Artifact Forge | Completed local Simulation Job identity plus supported recipe | Distinct SimOps Run association; one versioned game outcome only for a committed simulated-result artifact with complete Lineage | `requestArtifactForge`, durable game-event ledger, server-side allowlist, and Go tests |
 | Runtime adapter sync | Run record and stored worker records | Runtime-neutral observed worker lifecycle states: `pending`, `active`, `succeeded`, `failed`, `missing`, `image-pull-failed`, `stopped` | Gateway runtime interface and Go tests |
 
 The contract uses NDJSON as the canonical example and local fixture format. Live browser transport for v1 is WebTransport with a MoQ-compatible SimOps namespace/track envelope; `GET /api/simops/runs/{run_id}/events` is recovery/inspection only and is not the live telemetry stream.

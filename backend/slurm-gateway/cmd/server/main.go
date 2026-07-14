@@ -46,7 +46,7 @@ func main() {
 	}
 
 	server := gateway.NewHTTPServer(cfg, app.Handler())
-	if cfg.ReactorTelemetry.Enabled {
+	if cfg.ReactorTelemetry.Enabled || (cfg.Simops.Enabled && cfg.Workbench.Enabled) {
 		go func() {
 			ticker := time.NewTicker(cfg.ReactorTelemetry.ReconcileInterval)
 			defer ticker.Stop()

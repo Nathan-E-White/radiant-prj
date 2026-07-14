@@ -23,6 +23,7 @@ type Gateway struct {
 	simops           *SimopsController
 	workbench        *WorkbenchController
 	reactorTelemetry *ReactorTelemetryManager
+	artifactForge    *ArtifactForgeManager
 	now              func() time.Time
 }
 
@@ -60,6 +61,18 @@ func NewDefaultGatewayWithRuntimes(cfg Config, simopsSpooler SimopsSpooler, reac
 		return nil, err
 	}
 	app.workbench = workbench
+	if simops != nil && workbench != nil {
+		var forgeStore ArtifactForgeStore = NewInMemoryArtifactForgeStore()
+		if cfg.Simops.ControlStore == "postgres" {
+			postgresForgeStore, err := NewPostgresArtifactForgeStore(cfg.Simops.PostgresDSN)
+			if err != nil {
+				return nil, err
+			}
+			forgeStore = postgresForgeStore
+		}
+		app.artifactForge = NewArtifactForgeManager(forgeStore, simops, workbench.store)
+		workbench.resultLineageContext = app.artifactForge.ResultLineageContext
+	}
 	if cfg.ReactorTelemetry.Enabled {
 		if workbench != nil {
 			workbench.dynamicMeasuredRetention = cfg.ReactorTelemetry.MeasuredRetention
@@ -121,7 +134,7 @@ func (g *Gateway) Handler() http.Handler {
 		mux.HandleFunc("/internal/scada/", g.handleInternalScada)
 		mux.HandleFunc("/api/simulator-workbench/", g.handleSimulatorWorkbench)
 	}
-	if g.reactorTelemetry != nil {
+	if g.reactorTelemetry != nil || g.artifactForge != nil {
 		mux.HandleFunc("/api/fleet-board/intents", g.handleFleetBoardIntent)
 	}
 	mux.HandleFunc("/api/jobs/submit", g.handleSubmitJob)
@@ -131,6 +144,10 @@ func (g *Gateway) Handler() http.Handler {
 
 func (g *Gateway) ReconcileExpiredReactorTelemetry(ctx context.Context) error {
 	var reconcileErr error
+	if g.artifactForge != nil {
+		_, err := g.artifactForge.ReconcileExpired()
+		reconcileErr = errors.Join(reconcileErr, err)
+	}
 	if g.reactorTelemetry != nil {
 		reconcileErr = errors.Join(reconcileErr, g.reactorTelemetry.ReconcileExpired(ctx))
 	}

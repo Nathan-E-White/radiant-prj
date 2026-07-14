@@ -10,6 +10,8 @@ func TestConfiguredDataFlushPlanIsReadableCompleteAndNonMutating(t *testing.T) {
 	repository := &recordingConfiguredDataFlushRepository{inventory: ConfiguredDataFlushInventory{
 		Generation: 7,
 		Rows: map[string]int64{
+			"artifact_forge_requests":               2,
+			"artifact_forge_result_artifacts":       2,
 			"simops_events":                         3,
 			"simops_telemetry_frames":               12,
 			"scada_measured_frames":                 8,
@@ -29,7 +31,7 @@ func TestConfiguredDataFlushPlanIsReadableCompleteAndNonMutating(t *testing.T) {
 	if !plan.Ready || plan.CurrentGeneration != 7 || plan.NextGeneration != 8 || plan.PlanID == "" {
 		t.Fatalf("plan lost generation or readiness: %#v", plan)
 	}
-	if len(plan.Targets) != 8 {
+	if len(plan.Targets) != 10 {
 		t.Fatalf("plan omitted a runtime record class: %#v", plan.Targets)
 	}
 	if len(plan.ProtectedResources) != 9 {

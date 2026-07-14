@@ -168,6 +168,8 @@ func seedConfiguredDataFlushRecords(t *testing.T, db *sql.DB) {
 		query string
 		args  []any
 	}{
+		{`INSERT INTO artifact_forge_requests VALUES ('forge-before-flush','game-before','forge-key','reactor-before',NULL,'intent-rejected','{"requestId":"forge-before-flush"}',$1,$1)`, []any{now}},
+		{`INSERT INTO artifact_forge_result_artifacts VALUES ('artifact-before-flush','run-before-flush','{"artifactId":"artifact-before-flush"}',$1)`, []any{now}},
 		{`INSERT INTO simops_runs VALUES ($1,$2,'complete','local-demo','fixture.sh','contract',60,$3,$4,$5,$6,$6)`, []any{"run-before-flush", "scenario-before", "before-flush", "flush-integration", "protected-ingest-token", now}},
 		{`INSERT INTO simops_events (run_id,event_type,occurred_at) VALUES ('run-before-flush','run.lifecycle',$1)`, []any{now}},
 		{`INSERT INTO simops_telemetry_frames (received_at,run_id,frame) VALUES ($1,'run-before-flush','{}')`, []any{now}},
@@ -193,6 +195,12 @@ func seedConfiguredDataFlushRecords(t *testing.T, db *sql.DB) {
 }
 
 const configuredDataFlushPostgresTestSchema = `
+CREATE TABLE artifact_forge_requests (
+  request_id TEXT PRIMARY KEY, game_session_id TEXT NOT NULL, idempotency_key TEXT NOT NULL,
+  reactor_id TEXT NOT NULL, run_id TEXT, decision TEXT NOT NULL, record JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL,
+  UNIQUE (game_session_id, idempotency_key)
+);
 CREATE TABLE simops_runs (
   run_id TEXT PRIMARY KEY, scenario_id TEXT NOT NULL, lifecycle TEXT NOT NULL, source TEXT NOT NULL,
   work_script TEXT NOT NULL, launch_mode TEXT NOT NULL, runtime_limit_sec INTEGER NOT NULL,

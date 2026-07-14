@@ -100,6 +100,10 @@ func TestSimopsResultIngestAcceptsSimulatedResult(t *testing.T) {
 	if len(results) != 1 || results[0].ValueBasis != WorkbenchValueSimulated {
 		t.Fatalf("expected simulated result, got %#v", results)
 	}
+	artifact, err := app.workbench.store.(artifactForgeResultArtifactReader).ArtifactForgeResultArtifact(record.RunID)
+	if err != nil || artifact.Kind != ArtifactForgeEligibleArtifactKind || artifact.Status != ArtifactForgeArtifactCommitted || artifact.Integrity != ArtifactForgeIntegrityVerified {
+		t.Fatalf("durably projected Simulated Result State omitted verified result artifact: artifact=%#v err=%v", artifact, err)
+	}
 }
 
 func TestSimopsResultIngestRejectsTerminalRunToken(t *testing.T) {
