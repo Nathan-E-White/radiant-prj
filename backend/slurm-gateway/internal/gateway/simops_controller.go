@@ -310,7 +310,7 @@ func plannedWorkerRecords(record SimopsRunRecord, workers []SimopsWorkerKind, no
 }
 
 func (c *SimopsController) Ingest(ctx context.Context, runID string, token string, body io.Reader) (int, int, error) {
-	record, status, err := c.getRecordForWrite(runID)
+	record, status, err := c.getRecordForIngest(runID)
 	if err != nil {
 		return 0, status, err
 	}
@@ -358,6 +358,17 @@ func (c *SimopsController) getRecordForWrite(runID string) (SimopsRunRecord, int
 	}
 	if err != nil {
 		return SimopsRunRecord{}, http.StatusInternalServerError, err
+	}
+	return record, http.StatusOK, nil
+}
+
+func (c *SimopsController) getRecordForIngest(runID string) (SimopsRunRecord, int, error) {
+	record, status, err := c.getRecordForWrite(runID)
+	if err != nil {
+		return SimopsRunRecord{}, status, err
+	}
+	if record.Lifecycle != SimopsStarting && record.Lifecycle != SimopsStreaming && record.Lifecycle != SimopsDegraded {
+		return SimopsRunRecord{}, http.StatusConflict, fmt.Errorf("SimOps Run %s lifecycle %s does not accept ingest", record.RunID, record.Lifecycle)
 	}
 	return record, http.StatusOK, nil
 }

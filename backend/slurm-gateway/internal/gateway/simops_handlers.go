@@ -149,7 +149,7 @@ func (g *Gateway) handleInternalSimopsResults(w http.ResponseWriter, r *http.Req
 	token := strings.TrimSpace(r.Header.Get("X-Simops-Ingest-Token"))
 	defer r.Body.Close()
 
-	record, status, err := g.simops.getRecordForWrite(runID)
+	record, status, err := g.simops.getRecordForIngest(runID)
 	if err != nil {
 		writeJSON(w, status, ErrorResponse{Error: err.Error(), Code: simopsErrorCode(status)})
 		return
@@ -177,6 +177,8 @@ func simopsErrorCode(status int) string {
 		return "unauthorized"
 	case http.StatusNotFound:
 		return "simops_run_not_found"
+	case http.StatusConflict:
+		return "run_not_writable"
 	case http.StatusTooManyRequests:
 		return "simops_capacity"
 	case http.StatusUnprocessableEntity:
