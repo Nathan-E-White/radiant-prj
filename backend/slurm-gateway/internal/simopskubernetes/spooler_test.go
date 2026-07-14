@@ -146,6 +146,51 @@ func TestStartRunProfilesReturnsCreateError(t *testing.T) {
 	}
 }
 
+func TestRunLifecycleOwnsKubernetesPartialLaunchCompensation(t *testing.T) {
+	cfg := testConfig()
+	client := fake.NewClientset()
+	createCalls := 0
+	client.PrependReactor("create", "jobs", func(action ktesting.Action) (bool, runtime.Object, error) {
+		createCalls++
+		if createCalls == 2 {
+			return true, nil, errors.New("storage create failed")
+		}
+		return false, nil, nil
+	})
+	spooler := &Spooler{Config: cfg, Client: client, Now: fixedNow}
+	store := gateway.NewInMemorySimopsStore()
+	lifecycle := gateway.NewSimopsRunLifecyclePolicy(cfg, store, spooler, gateway.MemorySimopsEventLog{Store: store}, gateway.IcebergArtifactPlanner{})
+	lifecycle.SetNow(fixedNow)
+	run := gateway.SimopsRunRecord{
+		RunID: "RUN-K8S-LIFECYCLE-PARTIAL", ScenarioID: "scheduler-drift", Lifecycle: gateway.SimopsStarting,
+		LaunchMode: "auto", SubmittedBy: "test", IngestToken: "ingest-token", CreatedAt: fixedNow(), UpdatedAt: fixedNow(),
+	}
+
+	outcome, err := lifecycle.Start(context.Background(), run, []gateway.SimopsWorkerKind{gateway.SimopsWorkerScheduler, gateway.SimopsWorkerStorage})
+	var lifecycleErr *gateway.SimopsRunLifecycleError
+	if !errors.As(err, &lifecycleErr) || lifecycleErr.Stage != gateway.SimopsRunStageRuntimeLaunch {
+		t.Fatalf("expected runtime launch failure, got outcome=%#v err=%v", outcome, err)
+	}
+	jobs, listErr := client.BatchV1().Jobs(cfg.WorkerKubernetesNamespace).List(context.Background(), metav1.ListOptions{})
+	if listErr != nil || len(jobs.Items) != 0 {
+		t.Fatalf("expected lifecycle compensation to remove partial Job, jobs=%#v err=%v", jobs.Items, listErr)
+	}
+	workers, listErr := store.ListWorkers(run.RunID)
+	if listErr != nil {
+		t.Fatalf("list workers: %v", listErr)
+	}
+	byID := map[string]gateway.SimopsWorkerRecord{}
+	for _, worker := range workers {
+		byID[worker.WorkerID] = worker
+	}
+	if byID["scheduler-01"].Lifecycle != gateway.SimopsStopped || byID["scheduler-01"].RuntimeID == "" {
+		t.Fatalf("unexpected launched worker outcome %#v", byID["scheduler-01"])
+	}
+	if byID["storage-01"].Lifecycle != gateway.SimopsFailed {
+		t.Fatalf("unexpected unlaunched worker outcome %#v", byID["storage-01"])
+	}
+}
+
 func testRunAndProfile(t *testing.T) (gateway.SimopsRunRecord, gateway.RunConnectionProfile) {
 	t.Helper()
 	run := gateway.SimopsRunRecord{RunID: "RUN-K8S-001", ScenarioID: "scheduler-drift", LaunchMode: "auto", IngestToken: "ingest-token"}

@@ -71,14 +71,11 @@ func (s Spooler) StartRunProfiles(ctx context.Context, run gateway.SimopsRunReco
 	now := s.now()
 	workers := make([]gateway.SimopsWorkerRecord, 0, len(profiles))
 	commands := make([]gateway.SimopsSpoolCommand, 0, len(profiles))
-	created := make([]gateway.RunConnectionProfile, 0, len(profiles))
 	for _, profile := range profiles {
 		job := jobForProfile(profile, s.Config.WorkerFrameOverride)
 		if _, err := s.Client.BatchV1().Jobs(profile.Runtime.Kubernetes.Namespace).Create(ctx, job, metav1.CreateOptions{}); err != nil {
-			_ = s.StopRunProfiles(context.WithoutCancel(ctx), run.RunID, created)
-			return nil, nil, fmt.Errorf("create Kubernetes Job %s/%s: %w", job.Namespace, job.Name, err)
+			return workers, commands, fmt.Errorf("create Kubernetes Job %s/%s: %w", job.Namespace, job.Name, err)
 		}
-		created = append(created, profile)
 		runtimeID := profile.Runtime.Kubernetes.Namespace + "/" + profile.Runtime.Kubernetes.JobName
 		workers = append(workers, gateway.SimopsWorkerRecord{
 			RunID: run.RunID, WorkerID: profile.WorkerID, WorkerKind: profile.WorkerKind,
