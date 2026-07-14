@@ -69,6 +69,7 @@ function sampleWorkbenchState(): SimulatorWorkbenchState {
   return {
     schemaVersion: "simulator-workbench.state.v1",
     generatedAt: "2026-07-06T15:00:05Z",
+    snapshotGeneration: 7,
     scenarioId: "mixed-public-safe-twin-demo",
     selectedUnitId: "KAL-01",
     valueBasisSummary: { measured: 1, imputed: 1, simulated: 1 },

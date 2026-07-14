@@ -10,6 +10,20 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: radiant
+          POSTGRES_USER: radiant
+          POSTGRES_PASSWORD: radiant
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U radiant -d radiant"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,6 +50,11 @@ jobs:
 
       - name: Backend gateway tests
         run: bun run backend:test
+
+      - name: Postgres coherent Snapshot tests
+        run: bun run backend:snapshot:postgres:test
+        env:
+          SIMOPS_POSTGRES_TEST_DSN: postgres://radiant:radiant@127.0.0.1:5432/radiant?sslmode=disable
 
       - name: Validate fixtures
         run: bun run validate:fixtures
