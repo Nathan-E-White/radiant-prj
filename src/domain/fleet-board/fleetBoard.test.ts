@@ -100,4 +100,63 @@ describe("fleet board game reducer", () => {
     expect(state.resources.fuelBlocks).toBeLessThanOrEqual(0);
     expect(state.events.at(-1)?.kind).toBe("refueled");
   });
+
+  it("buys reactor-scoped Simulation Container Tokens from a separate bounded budget", () => {
+    let state = createInitialFleetBoardState({ seed: "simulation-capacity" });
+    for (const [facilityId, x] of [
+      ["reactor-1", 2],
+      ["reactor-2", 6],
+      ["reactor-3", 10]
+    ] as const) {
+      state = applyFleetBoardAction(state, {
+        type: "placeFacility",
+        facilityId,
+        facilityKind: "reactor",
+        position: { x, y: 3 }
+      });
+    }
+
+    expect(summarizeFleetBoard(state)).toEqual(
+      expect.objectContaining({ simulationBudget: 6, simulationContainerTokens: 0 })
+    );
+
+    state = applyFleetBoardAction(state, { type: "buySimulationContainerToken", reactorId: "reactor-1" });
+    state = applyFleetBoardAction(state, { type: "buySimulationContainerToken", reactorId: "reactor-1" });
+    const fullRail = applyFleetBoardAction(state, {
+      type: "buySimulationContainerToken",
+      reactorId: "reactor-1"
+    });
+
+    expect(summarizeFleetBoard(state)).toEqual(
+      expect.objectContaining({ simulationBudget: 2, simulationContainerTokens: 2 })
+    );
+    expect(Object.values(state.simulation.containerTokens)).toEqual([
+      expect.objectContaining({ reactorId: "reactor-1" }),
+      expect.objectContaining({ reactorId: "reactor-1" })
+    ]);
+    expect(fullRail.events.at(-1)).toEqual(
+      expect.objectContaining({
+        kind: "simulationPurchaseBlocked",
+        facilityId: "reactor-1",
+        detail: expect.stringContaining("Reactor Slot Rail is full")
+      })
+    );
+
+    state = applyFleetBoardAction(state, { type: "buySimulationContainerToken", reactorId: "reactor-2" });
+    const exhausted = applyFleetBoardAction(state, {
+      type: "buySimulationContainerToken",
+      reactorId: "reactor-3"
+    });
+
+    expect(summarizeFleetBoard(state)).toEqual(
+      expect.objectContaining({ simulationBudget: 0, simulationContainerTokens: 3 })
+    );
+    expect(exhausted.events.at(-1)).toEqual(
+      expect.objectContaining({
+        kind: "simulationPurchaseBlocked",
+        facilityId: "reactor-3",
+        detail: expect.stringContaining("Simulation Budget is exhausted")
+      })
+    );
+  });
 });

@@ -33,6 +33,16 @@ export type FleetBoardResources = {
   resilienceCredits: number;
 };
 
+export type FleetBoardSimulationContainerToken = {
+  id: string;
+  reactorId: string;
+};
+
+export type FleetBoardSimulationState = {
+  budget: number;
+  containerTokens: Record<string, FleetBoardSimulationContainerToken>;
+};
+
 export type FleetBoardEventKind =
   | "facilityPlaced"
   | "fuelProduced"
@@ -43,6 +53,8 @@ export type FleetBoardEventKind =
   | "trouble"
   | "debtWarning"
   | "debtRemoval"
+  | "simulationContainerPurchased"
+  | "simulationPurchaseBlocked"
   | "scenarioComplete";
 
 export type FleetBoardEvent = {
@@ -79,6 +91,9 @@ export type FleetBoardConfig = {
   waterRevenuePerCredit: number;
   resilienceRevenuePerCredit: number;
   dailyOperationsCost: number;
+  startingSimulationBudget: number;
+  simulationContainerTokenCost: number;
+  simulationContainerTokenCapPerReactor: number;
 };
 
 export type FleetBoardState = {
@@ -90,6 +105,7 @@ export type FleetBoardState = {
   pawns: Record<FleetBoardPawnKind, FleetBoardPawn>;
   events: FleetBoardEvent[];
   score: FleetBoardScore;
+  simulation: FleetBoardSimulationState;
   debtDays: number;
   removed: boolean;
   complete: boolean;
@@ -104,6 +120,7 @@ export type FleetBoardAction =
       facilityKind: FleetBoardFacilityKind;
       position: FleetBoardPosition;
     }
+  | { type: "buySimulationContainerToken"; reactorId: string }
   | { type: "tickDay" }
   | { type: "refuelFacility"; facilityId: string };
 
@@ -130,7 +147,10 @@ export const fleetBoardDefaultConfig: FleetBoardConfig = {
   electricRevenuePerMwe: 12,
   waterRevenuePerCredit: 8,
   resilienceRevenuePerCredit: 10,
-  dailyOperationsCost: 18
+  dailyOperationsCost: 18,
+  startingSimulationBudget: 6,
+  simulationContainerTokenCost: 2,
+  simulationContainerTokenCapPerReactor: 2
 };
 
 export const fleetBoardNeutralModifiers: FleetBoardWorkbenchModifiers = {
@@ -196,6 +216,10 @@ export function createInitialFleetBoardState({
     },
     events: [],
     score: { water: 0, resilience: 0, cash: 0, continuity: 0, total: 0 },
+    simulation: {
+      budget: config.startingSimulationBudget,
+      containerTokens: {}
+    },
     debtDays: cash < config.debtLimit ? 1 : 0,
     removed: false,
     complete: false,
@@ -211,6 +235,10 @@ export function applyFleetBoardAction(state: FleetBoardState, action: FleetBoard
 
   if (action.type === "placeFacility") {
     return placeFacility(state, action);
+  }
+
+  if (action.type === "buySimulationContainerToken") {
+    return buySimulationContainerToken(state, action.reactorId);
   }
 
   if (action.type === "refuelFacility") {
@@ -231,7 +259,9 @@ export function summarizeFleetBoard(state: FleetBoardState) {
     resilienceCredits: round(state.resources.resilienceCredits),
     score: state.score.total,
     removed: state.removed,
-    complete: state.complete
+    complete: state.complete,
+    simulationBudget: state.simulation.budget,
+    simulationContainerTokens: Object.keys(state.simulation.containerTokens).length
   };
 }
 
@@ -282,6 +312,57 @@ function refuelFacility(state: FleetBoardState, facilityId: string): FleetBoardS
     facilities: { ...state.facilities, [facilityId]: nextFacility }
   };
   return recalculateScore(addEvent(next, "refueled", "Reactor refueled from abstract TRISO supply", facilityId));
+}
+
+function buySimulationContainerToken(state: FleetBoardState, reactorId: string): FleetBoardState {
+  const reactor = state.facilities[reactorId];
+  if (!reactor || reactor.kind !== "reactor") {
+    return addEvent(
+      state,
+      "simulationPurchaseBlocked",
+      "Simulation Container Token purchase blocked: select a reactor",
+      reactorId
+    );
+  }
+
+  const reactorTokenCount = Object.values(state.simulation.containerTokens).filter(
+    (token) => token.reactorId === reactorId
+  ).length;
+  if (reactorTokenCount >= state.config.simulationContainerTokenCapPerReactor) {
+    return addEvent(
+      state,
+      "simulationPurchaseBlocked",
+      "Simulation Container Token purchase blocked: Reactor Slot Rail is full",
+      reactorId
+    );
+  }
+
+  if (state.simulation.budget < state.config.simulationContainerTokenCost) {
+    return addEvent(
+      state,
+      "simulationPurchaseBlocked",
+      "Simulation Container Token purchase blocked: Simulation Budget is exhausted",
+      reactorId
+    );
+  }
+
+  const tokenId = `simulation-container-token-${Object.keys(state.simulation.containerTokens).length + 1}`;
+  const next: FleetBoardState = {
+    ...state,
+    simulation: {
+      budget: state.simulation.budget - state.config.simulationContainerTokenCost,
+      containerTokens: {
+        ...state.simulation.containerTokens,
+        [tokenId]: { id: tokenId, reactorId }
+      }
+    }
+  };
+  return addEvent(
+    next,
+    "simulationContainerPurchased",
+    "Simulation Container Token installed on the reactor's Reactor Slot Rail (local game state only)",
+    reactorId
+  );
 }
 
 function tickDay(state: FleetBoardState): FleetBoardState {

@@ -249,6 +249,31 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
         this.dynamicLayer.add([sprite, label]);
       }
 
+      for (const rail of scene.reactorSlotRails) {
+        const centerX = offset.x + rail.gridX * tileSize;
+        const centerY = offset.y + rail.gridY * tileSize;
+        const railWidth = Math.max(52, rail.slots.length * 28 + 12);
+        graphics.fillStyle(0x0b1218, 0.92);
+        graphics.fillRoundedRect(centerX - railWidth / 2, centerY - 13, railWidth, 26, 9);
+        graphics.lineStyle(1, 0x7d8b99, 0.9);
+        graphics.strokeRoundedRect(centerX - railWidth / 2, centerY - 13, railWidth, 26, 9);
+        for (const slot of rail.slots) {
+          const slotX = centerX + (slot.slotIndex - (rail.slots.length - 1) / 2) * 28;
+          graphics.fillStyle(slot.status === "installed" ? 0x30d9ff : 0x223641, 0.96);
+          graphics.fillCircle(slotX, centerY, 9);
+          graphics.lineStyle(1, slot.status === "installed" ? 0xc9f7ff : 0x6d7f89, 0.95);
+          graphics.strokeCircle(slotX, centerY, 9);
+        }
+        const railLabel = this.add
+          .text(centerX, centerY - 20, rail.label, {
+            fontFamily: "Inter, system-ui, sans-serif",
+            fontSize: "8px",
+            color: "#b9f8f0"
+          })
+          .setOrigin(0.5);
+        this.dynamicLayer.add(railLabel);
+      }
+
       for (const pawn of scene.pawns) {
         const pawnSprite = this.add
           .image(

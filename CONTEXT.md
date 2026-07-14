@@ -102,8 +102,16 @@ The Fleet Board's visible event-pressure marker. It represents toy disruptions s
 _Avoid_: Disaster response, emergency, incident command, sabotage, attack
 
 **Simulation Container Token**:
-A deferred Fleet Board v2 game resource representing player-created simulated-job capacity associated with a reactor. It has a virtual budget cost and a per-reactor cap, both TBD. It is not real infrastructure capacity, cloud spend, project budget, or a live SimOps control.
+A Fleet Board local-game resource representing simulated-job capacity installed on one reactor's Reactor Slot Rail. One token costs 2 Simulation Budget, and each rail holds at most two tokens. It is not real infrastructure capacity, cloud spend, project budget, or a live SimOps control.
 _Avoid_: Real container quota, cloud budget, production capacity, live scheduler control
+
+**Simulation Budget**:
+A Fleet Board local-game resource used only to buy Simulation Container Tokens. A new game starts with 6 Simulation Budget; it is separate from cash and does not represent cloud spend, project funding, or infrastructure quota.
+_Avoid_: Cash, cloud budget, compute credits, project budget
+
+**Reactor Slot Rail**:
+The two-slot local-game capacity display attached to one Fleet Board reactor. It shows where Simulation Container Tokens are installed and has no relationship to a real scheduler, container runtime, or plant system.
+_Avoid_: Container pool, scheduler queue, Kubernetes capacity, reactor control
 
 **Cooldown**:
 A post-shutdown phase where the unit is not commercially generating but still has active thermal/reactor-state work to represent. Cooldown is not standby and does not imply immediate restart availability.

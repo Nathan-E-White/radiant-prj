@@ -49,6 +49,7 @@ function buildScene(day: number, selectedReactorId: string | null): FleetBoardSc
     ],
     pawns: [],
     routes: [],
+    reactorSlotRails: [],
     resources: {
       fuelBlocks: 0,
       electricMwe: 0,

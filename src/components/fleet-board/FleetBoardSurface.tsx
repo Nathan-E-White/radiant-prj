@@ -1,4 +1,4 @@
-import { BatteryCharging, CalendarClock, Droplets, Factory, Fuel, Gauge, Shield, Zap } from "lucide-react";
+import { BatteryCharging, CalendarClock, Cpu, Droplets, Factory, Fuel, Gauge, Shield, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { WorkbenchProjection } from "../../domain/simulator-workbench";
 import {
@@ -69,6 +69,15 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
     });
   }, []);
 
+  const buySimulationContainerToken = useCallback(() => {
+    if (!selectedReactorId) {
+      return;
+    }
+    setGameState((current) =>
+      applyFleetBoardAction(current, { type: "buySimulationContainerToken", reactorId: selectedReactorId })
+    );
+  }, [selectedReactorId]);
+
   return (
     <section className="fleet-board-shell" aria-label="Fleet Board">
       <div className="fleet-board-head">
@@ -100,6 +109,12 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
         </span>
         <span className={summary.cash < 0 ? "fleet-board-negative" : ""}>${summary.cash}</span>
         <span data-testid="fleet-board-facility-count">{Object.keys(gameState.facilities).length} facilities</span>
+        <span data-testid="fleet-board-simulation-budget" aria-live="polite">
+          <Cpu size={15} /> {summary.simulationBudget} Simulation Budget
+        </span>
+        <span data-testid="fleet-board-simulation-container-tokens" aria-live="polite">
+          {summary.simulationContainerTokens} Simulation Container Tokens
+        </span>
       </div>
 
       <div className="fleet-board-layout">
@@ -129,6 +144,17 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
             <button type="button" onClick={refuelFirstReactor}>
               <Fuel size={16} />
               Refuel Reactor
+            </button>
+          </div>
+          <div className="fleet-board-control-group">
+            <h4>Local Simulation Capacity</h4>
+            <p data-testid="fleet-board-selected-reactor">
+              {selectedReactorId ? `Selected ${selectedReactorId}` : "No reactor selected"}
+            </p>
+            <p>Local game state only — does not submit backend work.</p>
+            <button type="button" onClick={buySimulationContainerToken} disabled={!selectedReactorId}>
+              <Cpu size={16} />
+              Buy Simulation Container Token (2 budget)
             </button>
           </div>
           <div className="fleet-board-modifiers">
