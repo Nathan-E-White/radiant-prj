@@ -6,10 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
-	dockerclient "github.com/docker/docker/client"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
+	dockerclient "github.com/moby/moby/client"
 
 	"radiant/slurm-gateway/internal/gateway"
 )
@@ -50,7 +49,7 @@ func (r ReactorTelemetryRuntime) StartWorkerSet(ctx context.Context, launch gate
 	created := make([]string, 0, len(launch.Workers))
 	rollback := func() {
 		for _, containerID := range created {
-			_ = r.Client.ContainerRemove(context.Background(), containerID, container.RemoveOptions{Force: true})
+			_ = r.Client.ContainerRemove(context.Background(), containerID, dockerclient.ContainerRemoveOptions{Force: true})
 		}
 	}
 	for _, worker := range launch.Workers {
@@ -93,7 +92,7 @@ func (r ReactorTelemetryRuntime) StartWorkerSet(ctx context.Context, launch gate
 			return fmt.Errorf("create reactor telemetry worker %s: %w", worker.WorkerID, err)
 		}
 		created = append(created, createdContainer.ID)
-		if err := r.Client.ContainerStart(ctx, createdContainer.ID, container.StartOptions{}); err != nil {
+		if err := r.Client.ContainerStart(ctx, createdContainer.ID, dockerclient.ContainerStartOptions{}); err != nil {
 			rollback()
 			return fmt.Errorf("start reactor telemetry worker %s: %w", worker.WorkerID, err)
 		}
@@ -112,19 +111,18 @@ func (r ReactorTelemetryRuntime) StopWorkerSet(ctx context.Context, setID string
 }
 
 func (r ReactorTelemetryRuntime) removeWorkerSetContainers(ctx context.Context, setID string) error {
-	listed, err := r.Client.ContainerList(ctx, container.ListOptions{All: true, Filters: filters.NewArgs(
-		filters.Arg("label", "radiant.worker.role=resident-source"),
-		filters.Arg("label", "radiant.reactor-telemetry.set-id="+setID),
-	)})
+	listed, err := r.Client.ContainerList(ctx, dockerclient.ContainerListOptions{All: true, Filters: make(dockerclient.Filters).
+		Add("label", "radiant.worker.role=resident-source").
+		Add("label", "radiant.reactor-telemetry.set-id="+setID)})
 	if err != nil {
 		return fmt.Errorf("list reactor telemetry workers for %s: %w", setID, err)
 	}
 	timeout := 10
 	for _, item := range listed {
-		if err := r.Client.ContainerStop(ctx, item.ID, container.StopOptions{Timeout: &timeout}); err != nil {
+		if err := r.Client.ContainerStop(ctx, item.ID, dockerclient.ContainerStopOptions{Timeout: &timeout}); err != nil {
 			return fmt.Errorf("stop reactor telemetry container %s: %w", item.ID, err)
 		}
-		if err := r.Client.ContainerRemove(ctx, item.ID, container.RemoveOptions{Force: true}); err != nil {
+		if err := r.Client.ContainerRemove(ctx, item.ID, dockerclient.ContainerRemoveOptions{Force: true}); err != nil {
 			return fmt.Errorf("remove reactor telemetry container %s: %w", item.ID, err)
 		}
 	}

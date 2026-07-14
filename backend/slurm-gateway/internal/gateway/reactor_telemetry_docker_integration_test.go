@@ -13,8 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
+	dockerclient "github.com/moby/moby/client"
 
 	"radiant/slurm-gateway/internal/gateway"
 	"radiant/slurm-gateway/internal/simopsdocker"
@@ -112,10 +111,9 @@ func TestDockerReactorTelemetryWorkerSetPublishesMeasuredStateAndCleansUp(t *tes
 	if status != http.StatusOK {
 		t.Fatalf("remove status=%d body=%s", status, body)
 	}
-	remaining, err := runtime.Client.ContainerList(context.Background(), container.ListOptions{All: true, Filters: filters.NewArgs(
-		filters.Arg("label", "radiant.worker.role=resident-source"),
-		filters.Arg("label", "radiant.reactor-telemetry.set-id="+response.WorkerSet.SetID),
-	)})
+	remaining, err := runtime.Client.ContainerList(context.Background(), dockerclient.ContainerListOptions{All: true, Filters: make(dockerclient.Filters).
+		Add("label", "radiant.worker.role=resident-source").
+		Add("label", "radiant.reactor-telemetry.set-id="+response.WorkerSet.SetID)})
 	if err != nil {
 		t.Fatalf("list removed worker set: %v", err)
 	}

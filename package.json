@@ -35,7 +35,7 @@
     "build-storybook": "storybook build",
     "backend:test": "cd backend/slurm-gateway && PATH=/opt/homebrew/bin:/usr/local/bin:$PATH env GOCACHE=/tmp/radiant-go-cache GOMODCACHE=/tmp/radiant-go-mod-cache go test -tags dockerintegration ./...",
     "backend:snapshot:postgres:test": "cd backend/slurm-gateway && PATH=/opt/homebrew/bin:/usr/local/bin:$PATH env GOCACHE=/tmp/radiant-go-cache GOMODCACHE=/tmp/radiant-go-mod-cache go test -tags 'postgresintegration iceberggo' ./internal/gateway -run '^(TestPostgres(ArtifactForge|ConfiguredDataFlush|ReactorTelemetry|WorkbenchSnapshot|Twin)|TestTwinIcebergAppendDeduplicatesPublicationOnLegacySchema)$' -count=1",
-    "backend:deps:check": "node scripts/check-go-gateway-deps.mjs",
+    "backend:deps:check": "node --test scripts/go-module-version.node-test.mjs && node scripts/check-go-gateway-deps.mjs",
     "backend:run": "cd backend/slurm-gateway && go run ./cmd/server",
     "configured-data-flush": "cd backend/slurm-gateway && go run -tags dataplane ./cmd/configured-data-flush",
     "configured-data-flush:check": "node scripts/check-configured-data-flush.mjs",
