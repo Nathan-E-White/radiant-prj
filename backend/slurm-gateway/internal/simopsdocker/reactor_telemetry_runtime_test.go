@@ -2,13 +2,14 @@ package simopsdocker
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/image"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	dockerclient "github.com/moby/moby/client"
 
 	"radiant/slurm-gateway/internal/gateway"
 )
@@ -69,16 +70,11 @@ func TestReactorTelemetryRuntimeStopsOnlyTargetWorkerSet(t *testing.T) {
 	if len(client.stopped) != 2 || len(client.removed) != 2 {
 		t.Fatalf("expected targeted stop and removal, stopped=%#v removed=%#v", client.stopped, client.removed)
 	}
-	want := filters.NewArgs(
-		filters.Arg("label", "radiant.worker.role=resident-source"),
-		filters.Arg("label", "radiant.reactor-telemetry.set-id=set-stable"),
-	)
-	gotLabels := client.listOptions.Filters.Get("label")
-	wantLabels := want.Get("label")
-	slices.Sort(gotLabels)
-	slices.Sort(wantLabels)
-	if !slices.Equal(gotLabels, wantLabels) {
-		t.Fatalf("cleanup filter could affect another set: got %#v want %#v", client.listOptions.Filters.Get("label"), want.Get("label"))
+	want := make(dockerclient.Filters).
+		Add("label", "radiant.worker.role=resident-source").
+		Add("label", "radiant.reactor-telemetry.set-id=set-stable")
+	if !maps.Equal(client.listOptions.Filters["label"], want["label"]) {
+		t.Fatalf("cleanup filter could affect another set: got %#v want %#v", client.listOptions.Filters["label"], want["label"])
 	}
 }
 

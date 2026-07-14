@@ -8,9 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/network"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/image"
+	"github.com/moby/moby/api/types/network"
+	dockerclient "github.com/moby/moby/client"
 	"github.com/opencontainers/image-spec/specs-go/v1"
 
 	"radiant/slurm-gateway/internal/gateway"
@@ -254,10 +255,10 @@ func TestSpoolerStopsRunWorkersByRunWorkerAndRuntimeLabels(t *testing.T) {
 	if !client.listOptions.All {
 		t.Fatalf("expected all containers to be listed")
 	}
-	if got := client.listOptions.Filters.Get("label"); !slices.Contains(got, "simops.run_id=RUN-STOP-001") {
+	if got := client.listOptions.Filters["label"]; !got["simops.run_id=RUN-STOP-001"] {
 		t.Fatalf("missing run label filter in %#v", got)
 	}
-	if got := client.listOptions.Filters.Get("label"); !slices.Contains(got, "simops.runtime_adapter=docker-sdk") || !slices.Contains(got, "simops.role=ordinary-worker") {
+	if got := client.listOptions.Filters["label"]; !got["simops.runtime_adapter=docker-sdk"] || !got["simops.role=ordinary-worker"] {
 		t.Fatalf("missing runtime/role label filters in %#v", got)
 	}
 	if !slices.Equal(client.stopped, []string{"container-a", "container-b"}) {
@@ -638,7 +639,7 @@ type fakeDockerClient struct {
 	createdPlatform     *v1.Platform
 	createdName         string
 	startedContainer    string
-	listOptions         container.ListOptions
+	listOptions         dockerclient.ContainerListOptions
 	inspectedContainers []string
 	stopped             []string
 	removed             []string
@@ -674,12 +675,12 @@ func (c *fakeDockerClient) ContainerCreate(_ context.Context, config *container.
 	return c.create, c.createErr
 }
 
-func (c *fakeDockerClient) ContainerStart(_ context.Context, containerID string, _ container.StartOptions) error {
+func (c *fakeDockerClient) ContainerStart(_ context.Context, containerID string, _ dockerclient.ContainerStartOptions) error {
 	c.startedContainer = containerID
 	return c.startErr
 }
 
-func (c *fakeDockerClient) ContainerList(_ context.Context, options container.ListOptions) ([]container.Summary, error) {
+func (c *fakeDockerClient) ContainerList(_ context.Context, options dockerclient.ContainerListOptions) ([]container.Summary, error) {
 	c.listOptions = options
 	return c.listed, c.listErr
 }
@@ -699,12 +700,12 @@ func (c *fakeDockerClient) ContainerInspect(_ context.Context, containerID strin
 	return response, nil
 }
 
-func (c *fakeDockerClient) ContainerStop(_ context.Context, containerID string, _ container.StopOptions) error {
+func (c *fakeDockerClient) ContainerStop(_ context.Context, containerID string, _ dockerclient.ContainerStopOptions) error {
 	c.stopped = append(c.stopped, containerID)
 	return c.stopErr
 }
 
-func (c *fakeDockerClient) ContainerRemove(_ context.Context, containerID string, _ container.RemoveOptions) error {
+func (c *fakeDockerClient) ContainerRemove(_ context.Context, containerID string, _ dockerclient.ContainerRemoveOptions) error {
 	c.removed = append(c.removed, containerID)
 	return c.removeErr
 }
@@ -725,9 +726,7 @@ func dockerSummary(containerID string, runID string, workerID string, workerKind
 
 func dockerInspect(containerID string, state container.State) container.InspectResponse {
 	return container.InspectResponse{
-		ContainerJSONBase: &container.ContainerJSONBase{
-			ID:    containerID,
-			State: &state,
-		},
+		ID:    containerID,
+		State: &state,
 	}
 }
