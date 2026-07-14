@@ -80,6 +80,7 @@ export type FleetBoardEventKind =
   | "simulationJobQueueBlocked"
   | "simulationJobStarted"
   | "simulationJobCompleted"
+  | "insightTokenSpent"
   | "scenarioComplete";
 
 export type FleetBoardEvent = {
@@ -660,6 +661,10 @@ function maybeTriggerInspector(state: FleetBoardState): FleetBoardState {
     return state;
   }
   const holdDays = state.modifiers.inspectorPressure > 0.35 ? 2 : 1;
+  const absorbed = absorbPressureWithInsightToken(state, reactor.id, "Inspector");
+  if (absorbed) {
+    return absorbed;
+  }
   const next = setFacilityStatus(state, reactor.id, "outage", holdDays);
   return addEvent(next, "inspectorHold", `Inspector hold applied for ${holdDays} day(s)`, reactor.id);
 }
@@ -677,9 +682,42 @@ function maybeTriggerTrouble(state: FleetBoardState): FleetBoardState {
     return addEvent(next, "trouble", "Trouble pawn crossed an empty board lane");
   }
   if (target.status === "active" && target.kind !== "trisoFactory") {
+    if (target.kind === "reactor") {
+      const absorbed = absorbPressureWithInsightToken(next, target.id, "Trouble");
+      if (absorbed) {
+        return absorbed;
+      }
+    }
     return addEvent(setFacilityStatus(next, target.id, "outage", 1), "trouble", "Trouble pawn forced a one-day outage", target.id);
   }
   return addEvent(next, "trouble", "Trouble pawn raised routing pressure", target.id);
+}
+
+function absorbPressureWithInsightToken(
+  state: FleetBoardState,
+  reactorId: string,
+  source: "Inspector" | "Trouble"
+): FleetBoardState | null {
+  const insightTokens = state.simulation.insightTokensByReactorId[reactorId] ?? 0;
+  if (insightTokens === 0) {
+    return null;
+  }
+  const next: FleetBoardState = {
+    ...state,
+    simulation: {
+      ...state.simulation,
+      insightTokensByReactorId: {
+        ...state.simulation.insightTokensByReactorId,
+        [reactorId]: insightTokens - 1
+      }
+    }
+  };
+  return addEvent(
+    next,
+    "insightTokenSpent",
+    `${source} pressure absorbed by one reactor-scoped Insight Token (local game state only)`,
+    reactorId
+  );
 }
 
 function applyDebtRules(state: FleetBoardState): FleetBoardState {

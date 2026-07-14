@@ -64,6 +64,8 @@ Implemented rules:
 - buying capacity and queueing a Simulation Job are separate actions;
 - a job requires an idle token, starts on the next `tickDay`, and completes after three advances;
 - completion returns the token to idle and awards one reactor-scoped Insight Token;
+- one Insight Token automatically absorbs one Inspector or Trouble non-refueling outage for its reactor and creates a readable event;
+- refueling outages ignore Insight Tokens and retain the existing fuel behavior;
 - blocked purchase and queue requests create readable events;
 - slot badges expose idle, queued, and running states, while Insight Token badges remain reactor-scoped.
 
