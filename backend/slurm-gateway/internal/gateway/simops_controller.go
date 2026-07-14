@@ -20,15 +20,15 @@ const maxSimopsBodyBytes = 256 * 1024
 var runIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$`)
 
 type SimopsController struct {
-	cfg      SimopsConfig
-	store    SimopsStore
-	spooler  SimopsSpooler
-	eventLog SimopsEventLog
-	artifact SimopsArtifactSink
-	writer   SimopsArtifactWriter
-	intent   *SimopsArtifactIntentProcessor
-	now      func() time.Time
-	runID    func() string
+	cfg       SimopsConfig
+	store     SimopsStore
+	spooler   SimopsSpooler
+	eventLog  SimopsEventLog
+	writer    SimopsArtifactWriter
+	intent    *SimopsArtifactIntentProcessor
+	lifecycle SimopsRunLifecycle
+	now       func() time.Time
+	runID     func() string
 }
 
 func NewDefaultSimopsController(cfg SimopsConfig) (*SimopsController, error) {
@@ -110,17 +110,20 @@ func NewSimopsController(cfg SimopsConfig, store SimopsStore, spooler SimopsSpoo
 	if intent == nil {
 		intent = NewSimopsArtifactIntentProcessor(writer, eventLog, cfg.RedpandaTopic, 1, time.Now)
 	}
-	return &SimopsController{
+	controller := &SimopsController{
 		cfg:      cfg,
 		store:    store,
 		spooler:  spooler,
 		eventLog: eventLog,
-		artifact: artifact,
 		writer:   writer,
 		intent:   intent,
 		now:      time.Now,
 		runID:    defaultRunID,
 	}
+	policy := NewSimopsRunLifecyclePolicy(cfg, store, spooler, eventLog, artifact)
+	policy.SetNow(func() time.Time { return controller.now() })
+	controller.lifecycle = policy
+	return controller
 }
 
 func (c *SimopsController) CreateRun(ctx context.Context, req SimopsRunRequest, identity string) (SimopsRunResponse, int, error) {
@@ -159,60 +162,30 @@ func (c *SimopsController) CreateRun(ctx context.Context, req SimopsRunRequest, 
 		UpdatedAt:       now,
 	}
 
-	record, created, err := c.store.CreateRun(record, nil, nil)
+	outcome, err := c.lifecycle.Start(ctx, record, workers)
 	if err != nil {
-		return SimopsRunResponse{}, http.StatusInternalServerError, err
+		return SimopsRunResponse{}, simopsLifecycleHTTPStatus(err), err
 	}
-	if !created {
+	record = outcome.Run
+	if !outcome.Created {
 		resp, _, err := c.responseFor(record, false)
 		return resp, http.StatusOK, err
-	}
-	if err := c.store.SaveLaunch(record.RunID, plannedWorkerRecords(record, workers, now), nil); err != nil {
-		return SimopsRunResponse{}, http.StatusInternalServerError, err
-	}
-
-	workerRecords, commands, err := c.startRunWorkers(ctx, record, workers)
-	if err != nil {
-		_, _ = c.store.UpdateRunLifecycle(record.RunID, SimopsFailed)
-		return SimopsRunResponse{}, http.StatusBadGateway, fmt.Errorf("failed to start SimOps workers: %w", err)
-	}
-	if err := c.store.SaveLaunch(record.RunID, workerRecords, commands); err != nil {
-		_ = c.spooler.StopRun(ctx, record.RunID)
-		return SimopsRunResponse{}, http.StatusInternalServerError, err
-	}
-
-	if _, err := c.store.UpdateRunLifecycle(record.RunID, SimopsStreaming); err != nil {
-		return SimopsRunResponse{}, http.StatusInternalServerError, err
-	}
-	record, _ = c.store.GetRun(record.RunID)
-
-	if c.artifact != nil {
-		if err := c.store.SaveArtifact(c.artifact.PlanArtifact(record)); err != nil {
-			return SimopsRunResponse{}, http.StatusInternalServerError, err
-		}
-	}
-
-	if err := c.eventLog.Publish(ctx, SimopsEvent{
-		RunID:      record.RunID,
-		EventType:  "run.lifecycle",
-		Lifecycle:  record.Lifecycle,
-		OccurredAt: c.now().UTC(),
-	}); err != nil {
-		return SimopsRunResponse{}, http.StatusBadGateway, err
 	}
 
 	return c.responseFor(record, true)
 }
 
-func (c *SimopsController) startRunWorkers(ctx context.Context, record SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
-	if profileSpooler, ok := c.spooler.(RunConnectionProfileSpooler); ok {
-		profiles, err := BuildRunWorkerConnectionProfiles(c.cfg, record, workers)
-		if err != nil {
-			return nil, nil, err
-		}
-		return profileSpooler.StartRunProfiles(ctx, record, profiles)
+func simopsLifecycleHTTPStatus(err error) int {
+	var lifecycleErr *SimopsRunLifecycleError
+	if !errors.As(err, &lifecycleErr) {
+		return http.StatusInternalServerError
 	}
-	return c.spooler.StartRun(ctx, record, workers)
+	switch lifecycleErr.Stage {
+	case SimopsRunStageRuntimeLaunch, SimopsRunStageEventPublication:
+		return http.StatusBadGateway
+	default:
+		return http.StatusInternalServerError
+	}
 }
 
 func (c *SimopsController) GetRun(runID string) (SimopsRunResponse, int, error) {

@@ -102,7 +102,20 @@ func (s *InMemorySimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 		workerMap[worker.WorkerID] = worker
 	}
 	s.workersByRun[runID] = workerMap
-	s.commandsByRun[runID] = append(s.commandsByRun[runID], commands...)
+	existingCommands := s.commandsByRun[runID]
+	commandIndexes := make(map[string]int, len(existingCommands))
+	for index, command := range existingCommands {
+		commandIndexes[command.CommandID] = index
+	}
+	for _, command := range commands {
+		if index, ok := commandIndexes[command.CommandID]; ok {
+			existingCommands[index] = command
+			continue
+		}
+		commandIndexes[command.CommandID] = len(existingCommands)
+		existingCommands = append(existingCommands, command)
+	}
+	s.commandsByRun[runID] = existingCommands
 	return nil
 }
 
