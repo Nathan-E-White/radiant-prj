@@ -18,6 +18,8 @@ const requiredFiles = [
   "scripts/simops-smoke-json.node-test.mjs",
   "scripts/simops-docker-orbstack-smoke.sh",
   "scripts/create-local-gateway-certs.sh",
+  "scripts/check-configured-data-flush.mjs",
+  "docs/operations/configured-data-flush.md",
   "infra/terraform/main.tf",
   "infra/terraform/variables.tf",
   "infra/terraform/outputs.tf",

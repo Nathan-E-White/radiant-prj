@@ -102,6 +102,26 @@ func TestSimopsResultIngestAcceptsSimulatedResult(t *testing.T) {
 	}
 }
 
+func TestSimopsResultIngestRejectsTerminalRunToken(t *testing.T) {
+	app, record := newSimopsResultTestRun(t, "RUN-RESULT-COMPLETE")
+	if _, err := app.simops.store.UpdateRunLifecycle(record.RunID, SimopsComplete); err != nil {
+		t.Fatalf("complete run: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/simops/runs/RUN-RESULT-COMPLETE/results", strings.NewReader(mustJSON(t, SimopsResultBatch{Results: []SimopsResultFrame{simopsResultFixture(record.RunID)}})))
+	req.Header.Set("X-Simops-Ingest-Token", record.IngestToken)
+	rr := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "run_not_writable") {
+		t.Fatalf("terminal Run result token was not fenced, got %d: %s", rr.Code, rr.Body.String())
+	}
+	results, err := app.workbench.store.LatestResultFrames(10)
+	if err != nil || len(results) != 0 {
+		t.Fatalf("terminal Run ingest persisted results: results=%#v err=%v", results, err)
+	}
+}
+
 func TestSimopsResultIngestRejectsImputedWorkerOutput(t *testing.T) {
 	app, record := newSimopsResultTestRun(t, "RUN-RESULT-BAD")
 	result := simopsResultFixture("RUN-RESULT-BAD")

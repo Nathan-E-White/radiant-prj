@@ -33,6 +33,7 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 | Resident SCADA stand-in tests | `bun run scada:standins:test` | Rust test output |
 | Reactor Telemetry Worker Set contract | `bun run backend:test`, `bun run backend:snapshot:postgres:test` | Caps, idempotency, restart recovery, source/reactor credential binding, retention, and cleanup tests |
 | Reactor Telemetry Docker tracer bullet | Build `deploy/scada-standins.Dockerfile`, then run `go test -tags dockerintegration ./internal/gateway -run '^TestDockerReactorTelemetryWorkerSetPublishesMeasuredStateAndCleansUp$'` with `DOCKER_HOST` and `REACTOR_TELEMETRY_TEST_IMAGE` set | One three-worker set, six reactor-scoped Measured State tags, gateway-only credentials, and zero labeled containers after removal |
+| Configured Data Flush | `bun run configured-data-flush:check`, `bun run backend:snapshot:postgres:test` | Dry-run completeness, stale-plan and active-resource rejection, protected-resource preservation, transaction rollback, coherent next generation, and subsequent Run startup |
 | SimOps generator tests | `bun run simops:generator:test` | Rust test output |
 | Docker/OrbStack SimOps runtime smoke | `bun run simops:smoke:docker-orbstack` (`SIMOPS_SMOKE_BUILD=always` for forced image rebuild) | Docker/OrbStack launch, gateway-ingest, lifecycle sync, zero-TTL success cleanup, failed-worker retention/log evidence, and smoke-forced cleanup output |
 | Kind/client-go SimOps runtime smoke | `bun run simops:smoke:kind -- --timeout 300 --build auto` | Kind context, namespace, Job names, run IDs, gateway-only worker inputs, frame ingest, success/image-pull lifecycle, TTL, retention, and cleanup output |
@@ -56,5 +57,6 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 - CRD/operator, Argo, Tekton, host-facing Redpanda listeners, and production hardening remain deferred.
 - Status Workbench backend dataflow proves measured SCADA frames, SimOps telemetry, simulated results, and imputed twin state through Redpanda, Postgres, Iceberg, and read-only APIs.
 - Reactor Telemetry runtime proof creates no more than three Resident Source workers for one reactor, projects six reactor-scoped `valueBasis=measured` tags, exposes no ingest credential to the browser response, and removes every set-labeled container.
+- Configured Data Flush defaults to a readable plan, requires its exact reviewed identifier for mutation, blocks active runtime resources, preserves protected platform resources, and atomically exposes either the prior or next coherent Workbench generation.
 - Release scripts pass dry-run checks.
 - No blocking findings remain open in release records.

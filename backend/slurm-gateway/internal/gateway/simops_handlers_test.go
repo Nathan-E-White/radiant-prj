@@ -139,6 +139,57 @@ func TestSimopsInternalIngestAcceptsTelemetryBatch(t *testing.T) {
 	}
 }
 
+func TestSimopsInternalIngestRejectsTerminalRunToken(t *testing.T) {
+	app, _ := newSimopsTestGateway(t, "RUN-INGEST-COMPLETE")
+	create := signedRequest(http.MethodPost, "/api/simops/runs", `{"scenario_id":"scheduler-drift","worker_kinds":["scheduler"]}`, "react-backend-client")
+	app.Handler().ServeHTTP(httptest.NewRecorder(), create)
+	record, err := app.simops.store.UpdateRunLifecycle("RUN-INGEST-COMPLETE", SimopsComplete)
+	if err != nil {
+		t.Fatalf("complete run: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/simops/runs/RUN-INGEST-COMPLETE/ingest", strings.NewReader(telemetryBatch(record.RunID, "scheduler-01")))
+	req.Header.Set("X-Simops-Ingest-Token", record.IngestToken)
+	rr := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "run_not_writable") {
+		t.Fatalf("terminal Run token was not fenced, got %d: %s", rr.Code, rr.Body.String())
+	}
+	workers, err := app.simops.store.ListWorkers(record.RunID)
+	if err != nil || len(workers) != 1 || workers[0].Frames != 0 {
+		t.Fatalf("terminal Run ingest changed worker frames: workers=%#v err=%v", workers, err)
+	}
+}
+
+func TestSimopsStopPreservesTerminalIdempotencyAndFailedCleanup(t *testing.T) {
+	tests := []struct {
+		name          string
+		lifecycle     SimopsLifecycle
+		wantLifecycle SimopsLifecycle
+		wantStops     int
+	}{
+		{name: "stopped", lifecycle: SimopsStopped, wantLifecycle: SimopsStopped},
+		{name: "complete", lifecycle: SimopsComplete, wantLifecycle: SimopsComplete},
+		{name: "failed cleanup", lifecycle: SimopsFailed, wantLifecycle: SimopsStopped, wantStops: 1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			app, spooler := newSimopsTestGateway(t, "RUN-STOP-TERMINAL")
+			create := signedRequest(http.MethodPost, "/api/simops/runs", `{"scenario_id":"scheduler-drift","worker_kinds":["scheduler"]}`, "react-backend-client")
+			app.Handler().ServeHTTP(httptest.NewRecorder(), create)
+			if _, err := app.simops.store.UpdateRunLifecycle("RUN-STOP-TERMINAL", test.lifecycle); err != nil {
+				t.Fatalf("set lifecycle: %v", err)
+			}
+
+			response, status, err := app.simops.StopRun(context.Background(), "RUN-STOP-TERMINAL")
+			if err != nil || status != http.StatusOK || response.Lifecycle != test.wantLifecycle || spooler.stops != test.wantStops {
+				t.Fatalf("stop response=%#v status=%d stops=%d err=%v", response, status, spooler.stops, err)
+			}
+		})
+	}
+}
+
 func TestSimopsRunEventsEndpointReturnsPersistedEvents(t *testing.T) {
 	app, _ := newSimopsTestGateway(t, "RUN-EVENTS")
 	create := signedRequest(http.MethodPost, "/api/simops/runs", `{"scenario_id":"scheduler-drift","worker_kinds":["scheduler"]}`, "react-backend-client")
@@ -218,6 +269,7 @@ func newSimopsTestGateway(t *testing.T, runID string) (*Gateway, *countingSimops
 type countingSimopsSpooler struct {
 	delegate ContractSimopsSpooler
 	starts   int
+	stops    int
 }
 
 func (s *countingSimopsSpooler) StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
@@ -226,6 +278,7 @@ func (s *countingSimopsSpooler) StartRun(ctx context.Context, run SimopsRunRecor
 }
 
 func (s *countingSimopsSpooler) StopRun(ctx context.Context, runID string) error {
+	s.stops++
 	return s.delegate.StopRun(ctx, runID)
 }
 
