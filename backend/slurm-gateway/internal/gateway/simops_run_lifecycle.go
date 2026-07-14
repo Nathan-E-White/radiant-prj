@@ -19,6 +19,7 @@ const (
 	SimopsRunStageArtifactPlanning    SimopsRunLifecycleStage = "artifact_planning"
 	SimopsRunStageArtifactPersistence SimopsRunLifecycleStage = "artifact_persistence"
 	SimopsRunStageEventPublication    SimopsRunLifecycleStage = "event_publication"
+	SimopsRunStageIncompleteRecovery  SimopsRunLifecycleStage = "incomplete_launch_recovery"
 )
 
 type SimopsRunLifecycleError struct {
@@ -88,6 +89,9 @@ func (p *SimopsRunLifecyclePolicy) Start(ctx context.Context, record SimopsRunRe
 	}
 	outcome := SimopsRunLifecycleOutcome{Run: stored, Created: created}
 	if !created {
+		if stored.Lifecycle == SimopsStarting {
+			return p.recoverIncompleteStart(ctx, outcome)
+		}
 		return outcome, nil
 	}
 
@@ -130,6 +134,46 @@ func (p *SimopsRunLifecyclePolicy) Start(ctx context.Context, record SimopsRunRe
 	return outcome, nil
 }
 
+func (p *SimopsRunLifecyclePolicy) recoverIncompleteStart(ctx context.Context, outcome SimopsRunLifecycleOutcome) (SimopsRunLifecycleOutcome, error) {
+	workers, workersErr := p.store.ListWorkers(outcome.Run.RunID)
+	commands, commandsErr := p.store.ListCommands(outcome.Run.RunID)
+	launched := []SimopsWorkerRecord{}
+	reconcileErrors := []error{errors.New("idempotent retry found an incomplete starting Run")}
+	if workersErr != nil {
+		reconcileErrors = append(reconcileErrors, fmt.Errorf("list workers for recovery: %w", workersErr))
+	} else {
+		recoveryCtx, cancel := p.recoveryContext(ctx)
+		observations, err := p.spooler.SyncRun(recoveryCtx, outcome.Run, workers)
+		cancel()
+		if err != nil {
+			reconcileErrors = append(reconcileErrors, fmt.Errorf("observe workers for recovery: %w", err))
+		} else {
+			workersByID := make(map[string]SimopsWorkerRecord, len(workers))
+			for _, worker := range workers {
+				workersByID[worker.WorkerID] = worker
+			}
+			for _, observation := range observations {
+				worker, ok := workersByID[observation.WorkerID]
+				if !ok {
+					continue
+				}
+				if err := p.store.UpdateWorkerObservedLifecycle(observation); err != nil {
+					reconcileErrors = append(reconcileErrors, fmt.Errorf("persist worker %s recovery observation: %w", observation.WorkerID, err))
+				}
+				applyObservedWorkerLifecycle(&worker, observation, p.now)
+				if observedRuntimeResourceExists(observation) {
+					launched = append(launched, worker)
+				}
+			}
+		}
+	}
+	if commandsErr != nil {
+		reconcileErrors = append(reconcileErrors, fmt.Errorf("list commands for recovery: %w", commandsErr))
+		commands = nil
+	}
+	return p.fail(ctx, outcome, workers, launched, commands, SimopsRunStageIncompleteRecovery, errors.Join(reconcileErrors...))
+}
+
 func (p *SimopsRunLifecyclePolicy) startWorkers(ctx context.Context, record SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
 	if profileSpooler, ok := p.spooler.(RunConnectionProfileSpooler); ok {
 		profiles, err := BuildRunWorkerConnectionProfiles(p.cfg, record, workers)
@@ -142,9 +186,11 @@ func (p *SimopsRunLifecyclePolicy) startWorkers(ctx context.Context, record Simo
 }
 
 func (p *SimopsRunLifecyclePolicy) fail(ctx context.Context, outcome SimopsRunLifecycleOutcome, planned, launched []SimopsWorkerRecord, commands []SimopsSpoolCommand, stage SimopsRunLifecycleStage, cause error) (SimopsRunLifecycleOutcome, error) {
-	compensationErr := p.compensate(context.WithoutCancel(ctx), outcome.Run, planned)
+	recoveryCtx, cancel := p.recoveryContext(ctx)
+	defer cancel()
+	compensationErr := p.compensate(recoveryCtx, outcome.Run, planned)
 	workerOutcomes := failedWorkerOutcomes(planned, launched, compensationErr == nil, p.now().UTC())
-	commandOutcomes := failedCommandOutcomes(commands, compensationErr == nil, p.now().UTC())
+	commandOutcomes := failedCommandOutcomes(commands, launched, compensationErr == nil, p.now().UTC())
 
 	recoveryErrors := []error{}
 	if err := p.store.SaveLaunch(outcome.Run.RunID, workerOutcomes, commandOutcomes); err != nil {
@@ -174,10 +220,13 @@ func (p *SimopsRunLifecyclePolicy) fail(ctx context.Context, outcome SimopsRunLi
 	}
 
 	failureEvent := lifecycleFailureEvent(outcome.Run.RunID, stage, cause, compensationErr, p.now().UTC())
-	if err := p.eventLog.Publish(context.WithoutCancel(ctx), failureEvent); err != nil {
+	if err := p.eventLog.Publish(recoveryCtx, failureEvent); err != nil {
 		if storeErr := p.store.SaveEvent(failureEvent); storeErr != nil {
 			recoveryErrors = append(recoveryErrors, fmt.Errorf("persist lifecycle failure event: %w", storeErr))
 		}
+	}
+	if err := recoveryCtx.Err(); err != nil {
+		recoveryErrors = append(recoveryErrors, fmt.Errorf("bounded lifecycle recovery: %w", err))
 	}
 
 	return outcome, &SimopsRunLifecycleError{
@@ -186,6 +235,14 @@ func (p *SimopsRunLifecyclePolicy) fail(ctx context.Context, outcome SimopsRunLi
 		CompensationError: compensationErr,
 		RecoveryError:     errors.Join(recoveryErrors...),
 	}
+}
+
+func (p *SimopsRunLifecyclePolicy) recoveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	timeout := p.cfg.LifecycleRecoveryTimeout
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+	return context.WithTimeout(context.WithoutCancel(ctx), timeout)
 }
 
 func (p *SimopsRunLifecyclePolicy) compensate(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) error {
@@ -237,6 +294,18 @@ func validateLaunchedWorkers(planned, launched []SimopsWorkerRecord) error {
 	return nil
 }
 
+func observedRuntimeResourceExists(observation ObservedWorkerLifecycle) bool {
+	if strings.TrimSpace(observation.RuntimeID) != "" {
+		return true
+	}
+	switch observation.State {
+	case ObservedWorkerPending, ObservedWorkerActive, ObservedWorkerSucceeded, ObservedWorkerFailed, ObservedWorkerStopped:
+		return true
+	default:
+		return false
+	}
+}
+
 func failedWorkerOutcomes(planned, launched []SimopsWorkerRecord, compensated bool, now time.Time) []SimopsWorkerRecord {
 	launchedByID := make(map[string]SimopsWorkerRecord, len(launched))
 	for _, worker := range launched {
@@ -260,10 +329,15 @@ func failedWorkerOutcomes(planned, launched []SimopsWorkerRecord, compensated bo
 	return outcomes
 }
 
-func failedCommandOutcomes(commands []SimopsSpoolCommand, compensated bool, now time.Time) []SimopsSpoolCommand {
+func failedCommandOutcomes(commands []SimopsSpoolCommand, launched []SimopsWorkerRecord, compensated bool, now time.Time) []SimopsSpoolCommand {
+	launchedWorkerIDs := make(map[string]struct{}, len(launched))
+	for _, worker := range launched {
+		launchedWorkerIDs[worker.WorkerID] = struct{}{}
+	}
 	outcomes := make([]SimopsSpoolCommand, 0, len(commands))
 	for _, command := range commands {
-		if compensated {
+		_, workerLaunched := launchedWorkerIDs[command.WorkerID]
+		if compensated && workerLaunched {
 			command.State = SimopsStopped
 			command.Message = strings.TrimSpace(command.Message + "; stopped by Run launch compensation")
 		} else {

@@ -55,6 +55,7 @@ type SimopsConfig struct {
 	WorkerKubernetesServiceAccount string
 	WorkerKubeconfig               string
 	WorkerCleanupTTL               time.Duration
+	LifecycleRecoveryTimeout       time.Duration
 	WorkerAutoRemove               bool
 	MoQWebTransportURL             string
 	StreamTokenTTL                 time.Duration
@@ -131,6 +132,7 @@ func DefaultConfig() Config {
 			WorkerKubernetesNamespace:      "radiant-simops",
 			WorkerKubernetesServiceAccount: "simops-worker",
 			WorkerCleanupTTL:               10 * time.Minute,
+			LifecycleRecoveryTimeout:       10 * time.Second,
 			WorkerAutoRemove:               false,
 			MoQWebTransportURL:             "https://127.0.0.1:9443/moq/simops",
 			StreamTokenTTL:                 15 * time.Minute,
@@ -315,6 +317,13 @@ func LoadConfigFromEnv() (Config, error) {
 		}
 		cfg.Simops.WorkerCleanupTTL = value
 	}
+	if raw := strings.TrimSpace(os.Getenv("SIMOPS_LIFECYCLE_RECOVERY_TIMEOUT")); raw != "" {
+		value, err := time.ParseDuration(raw)
+		if err != nil {
+			return cfg, fmt.Errorf("SIMOPS_LIFECYCLE_RECOVERY_TIMEOUT must be a duration: %w", err)
+		}
+		cfg.Simops.LifecycleRecoveryTimeout = value
+	}
 	if raw := strings.TrimSpace(os.Getenv("SIMOPS_ICEBERG_BATCH_SIZE")); raw != "" {
 		value, err := strconv.Atoi(raw)
 		if err != nil {
@@ -446,6 +455,9 @@ func (c SimopsConfig) Validate() error {
 	}
 	if c.MaxActiveRuns < 1 {
 		return fmt.Errorf("SIMOPS_MAX_ACTIVE_RUNS must be at least 1")
+	}
+	if c.LifecycleRecoveryTimeout <= 0 {
+		return fmt.Errorf("SIMOPS_LIFECYCLE_RECOVERY_TIMEOUT must be positive")
 	}
 	switch c.WorkerRuntime {
 	case "contract", "docker", "kubernetes":

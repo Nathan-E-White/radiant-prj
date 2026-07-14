@@ -134,15 +134,15 @@ func (c *SimopsController) CreateRun(ctx context.Context, req SimopsRunRequest, 
 	if err := normalizeRunRequest(&req, c.cfg.LaunchMode); err != nil {
 		return SimopsRunResponse{}, http.StatusUnprocessableEntity, err
 	}
+	existingRun := false
 	if req.IdempotencyKey != "" {
-		if existing, err := c.store.GetRunByIdempotency(identity, req.IdempotencyKey); err == nil {
-			resp, _, err := c.responseFor(existing, false)
-			return resp, http.StatusOK, err
+		if _, err := c.store.GetRunByIdempotency(identity, req.IdempotencyKey); err == nil {
+			existingRun = true
 		} else if !errors.Is(err, ErrSimopsRunNotFound) {
 			return SimopsRunResponse{}, http.StatusInternalServerError, err
 		}
 	}
-	if c.store.ActiveRunCount() >= c.cfg.MaxActiveRuns {
+	if !existingRun && c.store.ActiveRunCount() >= c.cfg.MaxActiveRuns {
 		return SimopsRunResponse{}, http.StatusTooManyRequests, fmt.Errorf("maximum active SimOps runs reached")
 	}
 

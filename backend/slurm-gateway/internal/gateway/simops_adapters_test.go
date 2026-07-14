@@ -93,6 +93,25 @@ func TestPostgresSimopsStoreRoundTrip(t *testing.T) {
 	if _, created, err := store.CreateRun(run, []SimopsWorkerRecord{worker}, []SimopsSpoolCommand{command}); err != nil || !created {
 		t.Fatalf("create postgres run created=%v err=%v", created, err)
 	}
+	worker.Runtime = "docker"
+	worker.RuntimeID = "container-postgres-roundtrip"
+	worker.Endpoint = "http://gateway/internal/simops/ingest"
+	worker.Labels = map[string]string{"simops.runtime_adapter": "docker-sdk"}
+	worker.UpdatedAt = time.Now().UTC().Add(time.Second)
+	command.State = SimopsStopped
+	command.Message = "stopped by lifecycle compensation"
+	command.UpdatedAt = worker.UpdatedAt
+	if err := store.SaveLaunch(runID, []SimopsWorkerRecord{worker}, []SimopsSpoolCommand{command}); err != nil {
+		t.Fatalf("upsert postgres launch: %v", err)
+	}
+	workers, err := store.ListWorkers(runID)
+	if err != nil || len(workers) != 1 || workers[0].Runtime != "docker" || workers[0].RuntimeID != "container-postgres-roundtrip" {
+		t.Fatalf("postgres launch identity parity failed: workers=%#v err=%v", workers, err)
+	}
+	commands, err := store.ListCommands(runID)
+	if err != nil || len(commands) != 1 || commands[0].State != SimopsStopped {
+		t.Fatalf("postgres command upsert parity failed: commands=%#v err=%v", commands, err)
+	}
 	if err := store.SaveEvent(SimopsEvent{RunID: runID, EventType: "run.lifecycle", Lifecycle: SimopsStreaming, OccurredAt: time.Now().UTC()}); err != nil {
 		t.Fatalf("save event: %v", err)
 	}

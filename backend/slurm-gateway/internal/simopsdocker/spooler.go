@@ -102,13 +102,11 @@ func (s Spooler) StartRunProfiles(ctx context.Context, run gateway.SimopsRunReco
 	commands := make([]gateway.SimopsSpoolCommand, 0, len(profiles))
 	for _, profile := range profiles {
 		if err := validateLaunchProfile(run, profile); err != nil {
-			_ = s.tryStopRunProfiles(ctx, run.RunID, profiles)
-			return nil, nil, err
+			return records, commands, err
 		}
 		containerID, err := s.startWorker(ctx, profile)
 		if err != nil {
-			_ = s.tryStopRunProfiles(ctx, run.RunID, profiles)
-			return nil, nil, err
+			return records, commands, err
 		}
 
 		now := s.now()
@@ -119,6 +117,8 @@ func (s Spooler) StartRunProfiles(ctx context.Context, run gateway.SimopsRunReco
 			Lifecycle:  gateway.SimopsStarting,
 			LaunchMode: profile.LaunchMode,
 			Endpoint:   profile.Gateway.IngestURL,
+			Runtime:    "docker",
+			RuntimeID:  containerID,
 			UpdatedAt:  now,
 			Labels:     launchLabels(profile, containerID),
 		})

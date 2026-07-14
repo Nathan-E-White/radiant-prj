@@ -124,6 +124,51 @@ func TestSpoolerMapsLaunchErrors(t *testing.T) {
 	}
 }
 
+func TestRunLifecycleOwnsDockerPartialLaunchCompensation(t *testing.T) {
+	cfg := testDockerConfig()
+	run := testDockerRun("RUN-DOCKER-LIFECYCLE-PARTIAL")
+	run.Lifecycle = gateway.SimopsStarting
+	run.SubmittedBy = "test"
+	run.CreatedAt = fixedNow()
+	run.UpdatedAt = fixedNow()
+	client := &fakeDockerClient{
+		image: image.InspectResponse{ID: "image-123"},
+		createSequence: []container.CreateResponse{
+			{ID: "container-scheduler"},
+			{},
+		},
+		createErrorSequence: []error{nil, errors.New("storage create failed")},
+		listed:              []container.Summary{dockerSummary("container-scheduler", run.RunID, "scheduler-01", "scheduler")},
+	}
+	spooler := &Spooler{Config: cfg, Client: client, Now: fixedNow}
+	store := gateway.NewInMemorySimopsStore()
+	lifecycle := gateway.NewSimopsRunLifecyclePolicy(cfg, store, spooler, gateway.MemorySimopsEventLog{Store: store}, gateway.IcebergArtifactPlanner{})
+	lifecycle.SetNow(fixedNow)
+
+	outcome, err := lifecycle.Start(context.Background(), run, []gateway.SimopsWorkerKind{gateway.SimopsWorkerScheduler, gateway.SimopsWorkerStorage})
+	var lifecycleErr *gateway.SimopsRunLifecycleError
+	if !errors.As(err, &lifecycleErr) || lifecycleErr.Stage != gateway.SimopsRunStageRuntimeLaunch {
+		t.Fatalf("expected runtime launch failure, got outcome=%#v err=%v", outcome, err)
+	}
+	if !slices.Equal(client.stopped, []string{"container-scheduler"}) || !slices.Equal(client.removed, []string{"container-scheduler"}) {
+		t.Fatalf("expected one policy-owned compensation, stopped=%#v removed=%#v", client.stopped, client.removed)
+	}
+	workers, listErr := store.ListWorkers(run.RunID)
+	if listErr != nil {
+		t.Fatalf("list workers: %v", listErr)
+	}
+	byID := map[string]gateway.SimopsWorkerRecord{}
+	for _, worker := range workers {
+		byID[worker.WorkerID] = worker
+	}
+	if byID["scheduler-01"].Lifecycle != gateway.SimopsStopped || byID["scheduler-01"].RuntimeID != "container-scheduler" {
+		t.Fatalf("unexpected launched worker outcome %#v", byID["scheduler-01"])
+	}
+	if byID["storage-01"].Lifecycle != gateway.SimopsFailed {
+		t.Fatalf("unexpected unlaunched worker outcome %#v", byID["storage-01"])
+	}
+}
+
 func TestSpoolerMapsImageInspectAndStartErrors(t *testing.T) {
 	t.Run("image inspect", func(t *testing.T) {
 		run := testDockerRun("RUN-IMAGE-FAIL")
@@ -571,17 +616,20 @@ func fixedNow() time.Time {
 }
 
 type fakeDockerClient struct {
-	image      image.InspectResponse
-	imageErr   error
-	create     container.CreateResponse
-	createErr  error
-	startErr   error
-	listed     []container.Summary
-	listErr    error
-	inspect    map[string]container.InspectResponse
-	inspectErr error
-	stopErr    error
-	removeErr  error
+	image               image.InspectResponse
+	imageErr            error
+	create              container.CreateResponse
+	createErr           error
+	createSequence      []container.CreateResponse
+	createErrorSequence []error
+	createCalls         int
+	startErr            error
+	listed              []container.Summary
+	listErr             error
+	inspect             map[string]container.InspectResponse
+	inspectErr          error
+	stopErr             error
+	removeErr           error
 
 	inspectedImage      string
 	createdConfig       container.Config
@@ -613,6 +661,16 @@ func (c *fakeDockerClient) ContainerCreate(_ context.Context, config *container.
 	}
 	c.createdPlatform = platform
 	c.createdName = containerName
+	if c.createCalls < len(c.createSequence) {
+		response := c.createSequence[c.createCalls]
+		var err error
+		if c.createCalls < len(c.createErrorSequence) {
+			err = c.createErrorSequence[c.createCalls]
+		}
+		c.createCalls++
+		return response, err
+	}
+	c.createCalls++
 	return c.create, c.createErr
 }
 

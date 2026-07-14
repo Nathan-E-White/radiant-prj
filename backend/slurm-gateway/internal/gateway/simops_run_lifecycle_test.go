@@ -118,6 +118,108 @@ func TestSimopsRunLifecycleRejectsSilentPartialLaunch(t *testing.T) {
 	}
 }
 
+func TestSimopsRunLifecycleRecoversStrandedStartingRunOnIdempotentRetry(t *testing.T) {
+	now := time.Date(2026, 7, 14, 3, 30, 0, 0, time.UTC)
+	store := NewInMemorySimopsStore()
+	run := SimopsRunRecord{
+		RunID: "RUN-STRANDED", ScenarioID: "scheduler-drift", Lifecycle: SimopsStarting,
+		LaunchMode: "auto", IdempotencyKey: "retry-key", SubmittedBy: "react-backend-client",
+		IngestToken: "test-token", CreatedAt: now, UpdatedAt: now,
+	}
+	planned := plannedWorkerRecords(run, []SimopsWorkerKind{SimopsWorkerScheduler, SimopsWorkerStorage}, now)
+	if _, created, err := store.CreateRun(run, planned, nil); err != nil || !created {
+		t.Fatalf("seed stranded Run created=%v err=%v", created, err)
+	}
+	spooler := &recoveringLifecycleSpooler{observations: []ObservedWorkerLifecycle{
+		{RunID: run.RunID, WorkerID: "scheduler-01", WorkerKind: SimopsWorkerScheduler, State: ObservedWorkerActive, Runtime: "docker", RuntimeID: "container-scheduler", ObservedAt: now},
+		{RunID: run.RunID, WorkerID: "storage-01", WorkerKind: SimopsWorkerStorage, State: ObservedWorkerMissing, Runtime: "docker", ObservedAt: now},
+	}}
+	lifecycle := NewSimopsRunLifecyclePolicy(testRunConnectionProfileConfig(), store, spooler, MemorySimopsEventLog{Store: store}, IcebergArtifactPlanner{})
+	lifecycle.SetNow(func() time.Time { return now })
+
+	retryRecord := run
+	retryRecord.RunID = "RUN-RETRY-SHOULD-NOT-REPLACE"
+	outcome, err := lifecycle.Start(context.Background(), retryRecord, []SimopsWorkerKind{SimopsWorkerFabric})
+	assertLifecycleErrorStage(t, err, SimopsRunStageIncompleteRecovery)
+	if outcome.Run.RunID != run.RunID || outcome.Run.Lifecycle != SimopsFailed || spooler.stops != 1 {
+		t.Fatalf("unexpected recovered outcome=%#v stops=%d", outcome, spooler.stops)
+	}
+	workers, _ := store.ListWorkers(run.RunID)
+	byID := map[string]SimopsWorkerRecord{}
+	for _, worker := range workers {
+		byID[worker.WorkerID] = worker
+	}
+	if byID["scheduler-01"].Lifecycle != SimopsStopped || byID["scheduler-01"].RuntimeID != "container-scheduler" {
+		t.Fatalf("expected observed runtime worker stopped with identity, got %#v", byID["scheduler-01"])
+	}
+	if byID["storage-01"].Lifecycle != SimopsFailed {
+		t.Fatalf("expected missing worker failed, got %#v", byID["storage-01"])
+	}
+
+	replayed, err := lifecycle.Start(context.Background(), retryRecord, []SimopsWorkerKind{SimopsWorkerFabric})
+	if err != nil || replayed.Run.Lifecycle != SimopsFailed || spooler.stops != 1 {
+		t.Fatalf("terminal retry must replay without another compensation: outcome=%#v stops=%d err=%v", replayed, spooler.stops, err)
+	}
+}
+
+func TestSimopsControllerIdempotentRetryRecoversStartingRunAtCapacity(t *testing.T) {
+	now := time.Date(2026, 7, 14, 3, 35, 0, 0, time.UTC)
+	cfg := testRunConnectionProfileConfig()
+	cfg.MaxActiveRuns = 1
+	store := NewInMemorySimopsStore()
+	run := SimopsRunRecord{
+		RunID: "RUN-CONTROLLER-STRANDED", ScenarioID: "scheduler-drift", Lifecycle: SimopsStarting,
+		Source: "frontend", WorkScript: "scheduler-drift", LaunchMode: "auto", RuntimeLimitSec: 120,
+		IdempotencyKey: "controller-retry", SubmittedBy: "react-backend-client", IngestToken: "test-token", CreatedAt: now, UpdatedAt: now,
+	}
+	planned := plannedWorkerRecords(run, []SimopsWorkerKind{SimopsWorkerScheduler}, now)
+	if _, created, err := store.CreateRun(run, planned, nil); err != nil || !created {
+		t.Fatalf("seed controller stranded Run created=%v err=%v", created, err)
+	}
+	spooler := &recoveringLifecycleSpooler{observations: []ObservedWorkerLifecycle{{
+		RunID: run.RunID, WorkerID: "scheduler-01", WorkerKind: SimopsWorkerScheduler, State: ObservedWorkerMissing, Runtime: "docker", ObservedAt: now,
+	}}}
+	controller := NewSimopsController(cfg, store, spooler, MemorySimopsEventLog{Store: store}, IcebergArtifactPlanner{}, nil, nil)
+	controller.now = func() time.Time { return now }
+	controller.runID = func() string { return "RUN-NEW-SHOULD-NOT-BE-CREATED" }
+
+	_, status, err := controller.CreateRun(context.Background(), SimopsRunRequest{
+		ScenarioID: "scheduler-drift", WorkerKinds: []string{"scheduler"}, LaunchMode: "auto", IdempotencyKey: "controller-retry",
+	}, "react-backend-client")
+	assertLifecycleErrorStage(t, err, SimopsRunStageIncompleteRecovery)
+	if status != 500 || spooler.stops != 1 {
+		t.Fatalf("expected bounded recovery instead of capacity rejection: status=%d stops=%d err=%v", status, spooler.stops, err)
+	}
+	stored, getErr := store.GetRun(run.RunID)
+	if getErr != nil || stored.Lifecycle != SimopsFailed {
+		t.Fatalf("expected stranded Run terminated: run=%#v err=%v", stored, getErr)
+	}
+	if _, getErr := store.GetRun("RUN-NEW-SHOULD-NOT-BE-CREATED"); !errors.Is(getErr, ErrSimopsRunNotFound) {
+		t.Fatalf("retry must not create a replacement Run, err=%v", getErr)
+	}
+}
+
+func TestSimopsRunLifecycleBoundsDetachedRecovery(t *testing.T) {
+	store := NewInMemorySimopsStore()
+	spooler := &blockingRecoveryLifecycleSpooler{delegate: ContractSimopsSpooler{Mode: "auto"}}
+	cfg := testRunConnectionProfileConfig()
+	cfg.LifecycleRecoveryTimeout = 10 * time.Millisecond
+	lifecycle := NewSimopsRunLifecyclePolicy(cfg, store, spooler, MemorySimopsEventLog{Store: store}, invalidLifecycleArtifactPlanner{})
+	now := time.Date(2026, 7, 14, 3, 45, 0, 0, time.UTC)
+	lifecycle.SetNow(func() time.Time { return now })
+	run := SimopsRunRecord{RunID: "RUN-BOUNDED-RECOVERY", ScenarioID: "scheduler-drift", Lifecycle: SimopsStarting, LaunchMode: "auto", SubmittedBy: "test", CreatedAt: now, UpdatedAt: now}
+
+	started := time.Now()
+	_, err := lifecycle.Start(context.Background(), run, []SimopsWorkerKind{SimopsWorkerScheduler})
+	if time.Since(started) > time.Second {
+		t.Fatalf("bounded recovery exceeded one second: %v", time.Since(started))
+	}
+	var lifecycleErr *SimopsRunLifecycleError
+	if !errors.As(err, &lifecycleErr) || !errors.Is(lifecycleErr.CompensationError, context.DeadlineExceeded) || !errors.Is(lifecycleErr.RecoveryError, context.DeadlineExceeded) {
+		t.Fatalf("expected typed deadline evidence, got %T %v", err, err)
+	}
+}
+
 func TestSimopsRunLifecycleHTTPStatusSeparatesAdapterAndControlFailures(t *testing.T) {
 	tests := []struct {
 		stage SimopsRunLifecycleStage
@@ -314,6 +416,41 @@ type trackingLifecycleSpooler struct {
 type silentPartialLifecycleSpooler struct {
 	delegate ContractSimopsSpooler
 	stops    int
+}
+
+type recoveringLifecycleSpooler struct {
+	observations []ObservedWorkerLifecycle
+	stops        int
+}
+
+func (s *recoveringLifecycleSpooler) StartRun(context.Context, SimopsRunRecord, []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	return nil, nil, errors.New("stranded recovery must not relaunch")
+}
+
+func (s *recoveringLifecycleSpooler) StopRun(context.Context, string) error {
+	s.stops++
+	return nil
+}
+
+func (s *recoveringLifecycleSpooler) SyncRun(context.Context, SimopsRunRecord, []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
+	return append([]ObservedWorkerLifecycle(nil), s.observations...), nil
+}
+
+type blockingRecoveryLifecycleSpooler struct {
+	delegate ContractSimopsSpooler
+}
+
+func (s *blockingRecoveryLifecycleSpooler) StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	return s.delegate.StartRun(ctx, run, workers)
+}
+
+func (*blockingRecoveryLifecycleSpooler) StopRun(ctx context.Context, _ string) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (s *blockingRecoveryLifecycleSpooler) SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
+	return s.delegate.SyncRun(ctx, run, workers)
 }
 
 func (s *silentPartialLifecycleSpooler) StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
