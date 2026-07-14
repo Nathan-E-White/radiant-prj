@@ -1,8 +1,13 @@
-import type { FleetBoardFacilityKind, FleetBoardSceneModel } from "../../domain/fleet-board";
+import type {
+  FleetBoardFacilityKind,
+  FleetBoardSceneModel,
+  FleetBoardSpriteKey
+} from "../../domain/fleet-board";
 
 export type FleetBoardPhaserUpdate = {
   scene: FleetBoardSceneModel;
   onPlaceFacility: (facilityKind: FleetBoardFacilityKind, x: number, y: number) => void;
+  onSelectReactor: (facilityId: string) => void;
 };
 
 export type FleetBoardPhaserMount = FleetBoardPhaserUpdate & {
@@ -20,7 +25,7 @@ type StartFleetBoardPhaserGame = (
 
 const spriteSheetUrl = new URL("../../assets/fleet-board/fleet-board-placeholder-sprites.png", import.meta.url).href;
 
-const frameBySpriteKey: Record<string, number> = {
+const frameBySpriteKey: Record<FleetBoardSpriteKey, number> = {
   reactor: 0,
   trisoFactory: 1,
   desalPlant: 2,
@@ -209,7 +214,7 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
       this.dynamicLayer.add(graphics);
 
       graphics.lineStyle(3, 0x2ad6c7, 0.62);
-      for (const route of buildRouteSegments(scene)) {
+      for (const route of scene.routes) {
         graphics.lineBetween(
           offset.x + route.from.gridX * tileSize,
           offset.y + route.from.gridY * tileSize,
@@ -221,6 +226,10 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
       for (const facility of scene.facilities) {
         const x = offset.x + facility.gridX * tileSize;
         const y = offset.y + facility.gridY * tileSize;
+        if (facility.id === scene.selectedReactorId) {
+          graphics.lineStyle(3, 0xf8d66d, 0.92);
+          graphics.strokeCircle(x, y, 42);
+        }
         const sprite = this.add
           .image(x, y, "fleet-board-placeholder", frameBySpriteKey[facility.spriteKey])
           .setDisplaySize(58, 66)
@@ -233,6 +242,10 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
           })
           .setOrigin(0.5);
         sprite.setData("facilityId", facility.id);
+        if (facility.kind === "reactor") {
+          sprite.setInteractive({ cursor: "pointer" });
+          sprite.on("pointerdown", () => latest.onSelectReactor(facility.id));
+        }
         this.dynamicLayer.add([sprite, label]);
       }
 
@@ -283,29 +296,4 @@ function measureWorld(scene: FleetBoardSceneModel) {
     worldWidth: offset.x * 2 + scene.grid.columns * scene.grid.tileSize,
     worldHeight: offset.y * 2 + scene.grid.rows * scene.grid.tileSize
   };
-}
-
-function buildRouteSegments(scene: FleetBoardSceneModel) {
-  const reactors = scene.facilities.filter((facility) => facility.kind === "reactor" && facility.status === "active");
-  const routeTargets = scene.facilities.filter(
-    (facility) =>
-      facility.status === "active" &&
-      (facility.kind === "trisoFactory" ||
-        facility.kind === "desalPlant" ||
-        facility.kind === "armyBase" ||
-        facility.kind === "battery")
-  );
-
-  return reactors.flatMap((reactor) =>
-    routeTargets
-      .filter((facility) => manhattanDistance(reactor, facility) <= 4)
-      .map((facility) => ({ from: reactor, to: facility }))
-  );
-}
-
-function manhattanDistance(
-  left: { gridX: number; gridY: number },
-  right: { gridX: number; gridY: number }
-): number {
-  return Math.abs(left.gridX - right.gridX) + Math.abs(left.gridY - right.gridY);
 }

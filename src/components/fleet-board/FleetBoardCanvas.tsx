@@ -4,14 +4,16 @@ import { createFleetBoardPhaserRuntime } from "./FleetBoardPhaserRuntime";
 
 export function FleetBoardCanvas({
   scene,
-  onPlaceFacility
+  onPlaceFacility,
+  onSelectReactor
 }: {
   scene: FleetBoardSceneModel;
   onPlaceFacility: (facilityKind: FleetBoardFacilityKind, x: number, y: number) => void;
+  onSelectReactor: (facilityId: string) => void;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<ReturnType<typeof createFleetBoardPhaserRuntime> | null>(null);
-  const initialPropsRef = useRef({ scene, onPlaceFacility });
+  const initialPropsRef = useRef({ scene, onPlaceFacility, onSelectReactor });
   const skippedInitialUpdateRef = useRef(false);
 
   useEffect(() => {
@@ -34,8 +36,8 @@ export function FleetBoardCanvas({
       skippedInitialUpdateRef.current = true;
       return;
     }
-    runtimeRef.current?.update({ scene, onPlaceFacility });
-  }, [scene, onPlaceFacility]);
+    runtimeRef.current?.update({ scene, onPlaceFacility, onSelectReactor });
+  }, [scene, onPlaceFacility, onSelectReactor]);
 
   return <div className="fleet-board-canvas" data-testid="fleet-board-canvas" ref={hostRef} />;
 }

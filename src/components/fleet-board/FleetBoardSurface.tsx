@@ -35,12 +35,16 @@ const buildOptions: Array<{
 export function FleetBoardSurface({ projection }: { projection: WorkbenchProjection }) {
   const modifiers = useMemo(() => buildFleetBoardWorkbenchModifiers(projection), [projection]);
   const [gameState, setGameState] = useState(() => createStarterState(modifiers));
+  const [selectedReactorId, setSelectedReactorId] = useState<string | null>(null);
 
   useEffect(() => {
     setGameState((current) => ({ ...current, modifiers }));
   }, [modifiers]);
 
-  const scene = useMemo(() => buildFleetBoardSceneModel(projection, gameState), [gameState, projection]);
+  const scene = useMemo(
+    () => buildFleetBoardSceneModel(projection, gameState, selectedReactorId),
+    [gameState, projection, selectedReactorId]
+  );
   const summary = summarizeFleetBoard(gameState);
 
   const placeFacility = useCallback((facilityKind: FleetBoardFacilityKind, x: number, y: number) => {
@@ -134,7 +138,7 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
           </div>
         </aside>
 
-        <FleetBoardCanvas scene={scene} onPlaceFacility={placeFacility} />
+        <FleetBoardCanvas scene={scene} onPlaceFacility={placeFacility} onSelectReactor={setSelectedReactorId} />
 
         <aside className="fleet-board-events" aria-label="Fleet Board event log">
           <h4>Event Log</h4>

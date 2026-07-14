@@ -1,34 +1,41 @@
 import { describe, expect, it, vi } from "vitest";
 import type { FleetBoardSceneModel } from "../../domain/fleet-board";
-import { createFleetBoardPhaserRuntime } from "./FleetBoardPhaserRuntime";
+import {
+  createFleetBoardPhaserRuntime,
+  type FleetBoardPhaserMount
+} from "./FleetBoardPhaserRuntime";
 
 describe("Fleet Board Phaser runtime", () => {
-  it("updates the mounted game without replacing its assets or interaction state", async () => {
-    const interactionState = { cameraZoom: 1.2, selectedFacilityId: "reactor-1", dragging: true };
+  it("updates one mounted game so its loaded assets and Phaser-owned interactions stay mounted", async () => {
     const mountedGame = {
       update: vi.fn(),
-      destroy: vi.fn(),
-      interactionState
+      destroy: vi.fn()
     };
-    const startGame = vi.fn(async () => mountedGame);
+    const startedMounts: FleetBoardPhaserMount[] = [];
+    const startGame = vi.fn(async (mount: FleetBoardPhaserMount) => {
+      startedMounts.push(mount);
+      return mountedGame;
+    });
     const runtime = createFleetBoardPhaserRuntime(startGame);
     const host = {} as HTMLDivElement;
     const initialScene = buildScene(0);
     const nextScene = buildScene(1);
     const onPlaceFacility = vi.fn();
+    const onSelectReactor = vi.fn();
 
-    runtime.mount({ host, scene: initialScene, onPlaceFacility });
-    runtime.mount({ host, scene: nextScene, onPlaceFacility });
+    runtime.mount({ host, scene: initialScene, onPlaceFacility, onSelectReactor });
+    runtime.mount({ host, scene: nextScene, onPlaceFacility, onSelectReactor });
     await runtime.ready();
-    runtime.update({ scene: nextScene, onPlaceFacility });
+    runtime.update({ scene: nextScene, onPlaceFacility, onSelectReactor });
 
     expect(startGame).toHaveBeenCalledTimes(1);
     expect(mountedGame.update).toHaveBeenCalledWith({
       scene: nextScene,
-      onPlaceFacility
+      onPlaceFacility,
+      onSelectReactor
     });
     expect(mountedGame.destroy).not.toHaveBeenCalled();
-    expect(mountedGame.interactionState).toBe(interactionState);
+    expect(startedMounts[0]?.scene.selectedReactorId).toBe("reactor-1");
 
     runtime.destroy();
     runtime.destroy();
@@ -48,13 +55,17 @@ describe("Fleet Board Phaser runtime", () => {
     const onPlaceFacility = vi.fn();
     const nextScene = buildScene(1);
 
-    runtime.mount({ host: {} as HTMLDivElement, scene: buildScene(0), onPlaceFacility });
-    runtime.update({ scene: nextScene, onPlaceFacility });
+    runtime.mount({ host: {} as HTMLDivElement, scene: buildScene(0), onPlaceFacility, onSelectReactor: vi.fn() });
+    runtime.update({ scene: nextScene, onPlaceFacility, onSelectReactor: vi.fn() });
     finishStarting(mountedGame);
     await runtime.ready();
 
     expect(mountedGame.update).toHaveBeenCalledOnce();
-    expect(mountedGame.update).toHaveBeenCalledWith({ scene: nextScene, onPlaceFacility });
+    expect(mountedGame.update).toHaveBeenCalledWith({
+      scene: nextScene,
+      onPlaceFacility,
+      onSelectReactor: expect.any(Function)
+    });
   });
 
   it("destroys a late-starting game exactly once after the canvas unmounts", async () => {
@@ -67,7 +78,12 @@ describe("Fleet Board Phaser runtime", () => {
         })
     );
 
-    runtime.mount({ host: {} as HTMLDivElement, scene: buildScene(0), onPlaceFacility: vi.fn() });
+    runtime.mount({
+      host: {} as HTMLDivElement,
+      scene: buildScene(0),
+      onPlaceFacility: vi.fn(),
+      onSelectReactor: vi.fn()
+    });
     runtime.destroy();
     runtime.destroy();
     finishStarting(mountedGame);
@@ -81,10 +97,12 @@ describe("Fleet Board Phaser runtime", () => {
 function buildScene(day: number): FleetBoardSceneModel {
   return {
     selectedUnitId: "KAL-03",
+    selectedReactorId: "reactor-1",
     day,
     grid: { columns: 16, rows: 10, tileSize: 72 },
     facilities: [],
     pawns: [],
+    routes: [],
     resources: {
       fuelBlocks: 0,
       electricMwe: 0,
