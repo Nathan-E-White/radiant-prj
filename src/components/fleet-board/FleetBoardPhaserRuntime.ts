@@ -243,7 +243,7 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
           .setOrigin(0.5);
         sprite.setData("facilityId", facility.id);
         if (facility.kind === "reactor") {
-          sprite.setInteractive({ cursor: "pointer" });
+          sprite.setInteractive();
           sprite.on("pointerdown", () => latest.onSelectReactor(facility.id));
         }
         this.dynamicLayer.add([sprite, label]);
