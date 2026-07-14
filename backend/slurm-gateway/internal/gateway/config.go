@@ -32,6 +32,7 @@ type Config struct {
 	RequireClientCert bool
 	Simops            SimopsConfig
 	Workbench         WorkbenchConfig
+	ReactorTelemetry  ReactorTelemetryConfig
 }
 
 type SimopsConfig struct {
@@ -174,6 +175,7 @@ func DefaultConfig() Config {
 			IcebergS3SecretKey:            "radiant-password",
 			IcebergBatchSize:              1,
 		},
+		ReactorTelemetry: DefaultReactorTelemetryConfig(),
 	}
 }
 
@@ -237,6 +239,13 @@ func LoadConfigFromEnv() (Config, error) {
 	cfg.Workbench.IcebergS3Region = getenv("WORKBENCH_ICEBERG_S3_REGION", cfg.Workbench.IcebergS3Region)
 	cfg.Workbench.IcebergS3AccessKeyID = getenv("WORKBENCH_ICEBERG_S3_ACCESS_KEY_ID", cfg.Workbench.IcebergS3AccessKeyID)
 	cfg.Workbench.IcebergS3SecretKey = getenv("WORKBENCH_ICEBERG_S3_SECRET_ACCESS_KEY", cfg.Workbench.IcebergS3SecretKey)
+	cfg.ReactorTelemetry.ControlStore = getenv("REACTOR_TELEMETRY_CONTROL_STORE", cfg.ReactorTelemetry.ControlStore)
+	cfg.ReactorTelemetry.PostgresDSN = getenv("REACTOR_TELEMETRY_POSTGRES_DSN", cfg.ReactorTelemetry.PostgresDSN)
+	cfg.ReactorTelemetry.Runtime = getenv("REACTOR_TELEMETRY_RUNTIME", cfg.ReactorTelemetry.Runtime)
+	cfg.ReactorTelemetry.WorkerImage = getenv("REACTOR_TELEMETRY_WORKER_IMAGE", cfg.ReactorTelemetry.WorkerImage)
+	cfg.ReactorTelemetry.WorkerNetwork = getenv("REACTOR_TELEMETRY_WORKER_NETWORK", cfg.ReactorTelemetry.WorkerNetwork)
+	cfg.ReactorTelemetry.IngestBaseURL = getenv("REACTOR_TELEMETRY_INGEST_BASE_URL", cfg.ReactorTelemetry.IngestBaseURL)
+	cfg.ReactorTelemetry.CredentialSigningKey = getenv("REACTOR_TELEMETRY_CREDENTIAL_SIGNING_KEY", cfg.ReactorTelemetry.CredentialSigningKey)
 
 	if raw := strings.TrimSpace(os.Getenv("SLURM_GATEWAY_ALLOWED_CLIENTS")); raw != "" {
 		cfg.AllowedClients = csvSet(raw)
@@ -352,6 +361,39 @@ func LoadConfigFromEnv() (Config, error) {
 		}
 		cfg.Workbench.IcebergBatchSize = value
 	}
+	if raw := strings.TrimSpace(os.Getenv("REACTOR_TELEMETRY_ENABLED")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			return cfg, fmt.Errorf("REACTOR_TELEMETRY_ENABLED must be boolean: %w", err)
+		}
+		cfg.ReactorTelemetry.Enabled = value
+	}
+	for envName, target := range map[string]*int{
+		"REACTOR_TELEMETRY_MAX_REACTORS_PER_SESSION": &cfg.ReactorTelemetry.MaxReactorsPerSession,
+		"REACTOR_TELEMETRY_WORKERS_PER_SET":          &cfg.ReactorTelemetry.WorkersPerSet,
+	} {
+		if raw := strings.TrimSpace(os.Getenv(envName)); raw != "" {
+			value, err := strconv.Atoi(raw)
+			if err != nil {
+				return cfg, fmt.Errorf("%s must be an integer: %w", envName, err)
+			}
+			*target = value
+		}
+	}
+	for envName, target := range map[string]*time.Duration{
+		"REACTOR_TELEMETRY_SESSION_TTL":        &cfg.ReactorTelemetry.SessionTTL,
+		"REACTOR_TELEMETRY_MEASURED_RETENTION": &cfg.ReactorTelemetry.MeasuredRetention,
+		"REACTOR_TELEMETRY_CLEANUP_TIMEOUT":    &cfg.ReactorTelemetry.CleanupTimeout,
+		"REACTOR_TELEMETRY_RECONCILE_INTERVAL": &cfg.ReactorTelemetry.ReconcileInterval,
+	} {
+		if raw := strings.TrimSpace(os.Getenv(envName)); raw != "" {
+			value, err := time.ParseDuration(raw)
+			if err != nil {
+				return cfg, fmt.Errorf("%s must be a duration: %w", envName, err)
+			}
+			*target = value
+		}
+	}
 
 	return cfg, cfg.Validate()
 }
@@ -404,6 +446,27 @@ func (c Config) Validate() error {
 	}
 	if err := c.Workbench.Validate(); err != nil {
 		return err
+	}
+	if c.ReactorTelemetry.Enabled {
+		if err := c.ReactorTelemetry.Validate(); err != nil {
+			return err
+		}
+		switch c.ReactorTelemetry.ControlStore {
+		case "memory", "postgres":
+		default:
+			return fmt.Errorf("unsupported REACTOR_TELEMETRY_CONTROL_STORE %q", c.ReactorTelemetry.ControlStore)
+		}
+		if c.ReactorTelemetry.ControlStore == "postgres" && strings.TrimSpace(c.ReactorTelemetry.PostgresDSN) == "" {
+			return fmt.Errorf("REACTOR_TELEMETRY_POSTGRES_DSN is required when REACTOR_TELEMETRY_CONTROL_STORE=postgres")
+		}
+		switch c.ReactorTelemetry.Runtime {
+		case "contract", "docker":
+		default:
+			return fmt.Errorf("unsupported REACTOR_TELEMETRY_RUNTIME %q", c.ReactorTelemetry.Runtime)
+		}
+		if c.ReactorTelemetry.Runtime == "docker" && strings.TrimSpace(c.ReactorTelemetry.WorkerImage) == "" {
+			return fmt.Errorf("REACTOR_TELEMETRY_WORKER_IMAGE is required when REACTOR_TELEMETRY_RUNTIME=docker")
+		}
 	}
 	return nil
 }

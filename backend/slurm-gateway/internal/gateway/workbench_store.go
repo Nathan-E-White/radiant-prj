@@ -28,28 +28,36 @@ type WorkbenchStore interface {
 	Snapshot() (WorkbenchSnapshot, error)
 }
 
+type workbenchDynamicMeasuredRetentionStore interface {
+	PruneDynamicMeasured(before time.Time) error
+}
+
 type InMemoryWorkbenchStore struct {
-	mu             sync.RWMutex
-	sources        map[string]ScadaResidentSourceDeclaration
-	tags           map[string]ScadaSourceTag
-	measuredByTag  map[string]ScadaTelemetryFrame
-	resultsByValue map[string]SimopsResultFrame
-	twin           DigitalTwinState
-	lineageByValue map[string]DigitalTwinValueLineage
-	processed      map[string]struct{}
-	publications   map[string]TwinStatePublication
-	generation     uint64
+	mu              sync.RWMutex
+	sources         map[string]ScadaResidentSourceDeclaration
+	tags            map[string]ScadaSourceTag
+	measuredByTag   map[string]ScadaTelemetryFrame
+	ingestedAtByTag map[string]time.Time
+	resultsByValue  map[string]SimopsResultFrame
+	twin            DigitalTwinState
+	lineageByValue  map[string]DigitalTwinValueLineage
+	processed       map[string]struct{}
+	publications    map[string]TwinStatePublication
+	generation      uint64
+	now             func() time.Time
 }
 
 func NewInMemoryWorkbenchStore() *InMemoryWorkbenchStore {
 	return &InMemoryWorkbenchStore{
-		sources:        make(map[string]ScadaResidentSourceDeclaration),
-		tags:           make(map[string]ScadaSourceTag),
-		measuredByTag:  make(map[string]ScadaTelemetryFrame),
-		resultsByValue: make(map[string]SimopsResultFrame),
-		lineageByValue: make(map[string]DigitalTwinValueLineage),
-		processed:      make(map[string]struct{}),
-		publications:   make(map[string]TwinStatePublication),
+		sources:         make(map[string]ScadaResidentSourceDeclaration),
+		tags:            make(map[string]ScadaSourceTag),
+		measuredByTag:   make(map[string]ScadaTelemetryFrame),
+		ingestedAtByTag: make(map[string]time.Time),
+		resultsByValue:  make(map[string]SimopsResultFrame),
+		lineageByValue:  make(map[string]DigitalTwinValueLineage),
+		processed:       make(map[string]struct{}),
+		publications:    make(map[string]TwinStatePublication),
+		now:             time.Now,
 	}
 }
 
@@ -62,6 +70,8 @@ func (s *InMemoryWorkbenchStore) SaveResidentSource(source ScadaResidentSourceDe
 	defer s.mu.Unlock()
 	s.sources[source.SourceID] = source
 	for _, tag := range source.Tags {
+		tag.SourceID = source.SourceID
+		tag.ReactorID = source.ReactorID
 		s.tags[tag.TagID] = tag
 	}
 	return nil
@@ -90,6 +100,13 @@ func (s *InMemoryWorkbenchStore) SaveScadaProjection(consumerName string, projec
 	}
 	s.processed[key] = struct{}{}
 	s.measuredByTag[frame.TagID] = frame
+	if s.ingestedAtByTag == nil {
+		s.ingestedAtByTag = make(map[string]time.Time)
+	}
+	if s.now == nil {
+		s.now = time.Now
+	}
+	s.ingestedAtByTag[frame.TagID] = s.now().UTC()
 	s.generation++
 	return true, nil
 }
@@ -211,6 +228,23 @@ func (s *InMemoryWorkbenchStore) LatestMeasuredFrames(limit int) ([]ScadaTelemet
 		return frames[i].ObservedAt.After(frames[j].ObservedAt)
 	})
 	return cloneWorkbenchValue(trimMeasured(frames, limit))
+}
+
+func (s *InMemoryWorkbenchStore) PruneDynamicMeasured(before time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	changed := false
+	for tagID, frame := range s.measuredByTag {
+		if frame.ReactorID != "" && s.ingestedAtByTag[tagID].Before(before) {
+			delete(s.measuredByTag, tagID)
+			delete(s.ingestedAtByTag, tagID)
+			changed = true
+		}
+	}
+	if changed {
+		s.generation++
+	}
+	return nil
 }
 
 func (s *InMemoryWorkbenchStore) LatestResultFrames(limit int) ([]SimopsResultFrame, error) {
@@ -355,6 +389,10 @@ func ensureWorkbenchSnapshotSchema(ctx context.Context, db *sql.DB) error {
 func (s *PostgresWorkbenchStore) SaveResidentSource(source ScadaResidentSourceDeclaration) error {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
+	for index := range source.Tags {
+		source.Tags[index].SourceID = source.SourceID
+		source.Tags[index].ReactorID = source.ReactorID
+	}
 	raw, err := json.Marshal(source)
 	if err != nil {
 		return err
@@ -658,6 +696,37 @@ func (s *PostgresWorkbenchStore) LatestMeasuredFrames(limit int) ([]ScadaTelemet
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
 	return latestMeasuredFrames(ctx, s.db, limit)
+}
+
+func (s *PostgresWorkbenchStore) PruneDynamicMeasured(before time.Time) error {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	result, err := tx.ExecContext(ctx, `
+		DELETE FROM scada_measured_frames
+		WHERE COALESCE(frame->>'reactorId', '') <> '' AND created_at < $1
+	`, before.UTC())
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected > 0 {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE workbench_snapshot_generation
+			SET generation = generation + 1, updated_at = now()
+			WHERE singleton = TRUE
+		`); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
 
 func latestMeasuredFrames(ctx context.Context, queryer workbenchSQLQueryer, limit int) ([]ScadaTelemetryFrame, error) {

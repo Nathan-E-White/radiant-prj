@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"log"
+	"time"
 
 	"radiant/slurm-gateway/internal/gateway"
 	"radiant/slurm-gateway/internal/simopsdocker"
@@ -29,13 +31,35 @@ func main() {
 		}
 		simopsSpooler = spooler
 	}
+	var reactorTelemetryRuntime gateway.ReactorTelemetryRuntime
+	if cfg.ReactorTelemetry.Enabled && cfg.ReactorTelemetry.Runtime == "docker" {
+		runtime, err := simopsdocker.NewReactorTelemetryRuntime(cfg.ReactorTelemetry.WorkerImage, cfg.ReactorTelemetry.WorkerNetwork)
+		if err != nil {
+			log.Fatalf("failed to initialize Docker Reactor Telemetry runtime adapter: %v", err)
+		}
+		reactorTelemetryRuntime = runtime
+	}
 
-	app, err := gateway.NewDefaultGatewayWithSimopsSpooler(cfg, simopsSpooler)
+	app, err := gateway.NewDefaultGatewayWithRuntimes(cfg, simopsSpooler, reactorTelemetryRuntime)
 	if err != nil {
 		log.Fatalf("failed to initialize gateway: %v", err)
 	}
 
 	server := gateway.NewHTTPServer(cfg, app.Handler())
+	if cfg.ReactorTelemetry.Enabled {
+		go func() {
+			ticker := time.NewTicker(cfg.ReactorTelemetry.ReconcileInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				ctx, cancel := context.WithTimeout(context.Background(), cfg.RequestTimeout)
+				err := app.ReconcileExpiredReactorTelemetry(ctx)
+				cancel()
+				if err != nil {
+					log.Printf("reactor telemetry expiry reconciliation failed: %v", err)
+				}
+			}
+		}()
+	}
 
 	if cfg.TLSEnabled() {
 		tlsConfig, err := gateway.LoadTLSConfig(cfg)

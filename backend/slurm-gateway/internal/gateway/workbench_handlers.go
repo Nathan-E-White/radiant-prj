@@ -1,8 +1,10 @@
 package gateway
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 )
@@ -17,7 +19,7 @@ func (g *Gateway) handleInternalScada(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	token := strings.TrimSpace(r.Header.Get("X-Workbench-Ingest-Token"))
-	if token == "" || token != g.cfg.Workbench.InternalIngestToken {
+	if token == "" {
 		writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "Invalid Workbench ingest token", Code: "unauthorized"})
 		return
 	}
@@ -32,6 +34,10 @@ func (g *Gateway) handleInternalScada(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Invalid JSON payload", Code: "bad_json"})
 			return
 		}
+		if !g.authorizeScadaSource(token, source.SourceID, source.ReactorID) {
+			writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "Invalid Workbench ingest token", Code: "unauthorized"})
+			return
+		}
 		status, err := g.workbench.RegisterSource(source)
 		if err != nil {
 			writeJSON(w, status, ErrorResponse{Error: err.Error(), Code: workbenchErrorCode(status)})
@@ -42,7 +48,23 @@ func (g *Gateway) handleInternalScada(w http.ResponseWriter, r *http.Request) {
 			"accepted":  true,
 		})
 	case "/internal/scada/telemetry":
-		count, status, err := g.workbench.IngestScada(r.Context(), r.Body)
+		payload, err := io.ReadAll(io.LimitReader(r.Body, maxWorkbenchBodyBytes+1))
+		if err != nil || len(payload) > maxWorkbenchBodyBytes {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Invalid SCADA payload", Code: "bad_json"})
+			return
+		}
+		frames, err := decodeScadaFrames(bytes.NewReader(payload))
+		if err != nil || len(frames) == 0 {
+			writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Invalid SCADA payload", Code: "bad_json"})
+			return
+		}
+		for _, frame := range frames {
+			if !g.authorizeScadaSource(token, frame.SourceID, frame.ReactorID) {
+				writeJSON(w, http.StatusUnauthorized, ErrorResponse{Error: "Invalid Workbench ingest token", Code: "unauthorized"})
+				return
+			}
+		}
+		count, status, err := g.workbench.IngestScada(r.Context(), bytes.NewReader(payload))
 		if err != nil {
 			writeJSON(w, status, ErrorResponse{Error: err.Error(), Code: workbenchErrorCode(status)})
 			return
@@ -53,6 +75,13 @@ func (g *Gateway) handleInternalScada(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Internal SCADA route not found", Code: "scada_route_not_found"})
 	}
+}
+
+func (g *Gateway) authorizeScadaSource(token, sourceID, reactorID string) bool {
+	if token == g.cfg.Workbench.InternalIngestToken {
+		return true
+	}
+	return g.reactorTelemetry != nil && g.reactorTelemetry.AuthorizeSourceCredential(token, sourceID, reactorID)
 }
 
 func (g *Gateway) handleSimulatorWorkbench(w http.ResponseWriter, r *http.Request) {

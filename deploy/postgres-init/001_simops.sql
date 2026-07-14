@@ -286,6 +286,16 @@ CREATE TABLE IF NOT EXISTS workbench_twin_publications (
   persisted_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS reactor_telemetry_worker_sets (
+  game_session_id TEXT NOT NULL,
+  reactor_id TEXT NOT NULL,
+  register_idempotency_key TEXT NOT NULL,
+  worker_set JSONB NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (game_session_id, reactor_id),
+  UNIQUE (game_session_id, register_idempotency_key)
+);
+
 CREATE SCHEMA IF NOT EXISTS iceberg_catalog;
 
 CREATE TABLE IF NOT EXISTS iceberg_catalog.catalog_metadata (

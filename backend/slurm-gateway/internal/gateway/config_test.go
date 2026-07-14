@@ -30,3 +30,24 @@ func TestSimopsConfigRequiresPositiveLifecycleRecoveryTimeout(t *testing.T) {
 		t.Fatalf("unexpected lifecycle recovery timeout %v", loaded.Simops.LifecycleRecoveryTimeout)
 	}
 }
+
+func TestReactorTelemetryConfigLoadsOnlyAcceptedBounds(t *testing.T) {
+	t.Setenv("REACTOR_TELEMETRY_ENABLED", "true")
+	t.Setenv("REACTOR_TELEMETRY_RUNTIME", "docker")
+	t.Setenv("REACTOR_TELEMETRY_WORKERS_PER_SET", "3")
+	t.Setenv("REACTOR_TELEMETRY_MAX_REACTORS_PER_SESSION", "4")
+	t.Setenv("REACTOR_TELEMETRY_SESSION_TTL", "24h")
+	t.Setenv("REACTOR_TELEMETRY_CLEANUP_TIMEOUT", "5m")
+	loaded, err := LoadConfigFromEnv()
+	if err != nil {
+		t.Fatalf("load reactor telemetry config: %v", err)
+	}
+	if !loaded.ReactorTelemetry.Enabled || loaded.ReactorTelemetry.Runtime != "docker" || loaded.ReactorTelemetry.WorkersPerSet != 3 {
+		t.Fatalf("unexpected reactor telemetry config: %#v", loaded.ReactorTelemetry)
+	}
+
+	t.Setenv("REACTOR_TELEMETRY_WORKERS_PER_SET", "4")
+	if _, err := LoadConfigFromEnv(); err == nil {
+		t.Fatal("configuration raised the accepted worker cap")
+	}
+}

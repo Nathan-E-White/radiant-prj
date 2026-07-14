@@ -25,6 +25,7 @@ const (
 type ScadaTelemetryFrame struct {
 	SchemaVersion   string              `json:"schemaVersion"`
 	SourceID        string              `json:"sourceId"`
+	ReactorID       string              `json:"reactorId,omitempty"`
 	TagID           string              `json:"tagId"`
 	AssetID         string              `json:"assetId"`
 	SignalKind      ScadaSignalKind     `json:"signalKind"`
@@ -41,6 +42,7 @@ type ScadaTelemetryFrame struct {
 type ScadaResidentSourceDeclaration struct {
 	SchemaVersion   string           `json:"schemaVersion"`
 	SourceID        string           `json:"sourceId"`
+	ReactorID       string           `json:"reactorId,omitempty"`
 	DisplayName     string           `json:"displayName"`
 	Lifecycle       string           `json:"lifecycle"`
 	SyntheticStatus string           `json:"syntheticStatus"`
@@ -54,6 +56,8 @@ type ScadaIngest struct {
 }
 
 type ScadaSourceTag struct {
+	SourceID   string              `json:"sourceId,omitempty"`
+	ReactorID  string              `json:"reactorId,omitempty"`
 	TagID      string              `json:"tagId"`
 	AssetID    string              `json:"assetId"`
 	SignalKind ScadaSignalKind     `json:"signalKind"`
