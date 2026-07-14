@@ -1,12 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
-test("Fleet Board is the default Simulator Workbench experience and accepts board interaction", async ({ page }) => {
+test("Fleet Board is the default Status Workbench experience and accepts board interaction", async ({ page }) => {
   await page.goto("/");
 
   await expect(page.getByRole("heading", { name: /Kaleidos/i })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Simulator Workbench" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Status Workbench" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Simulator Workbench" }).click();
+  await page.getByRole("button", { name: "Status Workbench" }).click();
 
   await expect(page.getByRole("region", { name: "Fleet Board" })).toBeVisible();
   await expect(page.getByText("30-day contract sprint")).toBeVisible();
@@ -19,24 +19,15 @@ test("Fleet Board is the default Simulator Workbench experience and accepts boar
   await expect.poll(() => canvasHasNonBlankPixels(page), { timeout: 15_000 }).toBe(true);
 
   await expect(page.getByTestId("fleet-board-facility-count")).toContainText("4 facilities");
-  const box = await canvas.boundingBox();
-  expect(box).not.toBeNull();
-  if (!box) {
-    throw new Error("Fleet Board canvas has no bounding box");
-  }
-
-  await page.mouse.move(box.x + 112, box.y + 548);
-  await page.mouse.down();
-  await page.mouse.move(box.x + 780, box.y + 470, { steps: 8 });
-  await page.mouse.up();
+  await page.getByRole("button", { name: "Battery Sink" }).click();
   await expect(page.getByTestId("fleet-board-facility-count")).toContainText("5 facilities");
 
   await page.getByRole("button", { name: /Tick Day/i }).click();
   await expect(page.getByText("Day 1/30")).toBeVisible();
   await expect(page.getByText("reactorGenerated").first()).toBeVisible();
 
-  await expect(page.getByRole("button", { name: "Compute Workbench" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "SimOps Control" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Container orchestration" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "HPC status panel" })).toBeVisible();
 });
 
 async function canvasHasNonBlankPixels(page: Page) {

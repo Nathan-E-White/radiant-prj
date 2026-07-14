@@ -339,6 +339,7 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
       touch: true
     }
   });
+  const ownedCanvas = game.canvas;
 
   return {
     update(next) {
@@ -348,6 +349,7 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
     destroy() {
       mountedScene = null;
       game.destroy(true);
+      ownedCanvas.remove();
     }
   };
 }

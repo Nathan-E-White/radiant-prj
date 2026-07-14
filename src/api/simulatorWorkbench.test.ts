@@ -4,7 +4,6 @@ import {
   getSimulatorWorkbenchState,
   getTwinState,
   getWorkbenchLineage,
-  httpWorkbenchDataAdapter,
   type SimulatorWorkbenchState
 } from "./simulatorWorkbench";
 
@@ -50,12 +49,6 @@ describe("simulator workbench api client", () => {
     await expect(getSimulatorWorkbenchState()).rejects.toThrow("not wired yet");
   });
 
-  it("keeps the HTTP data adapter parked for the presentational slice", async () => {
-    globalThis.fetch = vi.fn();
-
-    await expect(httpWorkbenchDataAdapter.load()).rejects.toThrow("parked");
-    expect(globalThis.fetch).not.toHaveBeenCalled();
-  });
 });
 
 function jsonResponse(payload: unknown): Response {

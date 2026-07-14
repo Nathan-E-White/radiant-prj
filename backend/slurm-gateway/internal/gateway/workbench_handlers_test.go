@@ -34,6 +34,26 @@ func TestWorkbenchScadaIngestRequiresDeclaredMeasuredTag(t *testing.T) {
 	}
 }
 
+func TestWorkbenchSnapshotHandlerReturnsOneCoherentGeneration(t *testing.T) {
+	app := newWorkbenchTestGateway(t)
+	postWorkbenchJSON(t, app, "/internal/scada/sources", scadaSourceFixture())
+	postWorkbenchJSON(t, app, "/internal/scada/telemetry", ScadaTelemetryBatch{Frames: []ScadaTelemetryFrame{scadaFrameFixture()}})
+
+	req := signedRequest(http.MethodGet, "/api/simulator-workbench/snapshot", "", "react-backend-client")
+	rr := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected coherent snapshot, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var snapshot WorkbenchSnapshot
+	if err := json.Unmarshal(rr.Body.Bytes(), &snapshot); err != nil {
+		t.Fatalf("decode snapshot: %v", err)
+	}
+	if snapshot.Generation == 0 || snapshot.State.SnapshotGeneration != snapshot.Generation || len(snapshot.Measured) != 1 {
+		t.Fatalf("handler mixed or omitted snapshot generation: %#v", snapshot)
+	}
+}
+
 func TestWorkbenchScadaIngestRejectsImputedFrame(t *testing.T) {
 	app := newWorkbenchTestGateway(t)
 	postWorkbenchJSON(t, app, "/internal/scada/sources", scadaSourceFixture())

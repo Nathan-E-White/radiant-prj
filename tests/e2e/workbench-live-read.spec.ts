@@ -1,0 +1,71 @@
+import { expect, test } from "@playwright/test";
+
+test("Workbench fallback is explicit and recovers by replacing the whole Snapshot", async ({ page }) => {
+  const requestHeaders: Array<Record<string, string>> = [];
+  let serveLive = false;
+  await page.route("**/api/simulator-workbench/snapshot", async (route) => {
+    requestHeaders.push(route.request().headers());
+    if (!serveLive) {
+      await route.fulfill({ status: 503, body: "unavailable" });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(liveSnapshot()) });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Status Workbench" }).click();
+  await expect(page.getByText("Fixture fallback")).toBeVisible();
+  await expect(page.getByText(/explicit local-demo fixture Snapshot/)).toBeVisible();
+
+  serveLive = true;
+  await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await expect(page.getByText("Live generation 4")).toBeVisible();
+  await expect(page.getByText(/accepted atomically/)).toBeVisible();
+  await expect(page.getByText("Measured State").first()).toBeVisible();
+  await expect(page.getByText("Imputed State").first()).toBeVisible();
+  await expect(page.getByText("Simulated Result State").first()).toBeVisible();
+
+  expect(requestHeaders.length).toBeGreaterThanOrEqual(2);
+  for (const headers of requestHeaders) {
+    expect(headers["x-workbench-ingest-token"]).toBeUndefined();
+    expect(headers["x-simops-ingest-token"]).toBeUndefined();
+    expect(headers.authorization).toBeUndefined();
+  }
+});
+
+function liveSnapshot() {
+  return {
+    generation: 4,
+    state: {
+      schemaVersion: "simulator-workbench.state.v1",
+      generatedAt: "2026-07-14T11:00:00Z",
+      snapshotGeneration: 4,
+      scenarioId: "scheduler-drift",
+      valueBasisSummary: { measured: 1, imputed: 1, simulated: 1 },
+      measuredStateRefs: ["scada_measured_frames"],
+      twinStateRef: "digital_twin_state_values",
+      lineageRefs: ["digital_twin_lineage"],
+      activeSimulationRuns: [{ runId: "run-1", scenarioId: "scheduler-drift", lifecycle: "streaming", valueBasis: "simulated", health: "nominal", artifactStatus: "committed" }],
+      panels: [
+        { panelId: "measured", title: "Measured State", valueBasis: "measured" },
+        { panelId: "imputed", title: "Imputed State", valueBasis: "imputed" },
+        { panelId: "simulated", title: "Simulated Result State", valueBasis: "simulated" }
+      ]
+    },
+    measured: [{ schemaVersion: "scada.telemetry.v1", sourceId: "source-1", reactorId: "reactor-01", tagId: "TAG-CORE", assetId: "reactor-01-core", signalKind: "flux", sampledAt: "2026-07-14T10:59:59Z", observedAt: "2026-07-14T11:00:00Z", sequence: 1, unit: "relative", value: { scalar: 0.81 }, quality: "good", valueBasis: "measured", syntheticStatus: "public-safe-standin" }],
+    twin: {
+      schemaVersion: "digital-twin.state.v1",
+      twinId: "twin-live-1",
+      asOf: "2026-07-14T11:00:00Z",
+      entities: [{ entityId: "reactor-01", displayName: "Reactor 01", values: [
+        { valueId: "margin-imputed", label: "Core margin", valueBasis: "imputed", unit: "percent", value: { scalar: 14 }, confidence: 0.7, freshness: { ageSec: 4, status: "fresh" }, lineageId: "lin-imputed", sourceIds: ["TAG-CORE"] },
+        { valueId: "margin-simulated", label: "Forecast margin", valueBasis: "simulated", unit: "percent", value: { scalar: 16 }, confidence: 0.6, freshness: { ageSec: 3, status: "fresh" }, lineageId: "lin-simulated", sourceIds: ["run-1"] }
+      ] }]
+    },
+    lineage: [
+      { schemaVersion: "digital-twin.lineage.v1", lineageId: "lin-imputed", valueId: "margin-imputed", valueBasis: "imputed", inputs: [{ sourceKind: "scada-tag", sourceId: "TAG-CORE", valueBasis: "measured" }], processingSteps: ["project"], artifacts: [] },
+      { schemaVersion: "digital-twin.lineage.v1", lineageId: "lin-simulated", valueId: "margin-simulated", valueBasis: "simulated", inputs: [{ sourceKind: "simulation-run", sourceId: "run-1", valueBasis: "simulated" }], processingSteps: ["project"], artifacts: [] }
+    ],
+    results: []
+  };
+}

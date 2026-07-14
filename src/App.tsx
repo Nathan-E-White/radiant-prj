@@ -40,6 +40,8 @@ export default function App() {
       statusWorkbenchTab={
         <StatusWorkbenchTab
           projection={workbench.projection}
+          readState={workbench.readState}
+          onRefresh={workbench.refresh}
           onSelectUnit={workbench.selectUnit}
           onSelectValue={workbench.selectValue}
           computeQueue={

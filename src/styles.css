@@ -869,6 +869,41 @@ a:hover {
   box-shadow: 0 22px 60px rgba(8, 18, 17, 0.18);
 }
 
+.workbench-read-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  border: 1px solid rgba(116, 147, 142, 0.38);
+  border-radius: 6px;
+  background: rgba(14, 31, 31, 0.78);
+  padding: 9px 10px;
+  color: #b9cbc6;
+  font-size: 0.78rem;
+}
+
+.workbench-read-status strong {
+  color: #f6fbf8;
+}
+
+.workbench-read-status.fixture,
+.workbench-read-status.stale,
+.workbench-read-status.error {
+  border-color: rgba(207, 157, 71, 0.58);
+}
+
+.workbench-read-status button {
+  margin-left: auto;
+  border: 1px solid rgba(116, 183, 176, 0.55);
+  border-radius: 5px;
+  background: rgba(28, 73, 70, 0.68);
+  color: #e9f5f1;
+  padding: 5px 8px;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 .simwb-head,
 .simwb-fleet-strip,
 .simwb-grid,

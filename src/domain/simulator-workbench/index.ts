@@ -30,3 +30,18 @@ export {
   projectHealthCards
 } from "./workbenchHealthPanelProjection";
 export { createHealthTickDriver } from "./workbenchHealthTickDriver";
+export {
+  WorkbenchReadError,
+  createHttpWorkbenchDataAdapter,
+  createWorkbenchRefreshCoordinator,
+  initialWorkbenchReadState,
+  refreshWorkbenchReadState,
+  workbenchReadLabel,
+  type AcceptedWorkbenchSnapshot,
+  type LiveWorkbenchSnapshot,
+  type WorkbenchReadErrorKind,
+  type WorkbenchReadModel,
+  type WorkbenchReadState,
+  type WorkbenchRefreshCoordinator,
+  type WorkbenchSnapshotAdapter
+} from "./liveWorkbench";
