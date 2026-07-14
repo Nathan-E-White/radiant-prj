@@ -52,17 +52,22 @@ Fleet Board uses existing Simulator Workbench projection state as light gameplay
 
 The game does not flatten measured, imputed, and simulated values into one metric stream.
 
-## Deferred V2: Simulation Job Economy
+## V2: Local Simulation Job Economy
 
-Fleet Board v2 is expected to make player-created simulation jobs part of the game loop. The current v1 implementation only reads Workbench projection state as a modifier; it does not let the player create simulated jobs or persist game actions through SimOps.
+Fleet Board v2 includes a deterministic, local-only Simulation Job loop. The reducer owns capacity purchase, queueing, job progression, blocked events, and rewards; React owns accessible intent and summaries; the scene model supplies render-ready states; and the mounted Phaser runtime renders those states without becoming a second game engine.
 
-Initial v2 note:
+Implemented rules:
 
-- each reactor may support a capped number of associated simulation containers;
-- each simulation container costs virtual game budget;
-- the exact cap, cost curve, and reward model are TBD;
-- this budget is a game resource, not cloud spend, real infrastructure capacity, or project budget;
-- simulated job output must remain `Simulated Result State` and must not become measured or imputed state unless it flows through the existing Workbench semantics.
+- a new game starts with 6 Simulation Budget;
+- each reactor's Reactor Slot Rail holds at most two Simulation Container Tokens;
+- each Simulation Container Token costs 2 Simulation Budget;
+- buying capacity and queueing a Simulation Job are separate actions;
+- a job requires an idle token, starts on the next `tickDay`, and completes after three advances;
+- completion returns the token to idle and awards one reactor-scoped Insight Token;
+- blocked purchase and queue requests create readable events;
+- slot badges expose idle, queued, and running states, while Insight Token badges remain reactor-scoped.
+
+Simulation Budget, Simulation Container Tokens, Simulation Jobs, and Insight Tokens are local game state. They are not cloud spend, real infrastructure capacity, SimOps Runs, Slurm jobs, backend artifacts, or objective evidence. This V2 loop does not persist actions through SimOps. Backend-backed behavior remains a later gated horizon, and any backend simulation output must retain the project's `Simulated Result State` and Lineage semantics rather than becoming Measured or Imputed State by implication.
 
 ## Prototype Verdict
 
