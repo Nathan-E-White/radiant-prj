@@ -9,12 +9,15 @@ import (
 	"time"
 )
 
-const workbenchTwinLineageHeader = "radiant-workbench-lineage-v1"
+const (
+	workbenchTwinLineageHeader       = "radiant-workbench-lineage-v1"
+	workbenchTwinPublicationIDHeader = "radiant-twin-publication-id-v1"
+)
 
 type WorkbenchEventLog interface {
 	PublishScada(ctx context.Context, frame ScadaTelemetryFrame) error
 	PublishResult(ctx context.Context, frame SimopsResultFrame) error
-	PublishTwinState(ctx context.Context, state DigitalTwinState, lineage []DigitalTwinValueLineage) error
+	PublishTwinState(ctx context.Context, publication TwinStatePublication) error
 }
 
 type MemoryWorkbenchEventLog struct {
@@ -62,7 +65,7 @@ func (l *MemoryWorkbenchEventLog) PublishResult(ctx context.Context, frame Simop
 	return err
 }
 
-func (l *MemoryWorkbenchEventLog) PublishTwinState(ctx context.Context, state DigitalTwinState, lineage []DigitalTwinValueLineage) error {
+func (l *MemoryWorkbenchEventLog) PublishTwinState(ctx context.Context, publication TwinStatePublication) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -71,9 +74,12 @@ func (l *MemoryWorkbenchEventLog) PublishTwinState(ctx context.Context, state Di
 	if l.Store == nil {
 		return nil
 	}
-	raw, _ := json.Marshal(state)
-	lineageRaw, _ := json.Marshal(lineage)
-	projection, err := ProjectTwinState("memory.digital-twin.state.v1", 0, l.nextOffset(), raw, SimopsBrokerHeader{Key: workbenchTwinLineageHeader, Value: lineageRaw})
+	raw, _ := json.Marshal(publication.State)
+	lineageRaw, _ := json.Marshal(publication.Lineage)
+	projection, err := ProjectTwinState("memory.digital-twin.state.v1", 0, l.nextOffset(), raw,
+		SimopsBrokerHeader{Key: workbenchTwinLineageHeader, Value: lineageRaw},
+		SimopsBrokerHeader{Key: workbenchTwinPublicationIDHeader, Value: []byte(publication.PublicationID)},
+	)
 	if err != nil {
 		return err
 	}
@@ -100,19 +106,22 @@ func (l *RedpandaWorkbenchEventLog) PublishResult(ctx context.Context, frame Sim
 	return publishWorkbenchMessage(ctx, l.resultWriter, key, frame)
 }
 
-func (l *RedpandaWorkbenchEventLog) PublishTwinState(ctx context.Context, state DigitalTwinState, lineage []DigitalTwinValueLineage) error {
-	raw, err := json.Marshal(state)
+func (l *RedpandaWorkbenchEventLog) PublishTwinState(ctx context.Context, publication TwinStatePublication) error {
+	raw, err := json.Marshal(publication.State)
 	if err != nil {
 		return err
 	}
-	lineageRaw, err := json.Marshal(lineage)
+	lineageRaw, err := json.Marshal(publication.Lineage)
 	if err != nil {
 		return err
 	}
 	return publishWorkbenchBrokerMessage(ctx, l.twinWriter, SimopsBrokerMessage{
-		Key:     []byte(strings.TrimSpace(state.TwinID)),
-		Value:   raw,
-		Headers: []SimopsBrokerHeader{{Key: workbenchTwinLineageHeader, Value: lineageRaw}},
+		Key:   []byte(strings.TrimSpace(publication.State.TwinID)),
+		Value: raw,
+		Headers: []SimopsBrokerHeader{
+			{Key: workbenchTwinLineageHeader, Value: lineageRaw},
+			{Key: workbenchTwinPublicationIDHeader, Value: []byte(publication.PublicationID)},
+		},
 	})
 }
 
@@ -194,13 +203,16 @@ func ProjectTwinState(topic string, partition int, offset int64, raw json.RawMes
 	}
 	lineage := []DigitalTwinValueLineage(nil)
 	lineagePresent := false
+	publicationID := ""
 	for _, header := range headers {
-		if header.Key == workbenchTwinLineageHeader {
+		switch header.Key {
+		case workbenchTwinLineageHeader:
 			lineagePresent = true
 			if err := json.Unmarshal(header.Value, &lineage); err != nil {
 				return TwinStateProjection{}, fmt.Errorf("decode Twin lineage header: %w", err)
 			}
-			break
+		case workbenchTwinPublicationIDHeader:
+			publicationID = strings.TrimSpace(string(header.Value))
 		}
 	}
 	if state.AsOf.IsZero() {
@@ -211,6 +223,8 @@ func ProjectTwinState(topic string, partition int, offset int64, raw json.RawMes
 		State:             state,
 		Lineage:           lineage,
 		LineagePresent:    lineagePresent,
+		PublicationID:     publicationID,
+		PublicationSource: WorkbenchProjectionPosition{Topic: normalizeTopic(topic), Partition: partition, Offset: offset},
 		Raw:               append(json.RawMessage(nil), raw...),
 		RedpandaTopic:     normalizeTopic(topic),
 		RedpandaPartition: partition,

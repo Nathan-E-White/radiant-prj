@@ -13,7 +13,8 @@ func TestTwinStateEventCarriesLineageAsOneTransition(t *testing.T) {
 	state, lineage := BuildTwinStateFromData([]ScadaTelemetryFrame{scadaFrameFixture()}, simopsResultFixture("RUN-TWIN-TRANSITION-EVENT"), time.Now().UTC())
 	writer := &capturingKafkaWriter{}
 	eventLog := &RedpandaWorkbenchEventLog{twinWriter: writer}
-	if err := eventLog.PublishTwinState(context.Background(), state, lineage); err != nil {
+	publication := NewTwinStatePublication(WorkbenchProjectionPosition{Topic: "scada", Offset: 1}, "digital-twin.state.v1", state, lineage)
+	if err := eventLog.PublishTwinState(context.Background(), publication); err != nil {
 		t.Fatalf("publish Twin transition: %v", err)
 	}
 	if len(writer.messages) != 1 {
@@ -24,7 +25,7 @@ func TestTwinStateEventCarriesLineageAsOneTransition(t *testing.T) {
 		t.Fatalf("published value is not a v1 Twin State: state=%#v err=%v", publishedState, err)
 	}
 	projection, err := ProjectTwinState("twin-transition", 0, 1, writer.messages[0].Value, writer.messages[0].Headers...)
-	if err != nil || projection.State.TwinID != state.TwinID || !projection.LineagePresent || len(projection.Lineage) != len(lineage) {
+	if err != nil || projection.State.TwinID != state.TwinID || !projection.LineagePresent || projection.PublicationID != publication.PublicationID || len(projection.Lineage) != len(lineage) {
 		t.Fatalf("Twin transition round trip projection=%#v err=%v", projection, err)
 	}
 

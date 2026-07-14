@@ -88,6 +88,8 @@ type TwinStateProjection struct {
 	State             DigitalTwinState
 	Lineage           []DigitalTwinValueLineage
 	LineagePresent    bool
+	PublicationID     string
+	PublicationSource WorkbenchProjectionPosition
 	Raw               json.RawMessage
 	RedpandaTopic     string
 	RedpandaPartition int

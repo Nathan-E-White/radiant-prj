@@ -197,7 +197,7 @@ if (existsSync("deploy/prometheus.yml")) {
 
 if (existsSync("deploy/postgres-init/001_simops.sql")) {
   const sql = readFileSync("deploy/postgres-init/001_simops.sql", "utf8");
-  for (const token of ["timescaledb", "create_hypertable", "simops_runs", "ingest_token", "simops_workers", "simops_events", "simops_artifacts", "simops_telemetry_frames", "simops_consumer_offsets", "simops_processed_messages", "iceberg_catalog", "iceberg_tables", "iceberg_namespace_properties"]) {
+  for (const token of ["timescaledb", "create_hypertable", "simops_runs", "ingest_token", "simops_workers", "simops_events", "simops_artifacts", "simops_telemetry_frames", "simops_consumer_offsets", "simops_processed_messages", "workbench_twin_publications", "iceberg_catalog", "iceberg_tables", "iceberg_namespace_properties"]) {
     if (!sql.includes(token)) {
       problems.push(`SimOps Postgres init SQL missing ${token}`);
     }

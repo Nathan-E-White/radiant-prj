@@ -280,6 +280,12 @@ INSERT INTO workbench_snapshot_generation (singleton, generation)
 VALUES (TRUE, 0)
 ON CONFLICT (singleton) DO NOTHING;
 
+CREATE TABLE IF NOT EXISTS workbench_twin_publications (
+  publication_id TEXT PRIMARY KEY,
+  publication JSONB NOT NULL,
+  persisted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE SCHEMA IF NOT EXISTS iceberg_catalog;
 
 CREATE TABLE IF NOT EXISTS iceberg_catalog.catalog_metadata (

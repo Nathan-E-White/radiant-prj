@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -15,6 +16,79 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
+
+func TestPostgresTwinStatePublisherRecoversEventFailureFromPersistedPublication(t *testing.T) {
+	store := openPostgresSnapshotTestStore(t)
+	eventFailure := errors.New("ambiguous Redpanda delivery")
+	events := &twinPublicationEventLog{err: eventFailure}
+	publisher := NewTwinStatePublisher(store, events)
+	publication := twinPublicationFixture("simops.results.v1", 4, 77)
+	originalAsOf := publication.State.AsOf
+	originalStep := publication.Lineage[0].ProcessingSteps[0]
+
+	outcome, err := publisher.Publish(context.Background(), publication)
+	var publicationErr *TwinStatePublicationError
+	if !errors.As(err, &publicationErr) || publicationErr.Stage != TwinStatePublicationEventDelivery || !outcome.Persisted || outcome.Delivered {
+		t.Fatalf("unexpected Postgres event failure outcome=%#v err=%v", outcome, err)
+	}
+	snapshot, err := store.Snapshot()
+	if err != nil || snapshot.Generation != 1 || snapshot.Twin.SchemaVersion == "" || len(snapshot.Lineage) != len(publication.Lineage) {
+		t.Fatalf("event failure did not leave one explained persisted state: %#v err=%v", snapshot, err)
+	}
+
+	events.err = nil
+	publication.State.AsOf = publication.State.AsOf.Add(time.Hour)
+	publication.Lineage[0].ProcessingSteps[0] = "caller drift after persistence"
+	outcome, err = publisher.Publish(context.Background(), publication)
+	if err != nil || outcome.Persisted || !outcome.Duplicate || !outcome.Delivered {
+		t.Fatalf("unexpected Postgres retry outcome=%#v err=%v", outcome, err)
+	}
+	if !events.publications[1].State.AsOf.Equal(originalAsOf) || events.publications[1].Lineage[0].ProcessingSteps[0] != originalStep {
+		t.Fatalf("Postgres retry did not deliver persisted publication: %#v", events.publications[1])
+	}
+	after, err := store.Snapshot()
+	if err != nil || after.Generation != 1 {
+		t.Fatalf("Postgres retry repersisted generation: %#v err=%v", after, err)
+	}
+	if err := publisher.Acknowledge(publication.Source); err != nil {
+		t.Fatalf("acknowledge Postgres publication: %v", err)
+	}
+	tombstone, err := store.GetTwinStatePublication(publication.PublicationID)
+	if err != nil || !tombstone.Acknowledged || tombstone.State.SchemaVersion != "" || len(tombstone.Lineage) != 0 {
+		t.Fatalf("Postgres acknowledgement did not compact payload: publication=%#v err=%v", tombstone, err)
+	}
+}
+
+func TestPostgresTwinProjectorHydratesNewestResultAcrossKeys(t *testing.T) {
+	store := openPostgresSnapshotTestStore(t)
+	cfg := DefaultConfig().Workbench
+	frames := []SimopsResultFrame{
+		simopsResultFixture("AAA-OLDER-RUN"),
+		simopsResultFixture("ZZZ-NEWER-RUN"),
+	}
+	frames[0].ProducedAt = "2026-07-04T18:00:00Z"
+	frames[0].Values[0].ResultID = "RESULT-OLDER"
+	frames[1].ProducedAt = "2026-07-04T19:00:00Z"
+	frames[1].Values[0].ResultID = "RESULT-NEWER"
+	for index, frame := range frames {
+		raw, _ := json.Marshal(frame)
+		projection, err := ProjectSimopsResultFrame(cfg.ResultsTopic, 0, int64(index+1), raw)
+		if err != nil {
+			t.Fatalf("project result %d: %v", index, err)
+		}
+		if written, err := store.SaveResultProjection("hydrate-order", projection); err != nil || !written {
+			t.Fatalf("save result %d written=%v err=%v", index, written, err)
+		}
+	}
+
+	projector, err := NewTwinProjector(cfg, store, &twinPublicationEventLog{})
+	if err != nil {
+		t.Fatalf("hydrate projector: %v", err)
+	}
+	if projector.result == nil || projector.result.RunID != "ZZZ-NEWER-RUN" {
+		t.Fatalf("hydrated stale result: %#v", projector.result)
+	}
+}
 
 func TestPostgresWorkbenchSnapshotMigratesAnExistingStore(t *testing.T) {
 	store := openPostgresSnapshotTestStore(t)
