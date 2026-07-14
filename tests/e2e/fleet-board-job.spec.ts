@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
+import { canvasHasNonBlankPixels } from "./fleet-board-canvas-helpers";
 
 test("player queues one local Simulation Job and earns a reactor-scoped Insight Token", async ({ page }) => {
   await page.goto("/tests/e2e/fixtures/fleet-board-capacity.html");
@@ -51,16 +52,6 @@ test("player queues one local Simulation Job and earns a reactor-scoped Insight 
     })
   ).toBeVisible();
 });
-
-async function canvasHasNonBlankPixels(canvas: Locator) {
-  return canvas.evaluate((element: HTMLCanvasElement) => {
-    const context = element.getContext("2d");
-    if (!context) {
-      return false;
-    }
-    return Array.from(context.getImageData(0, 0, 120, 120).data).some((channel) => channel !== 0);
-  });
-}
 
 async function sampleReactorSimulation(canvas: Locator) {
   return canvas.evaluate((element: HTMLCanvasElement) => {
