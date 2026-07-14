@@ -15,10 +15,17 @@ describe("fleet board scene model", () => {
       facilityKind: "reactor",
       position: { x: 5, y: 2 }
     });
+    gameState = applyFleetBoardAction(gameState, {
+      type: "placeFacility",
+      facilityId: "triso-1",
+      facilityKind: "trisoFactory",
+      position: { x: 1, y: 2 }
+    });
 
-    const scene = buildFleetBoardSceneModel(projection, gameState);
+    const scene = buildFleetBoardSceneModel(projection, gameState, "reactor-1");
 
     expect(scene.selectedUnitId).toBe("KAL-03");
+    expect(scene.selectedReactorId).toBe("reactor-1");
     expect(scene.facilities).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -29,6 +36,14 @@ describe("fleet board scene model", () => {
       ])
     );
     expect(scene.pawns.map((pawn) => pawn.kind)).toEqual(["inspector", "trouble"]);
+    expect(scene.routes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          from: expect.objectContaining({ id: "reactor-1" }),
+          to: expect.objectContaining({ kind: "trisoFactory" })
+        })
+      ])
+    );
     expect(scene.resources.cash).toBe(gameState.resources.cash);
     expect(scene.valueBasisCounts).toEqual(projection.valueBasisSummary);
   });
