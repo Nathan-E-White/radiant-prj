@@ -1,4 +1,5 @@
 import { expect, test, type Locator } from "@playwright/test";
+import { canvasHasNonBlankPixels } from "./fleet-board-canvas-helpers";
 
 test("player buys bounded reactor-scoped Simulation Container Tokens as local game state", async ({ page }) => {
   await page.goto("/tests/e2e/fixtures/fleet-board-capacity.html");
@@ -52,16 +53,6 @@ test("player buys bounded reactor-scoped Simulation Container Tokens as local ga
   await buyButton.click();
   await expect(page.getByText("Simulation Budget is exhausted", { exact: false })).toBeVisible();
 });
-
-async function canvasHasNonBlankPixels(canvas: Locator) {
-  return canvas.evaluate((element: HTMLCanvasElement) => {
-    const context = element.getContext("2d");
-    if (!context) {
-      return false;
-    }
-    return Array.from(context.getImageData(0, 0, 120, 120).data).some((channel) => channel !== 0);
-  });
-}
 
 async function sampleRail(canvas: Locator) {
   return canvas.evaluate((element: HTMLCanvasElement) => {

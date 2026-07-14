@@ -110,8 +110,16 @@ A Fleet Board local-game resource used only to buy Simulation Container Tokens. 
 _Avoid_: Cash, cloud budget, compute credits, project budget
 
 **Reactor Slot Rail**:
-The two-slot local-game capacity display attached to one Fleet Board reactor. It shows where Simulation Container Tokens are installed and has no relationship to a real scheduler, container runtime, or plant system.
+The two-slot local-game capacity display attached to one Fleet Board reactor. It shows whether each Simulation Container Token is idle, queued, or running a Simulation Job and has no relationship to a real scheduler, container runtime, or plant system.
 _Avoid_: Container pool, scheduler queue, Kubernetes capacity, reactor control
+
+**Simulation Job**:
+A deterministic Fleet Board local-game lifecycle queued on one idle Simulation Container Token. It starts on the next day tick, completes after three advances, and remains local game state rather than a SimOps Run, Slurm job, backend artifact, or evidence record.
+_Avoid_: SimOps Run, Slurm job, backend submission, objective evidence
+
+**Insight Token**:
+A reactor-scoped Fleet Board local-game reward produced when a Simulation Job completes. Its later pressure-absorption behavior is a game rule, not a safety claim, operating recommendation, or backend simulation result.
+_Avoid_: Safety credit, validated result, operational recommendation, backend artifact
 
 **Cooldown**:
 A post-shutdown phase where the unit is not commercially generating but still has active thermal/reactor-state work to represent. Cooldown is not standby and does not imply immediate restart availability.

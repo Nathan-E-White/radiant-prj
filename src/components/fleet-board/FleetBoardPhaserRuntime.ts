@@ -259,10 +259,31 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
         graphics.strokeRoundedRect(centerX - railWidth / 2, centerY - 13, railWidth, 26, 9);
         for (const slot of rail.slots) {
           const slotX = centerX + (slot.slotIndex - (rail.slots.length - 1) / 2) * 28;
-          graphics.fillStyle(slot.status === "installed" ? 0x30d9ff : 0x223641, 0.96);
+          const slotFill = {
+            empty: 0x223641,
+            idle: 0x30d9ff,
+            queued: 0xf8d66d,
+            running: 0x55e69a
+          }[slot.status];
+          graphics.fillStyle(slotFill, 0.96);
           graphics.fillCircle(slotX, centerY, 9);
-          graphics.lineStyle(1, slot.status === "installed" ? 0xc9f7ff : 0x6d7f89, 0.95);
+          graphics.lineStyle(1, slot.status === "empty" ? 0x6d7f89 : 0xe8ffff, 0.95);
           graphics.strokeCircle(slotX, centerY, 9);
+          if (slot.status !== "empty") {
+            const statusLabel = this.add
+              .text(
+                slotX,
+                centerY,
+                slot.status === "idle" ? "I" : slot.status === "queued" ? "Q" : `${slot.advancesRemaining ?? 0}`,
+                {
+                  fontFamily: "Inter, system-ui, sans-serif",
+                  fontSize: "9px",
+                  color: "#081116"
+                }
+              )
+              .setOrigin(0.5);
+            this.dynamicLayer.add(statusLabel);
+          }
         }
         const railLabel = this.add
           .text(centerX, centerY - 20, rail.label, {
@@ -272,6 +293,23 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
           })
           .setOrigin(0.5);
         this.dynamicLayer.add(railLabel);
+      }
+
+      for (const badge of scene.insightTokenBadges) {
+        const x = offset.x + badge.gridX * tileSize;
+        const y = offset.y + badge.gridY * tileSize;
+        graphics.fillStyle(0xc98cff, 0.96);
+        graphics.fillCircle(x, y, 13);
+        graphics.lineStyle(2, 0xf3dcff, 0.96);
+        graphics.strokeCircle(x, y, 13);
+        const label = this.add
+          .text(x, y, `${badge.count}`, {
+            fontFamily: "Inter, system-ui, sans-serif",
+            fontSize: "10px",
+            color: "#13091b"
+          })
+          .setOrigin(0.5);
+        this.dynamicLayer.add(label);
       }
 
       for (const pawn of scene.pawns) {

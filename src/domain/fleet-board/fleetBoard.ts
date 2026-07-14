@@ -3,6 +3,7 @@ import type { FleetBoardWorkbenchModifiers } from "./workbenchAdapter";
 export type FleetBoardFacilityKind = "trisoFactory" | "reactor" | "desalPlant" | "armyBase" | "battery";
 export type FleetBoardFacilityStatus = "active" | "outage" | "refueling";
 export type FleetBoardPawnKind = "inspector" | "trouble";
+export type FleetBoardSimulationJobStatus = "queued" | "running" | "complete";
 
 export type FleetBoardPosition = {
   x: number;
@@ -38,9 +39,29 @@ export type FleetBoardSimulationContainerToken = {
   reactorId: string;
 };
 
+export type FleetBoardSimulationJob = {
+  id: string;
+  reactorId: string;
+  containerTokenId: string;
+  status: FleetBoardSimulationJobStatus;
+  advancesRemaining: number;
+  queuedDay: number;
+  startedDay?: number;
+  completedDay?: number;
+};
+
+export type FleetBoardReactorSimulationSlotSummary = {
+  tokenId: string;
+  status: "idle" | "queued" | "running";
+  advancesRemaining?: number;
+  jobId?: string;
+};
+
 export type FleetBoardSimulationState = {
   budget: number;
   containerTokens: Record<string, FleetBoardSimulationContainerToken>;
+  jobs: Record<string, FleetBoardSimulationJob>;
+  insightTokensByReactorId: Record<string, number>;
 };
 
 export type FleetBoardEventKind =
@@ -55,6 +76,10 @@ export type FleetBoardEventKind =
   | "debtRemoval"
   | "simulationContainerPurchased"
   | "simulationPurchaseBlocked"
+  | "simulationJobQueued"
+  | "simulationJobQueueBlocked"
+  | "simulationJobStarted"
+  | "simulationJobCompleted"
   | "scenarioComplete";
 
 export type FleetBoardEvent = {
@@ -94,6 +119,8 @@ export type FleetBoardConfig = {
   startingSimulationBudget: number;
   simulationContainerTokenCost: number;
   simulationContainerTokenCapPerReactor: number;
+  simulationJobDurationAdvances: number;
+  simulationJobInsightTokenReward: number;
 };
 
 export type FleetBoardState = {
@@ -121,6 +148,7 @@ export type FleetBoardAction =
       position: FleetBoardPosition;
     }
   | { type: "buySimulationContainerToken"; reactorId: string }
+  | { type: "queueSimulationJob"; reactorId: string }
   | { type: "tickDay" }
   | { type: "refuelFacility"; facilityId: string };
 
@@ -150,7 +178,9 @@ export const fleetBoardDefaultConfig: FleetBoardConfig = {
   dailyOperationsCost: 18,
   startingSimulationBudget: 6,
   simulationContainerTokenCost: 2,
-  simulationContainerTokenCapPerReactor: 2
+  simulationContainerTokenCapPerReactor: 2,
+  simulationJobDurationAdvances: 3,
+  simulationJobInsightTokenReward: 1
 };
 
 export const fleetBoardNeutralModifiers: FleetBoardWorkbenchModifiers = {
@@ -218,7 +248,9 @@ export function createInitialFleetBoardState({
     score: { water: 0, resilience: 0, cash: 0, continuity: 0, total: 0 },
     simulation: {
       budget: config.startingSimulationBudget,
-      containerTokens: {}
+      containerTokens: {},
+      jobs: {},
+      insightTokensByReactorId: {}
     },
     debtDays: cash < config.debtLimit ? 1 : 0,
     removed: false,
@@ -239,6 +271,10 @@ export function applyFleetBoardAction(state: FleetBoardState, action: FleetBoard
 
   if (action.type === "buySimulationContainerToken") {
     return buySimulationContainerToken(state, action.reactorId);
+  }
+
+  if (action.type === "queueSimulationJob") {
+    return queueSimulationJob(state, action.reactorId);
   }
 
   if (action.type === "refuelFacility") {
@@ -271,8 +307,35 @@ export function summarizeFleetBoard(state: FleetBoardState) {
     simulationContainerTokens: Object.keys(state.simulation.containerTokens).length,
     simulationContainerTokensByReactorId,
     simulationContainerTokenCost: state.config.simulationContainerTokenCost,
-    simulationContainerTokenCapPerReactor: state.config.simulationContainerTokenCapPerReactor
+    simulationContainerTokenCapPerReactor: state.config.simulationContainerTokenCapPerReactor,
+    queuedSimulationJobs: simulationJobsByStatus(state, "queued").length,
+    runningSimulationJobs: simulationJobsByStatus(state, "running").length,
+    completedSimulationJobs: simulationJobsByStatus(state, "complete").length,
+    insightTokens: Object.values(state.simulation.insightTokensByReactorId).reduce((sum, count) => sum + count, 0)
   };
+}
+
+export function summarizeReactorSimulation(
+  state: FleetBoardState,
+  reactorId: string
+): { slots: FleetBoardReactorSimulationSlotSummary[]; insightTokens: number } {
+  const slots = Object.values(state.simulation.containerTokens)
+    .filter((token) => token.reactorId === reactorId)
+    .map((token): FleetBoardReactorSimulationSlotSummary => {
+      const job = Object.values(state.simulation.jobs).find(
+        (candidate) => candidate.containerTokenId === token.id && candidate.status !== "complete"
+      );
+      if (!job) {
+        return { tokenId: token.id, status: "idle" };
+      }
+      return {
+        tokenId: token.id,
+        status: job.status === "queued" ? "queued" : "running",
+        advancesRemaining: job.advancesRemaining,
+        jobId: job.id
+      };
+    });
+  return { slots, insightTokens: state.simulation.insightTokensByReactorId[reactorId] ?? 0 };
 }
 
 function placeFacility(
@@ -360,6 +423,7 @@ function buySimulationContainerToken(state: FleetBoardState, reactorId: string):
   const next: FleetBoardState = {
     ...state,
     simulation: {
+      ...state.simulation,
       budget: state.simulation.budget - state.config.simulationContainerTokenCost,
       containerTokens: {
         ...state.simulation.containerTokens,
@@ -371,6 +435,53 @@ function buySimulationContainerToken(state: FleetBoardState, reactorId: string):
     next,
     "simulationContainerPurchased",
     "Simulation Container Token installed on the reactor's Reactor Slot Rail (local game state only)",
+    reactorId
+  );
+}
+
+function queueSimulationJob(state: FleetBoardState, reactorId: string): FleetBoardState {
+  const reactor = state.facilities[reactorId];
+  if (!reactor || reactor.kind !== "reactor") {
+    return addEvent(
+      state,
+      "simulationJobQueueBlocked",
+      "Simulation Job queue blocked: select a reactor",
+      reactorId
+    );
+  }
+
+  const idleToken = summarizeReactorSimulation(state, reactorId).slots.find((slot) => slot.status === "idle");
+  if (!idleToken) {
+    return addEvent(
+      state,
+      "simulationJobQueueBlocked",
+      "Simulation Job queue blocked: no idle Simulation Container Token",
+      reactorId
+    );
+  }
+
+  const jobId = `simulation-job-${Object.keys(state.simulation.jobs).length + 1}`;
+  const next: FleetBoardState = {
+    ...state,
+    simulation: {
+      ...state.simulation,
+      jobs: {
+        ...state.simulation.jobs,
+        [jobId]: {
+          id: jobId,
+          reactorId,
+          containerTokenId: idleToken.tokenId,
+          status: "queued",
+          advancesRemaining: state.config.simulationJobDurationAdvances,
+          queuedDay: state.day
+        }
+      }
+    }
+  };
+  return addEvent(
+    next,
+    "simulationJobQueued",
+    "Simulation Job queued on reactor-scoped capacity (local game state only)",
     reactorId
   );
 }
@@ -389,6 +500,7 @@ function tickDay(state: FleetBoardState): FleetBoardState {
   next = produceFuel(next);
   next = runReactors(next);
   next = movePawns(next);
+  next = tickSimulationJobs(next);
   next = maybeTriggerInspector(next);
   next = maybeTriggerTrouble(next);
   next = applyDebtRules(next);
@@ -463,6 +575,67 @@ function runReactors(state: FleetBoardState): FleetBoardState {
   return next;
 }
 
+function tickSimulationJobs(state: FleetBoardState): FleetBoardState {
+  let next = state;
+  for (const job of Object.values(state.simulation.jobs)) {
+    if (job.status === "complete") {
+      continue;
+    }
+
+    const advancesRemaining = Math.max(0, job.advancesRemaining - 1);
+    if (advancesRemaining === 0) {
+      const completedJob: FleetBoardSimulationJob = {
+        ...job,
+        status: "complete",
+        advancesRemaining,
+        completedDay: state.day
+      };
+      const currentInsightTokens = next.simulation.insightTokensByReactorId[job.reactorId] ?? 0;
+      next = {
+        ...next,
+        simulation: {
+          ...next.simulation,
+          jobs: { ...next.simulation.jobs, [job.id]: completedJob },
+          insightTokensByReactorId: {
+            ...next.simulation.insightTokensByReactorId,
+            [job.reactorId]: currentInsightTokens + state.config.simulationJobInsightTokenReward
+          }
+        }
+      };
+      next = addEvent(
+        next,
+        "simulationJobCompleted",
+        "Simulation Job completed and produced a reactor-scoped Insight Token (local game state only)",
+        job.reactorId
+      );
+      continue;
+    }
+
+    const runningJob: FleetBoardSimulationJob = {
+      ...job,
+      status: "running",
+      advancesRemaining,
+      ...(job.startedDay === undefined ? { startedDay: state.day } : {})
+    };
+    next = {
+      ...next,
+      simulation: {
+        ...next.simulation,
+        jobs: { ...next.simulation.jobs, [job.id]: runningJob }
+      }
+    };
+    if (job.status === "queued") {
+      next = addEvent(
+        next,
+        "simulationJobStarted",
+        "Simulation Job started on the next deterministic day tick (local game state only)",
+        job.reactorId
+      );
+    }
+  }
+  return next;
+}
+
 function movePawns(state: FleetBoardState): FleetBoardState {
   return {
     ...state,
@@ -523,6 +696,10 @@ function applyDebtRules(state: FleetBoardState): FleetBoardState {
 
 function activeFacilities(state: FleetBoardState, kind: FleetBoardFacilityKind): FleetBoardFacility[] {
   return Object.values(state.facilities).filter((facility) => facility.kind === kind && facility.status === "active");
+}
+
+function simulationJobsByStatus(state: FleetBoardState, status: FleetBoardSimulationJobStatus) {
+  return Object.values(state.simulation.jobs).filter((job) => job.status === status);
 }
 
 function connectedFacilityCount(state: FleetBoardState, source: FleetBoardFacility, kind: FleetBoardFacilityKind): number {

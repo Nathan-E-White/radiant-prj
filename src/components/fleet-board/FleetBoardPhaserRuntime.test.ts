@@ -104,6 +104,7 @@ function buildScene(day: number): FleetBoardSceneModel {
     pawns: [],
     routes: [],
     reactorSlotRails: [],
+    insightTokenBadges: [],
     resources: {
       fuelBlocks: 0,
       electricMwe: 0,

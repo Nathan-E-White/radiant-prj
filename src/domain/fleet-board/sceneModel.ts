@@ -1,6 +1,11 @@
 import type { WorkbenchValueBasis } from "../../api/simulatorWorkbench";
 import type { WorkbenchProjection } from "../simulator-workbench";
-import type { FleetBoardFacilityKind, FleetBoardPawnKind, FleetBoardState } from "./fleetBoard";
+import {
+  summarizeReactorSimulation,
+  type FleetBoardFacilityKind,
+  type FleetBoardPawnKind,
+  type FleetBoardState
+} from "./fleetBoard";
 
 export type FleetBoardSpriteKey = FleetBoardFacilityKind | FleetBoardPawnKind | "routePulse";
 
@@ -24,9 +29,11 @@ export type FleetBoardScenePawn = {
 export type FleetBoardSceneReactorSlot = {
   id: string;
   slotIndex: number;
-  status: "empty" | "installed";
+  status: "empty" | "idle" | "queued" | "running";
   label: string;
   tokenId?: string;
+  jobId?: string;
+  advancesRemaining?: number;
 };
 
 export type FleetBoardSceneReactorSlotRail = {
@@ -35,6 +42,15 @@ export type FleetBoardSceneReactorSlotRail = {
   gridY: number;
   label: "Reactor Slot Rail";
   slots: FleetBoardSceneReactorSlot[];
+};
+
+export type FleetBoardSceneInsightTokenBadge = {
+  id: string;
+  reactorId: string;
+  gridX: number;
+  gridY: number;
+  count: number;
+  label: string;
 };
 
 export type FleetBoardSceneModel = {
@@ -46,6 +62,7 @@ export type FleetBoardSceneModel = {
   pawns: FleetBoardScenePawn[];
   routes: Array<{ from: FleetBoardSceneFacility; to: FleetBoardSceneFacility }>;
   reactorSlotRails: FleetBoardSceneReactorSlotRail[];
+  insightTokenBadges: FleetBoardSceneInsightTokenBadge[];
   resources: FleetBoardState["resources"];
   score: FleetBoardState["score"];
   valueBasisCounts: Record<WorkbenchValueBasis, number>;
@@ -79,6 +96,7 @@ export function buildFleetBoardSceneModel(
     })),
     routes: buildFleetBoardRoutes(facilities, gameState.config.routeRange),
     reactorSlotRails: buildReactorSlotRails(gameState, facilities),
+    insightTokenBadges: buildInsightTokenBadges(gameState, facilities),
     resources: gameState.resources,
     score: gameState.score,
     valueBasisCounts: projection.valueBasisSummary
@@ -89,26 +107,67 @@ function buildReactorSlotRails(gameState: FleetBoardState, facilities: FleetBoar
   return facilities
     .filter((facility) => facility.kind === "reactor")
     .map((reactor): FleetBoardSceneReactorSlotRail => {
-      const tokens = Object.values(gameState.simulation.containerTokens).filter(
-        (token) => token.reactorId === reactor.id
-      );
+      const reactorSimulation = summarizeReactorSimulation(gameState, reactor.id);
       return {
         reactorId: reactor.id,
         gridX: reactor.gridX,
         gridY: reactor.gridY - 0.58,
         label: "Reactor Slot Rail",
         slots: Array.from({ length: gameState.config.simulationContainerTokenCapPerReactor }, (_, slotIndex) => {
-          const token = tokens[slotIndex];
+          const slot = reactorSimulation.slots[slotIndex];
           return {
             id: `${reactor.id}-simulation-slot-${slotIndex + 1}`,
             slotIndex,
-            status: token ? "installed" : "empty",
-            label: token ? "Simulation Container Token installed" : "Empty simulation slot",
-            ...(token ? { tokenId: token.id } : {})
+            status: slot?.status ?? "empty",
+            label: simulationSlotLabel(slot),
+            ...(slot
+              ? {
+                  tokenId: slot.tokenId,
+                  ...(slot.jobId ? { jobId: slot.jobId } : {}),
+                  ...(slot.advancesRemaining === undefined
+                    ? {}
+                    : { advancesRemaining: slot.advancesRemaining })
+                }
+              : {})
           };
         })
       };
     });
+}
+
+function simulationSlotLabel(slot: ReturnType<typeof summarizeReactorSimulation>["slots"][number] | undefined) {
+  if (!slot) {
+    return "Empty simulation slot";
+  }
+  if (slot.status === "idle") {
+    return "Simulation Container Token idle";
+  }
+  if (slot.status === "queued") {
+    return "Simulation Job queued";
+  }
+  return `Simulation Job running · ${slot.advancesRemaining} advances remaining`;
+}
+
+function buildInsightTokenBadges(gameState: FleetBoardState, facilities: FleetBoardSceneFacility[]) {
+  return facilities.flatMap((facility): FleetBoardSceneInsightTokenBadge[] => {
+    if (facility.kind !== "reactor") {
+      return [];
+    }
+    const count = summarizeReactorSimulation(gameState, facility.id).insightTokens;
+    if (count === 0) {
+      return [];
+    }
+    return [
+      {
+        id: `${facility.id}-insight-token-badge`,
+        reactorId: facility.id,
+        gridX: facility.gridX - 0.52,
+        gridY: facility.gridY - 0.58,
+        count,
+        label: `${count} Insight Token${count === 1 ? "" : "s"}`
+      }
+    ];
+  });
 }
 
 function buildFleetBoardRoutes(facilities: FleetBoardSceneFacility[], routeRange: number) {
