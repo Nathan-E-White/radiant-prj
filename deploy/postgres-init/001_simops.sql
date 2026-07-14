@@ -296,6 +296,29 @@ CREATE TABLE IF NOT EXISTS reactor_telemetry_worker_sets (
   UNIQUE (game_session_id, register_idempotency_key)
 );
 
+CREATE TABLE IF NOT EXISTS artifact_forge_requests (
+  request_id TEXT PRIMARY KEY,
+  game_session_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  reactor_id TEXT NOT NULL,
+  run_id TEXT,
+  decision TEXT NOT NULL,
+  record JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  last_activity_at TIMESTAMPTZ NOT NULL,
+  session_expires_at TIMESTAMPTZ NOT NULL,
+  retain_until TIMESTAMPTZ NOT NULL,
+  UNIQUE (game_session_id, idempotency_key)
+);
+
+CREATE TABLE IF NOT EXISTS artifact_forge_result_artifacts (
+  artifact_id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL UNIQUE,
+  artifact JSONB NOT NULL,
+  persisted_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE SCHEMA IF NOT EXISTS iceberg_catalog;
 
 CREATE TABLE IF NOT EXISTS iceberg_catalog.catalog_metadata (

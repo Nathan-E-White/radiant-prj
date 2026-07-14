@@ -22,7 +22,7 @@ CONFIGURED_DATA_FLUSH_POSTGRES_DSN='postgres://radiant:radiant@127.0.0.1:5432/ra
   bun run configured-data-flush -- --apply-plan cdf-REVIEWED_PLAN_ID
 ```
 
-Apply re-inspects the database under a serializable transaction and rejects stale or blocked plans. The transaction clears SimOps event and telemetry records, measured and simulated projection rows, Twin State and Lineage, all pre-flush Twin publication recovery records, and removed Reactor Telemetry Worker Set control records. It advances `workbench_snapshot_generation` once in the same commit.
+Apply re-inspects the database under a serializable transaction and rejects stale or blocked plans. The transaction clears Artifact Forge intent, outcome, and result-artifact eligibility records, SimOps event and telemetry records, measured and simulated projection rows, Twin State and Lineage, all pre-flush Twin publication recovery records, and removed Reactor Telemetry Worker Set control records. It advances `workbench_snapshot_generation` once in the same commit.
 
 Active Runs and active or retryable Reactor Telemetry Worker Sets block mutation. Stop or reconcile them through their normal lifecycle before creating a new plan.
 

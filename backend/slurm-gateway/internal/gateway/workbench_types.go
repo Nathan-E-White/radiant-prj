@@ -23,21 +23,22 @@ const (
 )
 
 type SimopsResultFrame struct {
-	SchemaVersion   string                  `json:"schemaVersion"`
-	RunID           string                  `json:"runId"`
-	ScenarioID      string                  `json:"scenarioId"`
-	WorkerID        string                  `json:"workerId"`
-	WorkerKind      SimopsWorkerKind        `json:"workerKind"`
-	Sequence        uint64                  `json:"sequence"`
-	ProducedAt      string                  `json:"producedAt"`
-	ReceivedAt      string                  `json:"receivedAt,omitempty"`
-	ResultType      string                  `json:"resultType"`
-	ModelID         string                  `json:"modelId"`
-	InputWindow     SimopsResultInputWindow `json:"inputWindow"`
-	ValueBasis      WorkbenchValueBasis     `json:"valueBasis"`
-	SyntheticStatus string                  `json:"syntheticStatus"`
-	Values          []SimopsResultValue     `json:"values"`
-	LineageInputs   []TwinLineageInput      `json:"lineageInputs,omitempty"`
+	SchemaVersion    string                  `json:"schemaVersion"`
+	RunID            string                  `json:"runId"`
+	ScenarioID       string                  `json:"scenarioId"`
+	WorkerID         string                  `json:"workerId"`
+	WorkerKind       SimopsWorkerKind        `json:"workerKind"`
+	Sequence         uint64                  `json:"sequence"`
+	ProducedAt       string                  `json:"producedAt"`
+	ReceivedAt       string                  `json:"receivedAt,omitempty"`
+	ResultType       string                  `json:"resultType"`
+	ModelID          string                  `json:"modelId"`
+	InputWindow      SimopsResultInputWindow `json:"inputWindow"`
+	ValueBasis       WorkbenchValueBasis     `json:"valueBasis"`
+	SyntheticStatus  string                  `json:"syntheticStatus"`
+	Values           []SimopsResultValue     `json:"values"`
+	LineageInputs    []TwinLineageInput      `json:"lineageInputs,omitempty"`
+	LineageArtifacts []TwinLineageArtifact   `json:"lineageArtifacts,omitempty"`
 }
 
 type SimopsResultInputWindow struct {

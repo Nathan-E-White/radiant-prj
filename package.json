@@ -34,11 +34,12 @@
     "storybook": "storybook dev --no-open --port 6006",
     "build-storybook": "storybook build",
     "backend:test": "cd backend/slurm-gateway && PATH=/opt/homebrew/bin:/usr/local/bin:$PATH env GOCACHE=/tmp/radiant-go-cache GOMODCACHE=/tmp/radiant-go-mod-cache go test -tags dockerintegration ./...",
-    "backend:snapshot:postgres:test": "cd backend/slurm-gateway && PATH=/opt/homebrew/bin:/usr/local/bin:$PATH env GOCACHE=/tmp/radiant-go-cache GOMODCACHE=/tmp/radiant-go-mod-cache go test -tags 'postgresintegration iceberggo' ./internal/gateway -run '^(TestPostgres(ConfiguredDataFlush|ReactorTelemetry|WorkbenchSnapshot|Twin)|TestTwinIcebergAppendDeduplicatesPublicationOnLegacySchema)$' -count=1",
+    "backend:snapshot:postgres:test": "cd backend/slurm-gateway && PATH=/opt/homebrew/bin:/usr/local/bin:$PATH env GOCACHE=/tmp/radiant-go-cache GOMODCACHE=/tmp/radiant-go-mod-cache go test -tags 'postgresintegration iceberggo' ./internal/gateway -run '^(TestPostgres(ArtifactForge|ConfiguredDataFlush|ReactorTelemetry|WorkbenchSnapshot|Twin)|TestTwinIcebergAppendDeduplicatesPublicationOnLegacySchema)$' -count=1",
     "backend:deps:check": "node scripts/check-go-gateway-deps.mjs",
     "backend:run": "cd backend/slurm-gateway && go run ./cmd/server",
     "configured-data-flush": "cd backend/slurm-gateway && go run -tags dataplane ./cmd/configured-data-flush",
     "configured-data-flush:check": "node scripts/check-configured-data-flush.mjs",
+    "artifact-forge:check": "node scripts/check-artifact-forge.mjs",
     "certs:local": "scripts/create-local-gateway-certs.sh",
     "docker:up": "scripts/docker-up.sh",
     "docker:down": "scripts/docker-down.sh",
@@ -57,7 +58,7 @@
     "fold:v2": "scripts/archive/fold-v2-to-main.sh",
     "checkpoint:v2": "scripts/archive/checkpoint-v2.sh",
     "cleanup:v2": "scripts/archive/cleanup-v2-hygiene.sh",
-    "ci": "\"$npm_execpath\" run typecheck && \"$npm_execpath\" run test && \"$npm_execpath\" run fleet-board:v2-assets:check && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run backend:deps:check && \"$npm_execpath\" run configured-data-flush:check && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run infra:check && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run simops:contract:check && \"$npm_execpath\" run simulator-workbench:contract:check && \"$npm_execpath\" run docker:prune:check && \"$npm_execpath\" run docker:storage:check && \"$npm_execpath\" run hygiene:size:check && \"$npm_execpath\" run hygiene:clean:check && \"$npm_execpath\" run simops:smoke:json:test && \"$npm_execpath\" run simops:smoke:kind:check && \"$npm_execpath\" run simops:tofu:check && \"$npm_execpath\" run simops:runtime:closeout:check && \"$npm_execpath\" run simops:generator:test && \"$npm_execpath\" run scada:standins:test",
+    "ci": "\"$npm_execpath\" run typecheck && \"$npm_execpath\" run test && \"$npm_execpath\" run fleet-board:v2-assets:check && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run backend:deps:check && \"$npm_execpath\" run configured-data-flush:check && \"$npm_execpath\" run artifact-forge:check && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run infra:check && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run simops:contract:check && \"$npm_execpath\" run simulator-workbench:contract:check && \"$npm_execpath\" run docker:prune:check && \"$npm_execpath\" run docker:storage:check && \"$npm_execpath\" run hygiene:size:check && \"$npm_execpath\" run hygiene:clean:check && \"$npm_execpath\" run simops:smoke:json:test && \"$npm_execpath\" run simops:smoke:kind:check && \"$npm_execpath\" run simops:tofu:check && \"$npm_execpath\" run simops:runtime:closeout:check && \"$npm_execpath\" run simops:generator:test && \"$npm_execpath\" run scada:standins:test",
     "ci:full": "\"$npm_execpath\" run ci && \"$npm_execpath\" run compose:smoke"
   },
   "dependencies": {

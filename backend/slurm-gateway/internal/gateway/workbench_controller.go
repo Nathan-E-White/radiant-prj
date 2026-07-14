@@ -21,6 +21,7 @@ type WorkbenchController struct {
 	eventLog                 WorkbenchEventLog
 	now                      func() time.Time
 	dynamicMeasuredRetention time.Duration
+	resultLineageContext     func(string) ([]TwinLineageInput, []TwinLineageArtifact, bool)
 }
 
 func NewDefaultWorkbenchController(cfg WorkbenchConfig) (*WorkbenchController, error) {
@@ -103,6 +104,12 @@ func (c *WorkbenchController) IngestResults(ctx context.Context, run SimopsRunRe
 		return 0, http.StatusBadRequest, fmt.Errorf("at least one simulated result frame is required")
 	}
 	for _, result := range results {
+		if c.resultLineageContext != nil {
+			if inputs, artifacts, ok := c.resultLineageContext(result.RunID); ok {
+				result.LineageInputs = append(result.LineageInputs, inputs...)
+				result.LineageArtifacts = append(result.LineageArtifacts, artifacts...)
+			}
+		}
 		if err := validateSimopsResultFrame(run, result); err != nil {
 			return 0, http.StatusUnprocessableEntity, err
 		}

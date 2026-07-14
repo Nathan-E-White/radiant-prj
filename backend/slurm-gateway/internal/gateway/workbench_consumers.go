@@ -323,6 +323,9 @@ func BuildTwinStateFromData(measured []ScadaTelemetryFrame, result SimopsResultF
 	}
 
 	first := result.Values[0]
+	if expected, ok := simopsResultValueByID(result.Values, WorkbenchSimulatedMarginValue); ok {
+		first = expected
+	}
 	resultValue := rawObject(first.Value)
 	resultEntity := ensureTwinEntity(entities, first.EntityID, displayNameForAsset(first.EntityID))
 	resultEntity.Values = append(resultEntity.Values, DigitalTwinValue{
@@ -347,7 +350,7 @@ func BuildTwinStateFromData(measured []ScadaTelemetryFrame, result SimopsResultF
 			ValueBasis: WorkbenchValueSimulated,
 		}}, result.LineageInputs...),
 		ProcessingSteps: []string{"Accept run-scoped synthetic simulated result frame"},
-		Artifacts:       []TwinLineageArtifact{},
+		Artifacts:       append([]TwinLineageArtifact(nil), result.LineageArtifacts...),
 	})
 
 	imputed := imputedMarginValue(resultValue)
@@ -381,7 +384,7 @@ func BuildTwinStateFromData(measured []ScadaTelemetryFrame, result SimopsResultF
 			"Read run-scoped simulated result frame",
 			"Apply public-safe twin projection model without claiming validated physics",
 		},
-		Artifacts: []TwinLineageArtifact{},
+		Artifacts: append([]TwinLineageArtifact(nil), result.LineageArtifacts...),
 	})
 
 	ordered := make([]DigitalTwinEntity, 0, len(entities))
@@ -396,6 +399,15 @@ func BuildTwinStateFromData(measured []ScadaTelemetryFrame, result SimopsResultF
 		AsOf:          asOf.UTC(),
 		Entities:      ordered,
 	}, lineage
+}
+
+func simopsResultValueByID(values []SimopsResultValue, valueID string) (SimopsResultValue, bool) {
+	for _, value := range values {
+		if value.ValueID == valueID {
+			return value, true
+		}
+	}
+	return SimopsResultValue{}, false
 }
 
 func ensureTwinEntity(entities map[string]*DigitalTwinEntity, entityID string, displayName string) *DigitalTwinEntity {

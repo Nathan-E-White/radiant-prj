@@ -7,14 +7,17 @@ import (
 )
 
 type fleetBoardIntentRequest struct {
-	Intent         string `json:"intent"`
-	GameSessionID  string `json:"gameSessionId"`
-	ReactorID      string `json:"reactorId"`
-	IdempotencyKey string `json:"idempotencyKey"`
+	Intent             string `json:"intent"`
+	GameSessionID      string `json:"gameSessionId"`
+	ReactorID          string `json:"reactorId"`
+	SimulationJobID    string `json:"simulationJobId,omitempty"`
+	SimulationJobState string `json:"simulationJobState,omitempty"`
+	SimulationRecipe   string `json:"simulationRecipe,omitempty"`
+	IdempotencyKey     string `json:"idempotencyKey"`
 }
 
 func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request) {
-	if g.reactorTelemetry == nil {
+	if g.reactorTelemetry == nil && g.artifactForge == nil {
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Fleet Board backend disabled", Code: "fleet_board_disabled"})
 		return
 	}
@@ -22,12 +25,15 @@ func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusMethodNotAllowed, ErrorResponse{Error: "Only POST requests allowed", Code: "method_not_allowed"})
 		return
 	}
-	if _, ok := g.authorizedIdentity(w, r); !ok {
+	identity, ok := g.authorizedIdentity(w, r)
+	if !ok {
 		return
 	}
-	if err := g.reactorTelemetry.ReconcileExpired(r.Context()); err != nil {
-		writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: err.Error(), Code: "reactor_telemetry_expiry_cleanup_failed"})
-		return
+	if g.reactorTelemetry != nil {
+		if err := g.reactorTelemetry.ReconcileExpired(r.Context()); err != nil {
+			writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: err.Error(), Code: "reactor_telemetry_expiry_cleanup_failed"})
+			return
+		}
 	}
 	defer r.Body.Close()
 	var request fleetBoardIntentRequest
@@ -39,6 +45,10 @@ func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request)
 	}
 	switch request.Intent {
 	case "registerDynamicReactor":
+		if g.reactorTelemetry == nil {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Reactor Telemetry backend disabled", Code: "reactor_telemetry_disabled"})
+			return
+		}
 		set, created, err := g.reactorTelemetry.RegisterDynamicReactor(r.Context(), RegisterDynamicReactorRequest{
 			GameSessionID: request.GameSessionID, ReactorID: request.ReactorID, IdempotencyKey: request.IdempotencyKey,
 		})
@@ -58,6 +68,10 @@ func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request)
 		}
 		writeJSON(w, status, map[string]any{"created": created, "workerSet": set})
 	case "removeDynamicReactor":
+		if g.reactorTelemetry == nil {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Reactor Telemetry backend disabled", Code: "reactor_telemetry_disabled"})
+			return
+		}
 		set, err := g.reactorTelemetry.RemoveDynamicReactor(r.Context(), RemoveDynamicReactorRequest{
 			GameSessionID: request.GameSessionID, ReactorID: request.ReactorID, IdempotencyKey: request.IdempotencyKey,
 		})
@@ -70,6 +84,27 @@ func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request)
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"workerSet": set})
+	case "requestArtifactForge":
+		if g.artifactForge == nil {
+			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Artifact Forge backend disabled", Code: "artifact_forge_disabled"})
+			return
+		}
+		outcome, created, err := g.artifactForge.Request(r.Context(), ArtifactForgeRequest{
+			GameSessionID: request.GameSessionID, ReactorID: request.ReactorID, SimulationJobID: request.SimulationJobID,
+			SimulationJobState: request.SimulationJobState, SimulationRecipe: request.SimulationRecipe, IdempotencyKey: request.IdempotencyKey,
+		}, identity)
+		if err != nil {
+			writeJSON(w, http.StatusUnprocessableEntity, ErrorResponse{Error: err.Error(), Code: "artifact_forge_rejected"})
+			return
+		}
+		status := http.StatusOK
+		if created {
+			status = http.StatusAccepted
+		}
+		if outcome.Decision == ArtifactForgeIntentRejected {
+			status = http.StatusUnprocessableEntity
+		}
+		writeJSON(w, status, outcome)
 	default:
 		writeJSON(w, http.StatusUnprocessableEntity, ErrorResponse{Error: "Unsupported Fleet Board intent", Code: "intent_not_supported"})
 	}

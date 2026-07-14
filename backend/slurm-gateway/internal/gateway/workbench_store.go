@@ -43,6 +43,7 @@ type InMemoryWorkbenchStore struct {
 	lineageByValue  map[string]DigitalTwinValueLineage
 	processed       map[string]struct{}
 	publications    map[string]TwinStatePublication
+	forgeArtifacts  map[string]ArtifactForgeResultArtifact
 	generation      uint64
 	now             func() time.Time
 }
@@ -57,6 +58,7 @@ func NewInMemoryWorkbenchStore() *InMemoryWorkbenchStore {
 		lineageByValue:  make(map[string]DigitalTwinValueLineage),
 		processed:       make(map[string]struct{}),
 		publications:    make(map[string]TwinStatePublication),
+		forgeArtifacts:  make(map[string]ArtifactForgeResultArtifact),
 		now:             time.Now,
 	}
 }
@@ -126,8 +128,22 @@ func (s *InMemoryWorkbenchStore) SaveResultProjection(consumerName string, proje
 	for _, value := range frame.Values {
 		s.resultsByValue[value.ValueID] = frame
 	}
+	if s.now == nil {
+		s.now = time.Now
+	}
+	s.forgeArtifacts[frame.RunID] = buildArtifactForgeResultArtifact(frame, s.now().UTC())
 	s.generation++
 	return true, nil
+}
+
+func (s *InMemoryWorkbenchStore) ArtifactForgeResultArtifact(runID string) (ArtifactForgeResultArtifact, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	artifact, ok := s.forgeArtifacts[runID]
+	if !ok {
+		return ArtifactForgeResultArtifact{}, ErrArtifactForgeResultArtifactNotFound
+	}
+	return artifact, nil
 }
 
 func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error) {
@@ -381,6 +397,12 @@ func ensureWorkbenchSnapshotSchema(ctx context.Context, db *sql.DB) error {
 			publication_id TEXT PRIMARY KEY,
 			publication JSONB NOT NULL,
 			persisted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		);
+		CREATE TABLE IF NOT EXISTS artifact_forge_result_artifacts (
+			artifact_id TEXT PRIMARY KEY,
+			run_id TEXT NOT NULL UNIQUE,
+			artifact JSONB NOT NULL,
+			persisted_at TIMESTAMPTZ NOT NULL
 		)
 	`)
 	return err
@@ -533,6 +555,19 @@ func (s *PostgresWorkbenchStore) SaveResultProjection(consumerName string, proje
 			return false, err
 		}
 	}
+	artifact := buildArtifactForgeResultArtifact(projection.Frame, time.Now().UTC())
+	artifactRaw, err := json.Marshal(artifact)
+	if err != nil {
+		return false, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO artifact_forge_result_artifacts (artifact_id, run_id, artifact, persisted_at)
+		VALUES ($1,$2,$3::jsonb,$4)
+		ON CONFLICT (run_id) DO UPDATE
+		SET artifact_id = EXCLUDED.artifact_id, artifact = EXCLUDED.artifact, persisted_at = EXCLUDED.persisted_at
+	`, artifact.ArtifactID, artifact.RunID, artifactRaw, artifact.PersistedAt); err != nil {
+		return false, err
+	}
 	if err := upsertWorkbenchOffset(ctx, tx, consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset); err != nil {
 		return false, err
 	}
@@ -540,6 +575,23 @@ func (s *PostgresWorkbenchStore) SaveResultProjection(consumerName string, proje
 		return false, err
 	}
 	return true, tx.Commit()
+}
+
+func (s *PostgresWorkbenchStore) ArtifactForgeResultArtifact(runID string) (ArtifactForgeResultArtifact, error) {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	var raw []byte
+	if err := s.db.QueryRowContext(ctx, `SELECT artifact FROM artifact_forge_result_artifacts WHERE run_id = $1`, runID).Scan(&raw); err != nil {
+		if err == sql.ErrNoRows {
+			return ArtifactForgeResultArtifact{}, ErrArtifactForgeResultArtifactNotFound
+		}
+		return ArtifactForgeResultArtifact{}, err
+	}
+	var artifact ArtifactForgeResultArtifact
+	if err := json.Unmarshal(raw, &artifact); err != nil {
+		return ArtifactForgeResultArtifact{}, err
+	}
+	return artifact, nil
 }
 
 func (s *PostgresWorkbenchStore) SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error) {
