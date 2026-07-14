@@ -31,6 +31,9 @@ jobs:
       - name: Unit tests
         run: bun run test
 
+      - name: Check Fleet Board V2 simulation assets
+        run: bun run fleet-board:v2-assets:check
+
       - name: Backend gateway tests
         run: bun run backend:test
 

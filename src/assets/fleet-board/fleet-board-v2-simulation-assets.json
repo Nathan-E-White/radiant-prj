@@ -8,7 +8,11 @@
     "promptSummary": "Eight-cell V2 local simulation economy atlas on flat magenta chroma key, matching the existing dark-slate tabletop schematic pack; no text, logos, safety controls, or Artifact Forge imagery.",
     "transparency": "Chroma key removed with the bundled imagegen remove_chroma_key.py helper using border auto-key, soft matte, thresholds 12/220, and despill."
   },
-  "atlas": "fleet-board-v2-simulation-atlas.png",
+  "atlas": {
+    "file": "fleet-board-v2-simulation-atlas.png",
+    "width": 1774,
+    "height": 887
+  },
   "assets": [
     {
       "semanticKey": "simulation-container-token",
@@ -60,9 +64,15 @@
       "state": "insight-reward"
     }
   ],
-  "preview": "fleet-board-v2-simulation-pack-preview.png",
+  "preview": {
+    "file": "fleet-board-v2-simulation-pack-preview.png",
+    "width": 256,
+    "height": 256
+  },
   "qa": {
     "file": "docs/design/fleet-board/fleet-board-v2-simulation-assets-qa.png",
+    "width": 1024,
+    "height": 512,
     "order": [
       "simulation-container-token",
       "reactor-slot-rail-empty",
@@ -73,7 +83,22 @@
       "insight-token",
       "board-scale-group"
     ],
-    "checkerboard": true
+    "checkerboard": true,
+    "boardScale": {
+      "file": "docs/design/fleet-board/fleet-board-v2-simulation-assets-board-scale-qa.png",
+      "width": 504,
+      "height": 144,
+      "tileSize": 72,
+      "order": [
+        "simulation-container-token",
+        "reactor-slot-rail-empty",
+        "reactor-slot-rail-idle",
+        "reactor-slot-rail-queued",
+        "reactor-slot-rail-running",
+        "simulation-job-completed",
+        "insight-token"
+      ]
+    }
   },
   "deferred": ["artifact-forge"]
 }

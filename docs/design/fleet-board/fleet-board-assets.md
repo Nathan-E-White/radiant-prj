@@ -43,10 +43,13 @@
 - The transparent source atlas is `src/assets/fleet-board/fleet-board-v2-simulation-atlas.png`; the small grouped preview is `src/assets/fleet-board/fleet-board-v2-simulation-pack-preview.png`.
 - The generated source came from OpenAI built-in image generation on 2026-07-13 using an eight-cell, hybrid-tabletop-schematic prompt and a flat magenta chroma key. The exact generated source path and removal settings are retained in the manifest.
 - `fleet-board-v2-simulation-assets-qa.png` is the visual QA artifact. Its checkerboard proves transparency and its order is: container token, empty rail, idle, queued, running, completed job, Insight Token, board-scale group.
+- `fleet-board-v2-simulation-assets-board-scale-qa.png` places every required state on the current 72 px dark-slate board grid. Its order is: container token, empty rail, idle, queued, running, completed job, Insight Token.
 - Run `bun run fleet-board:v2-assets:check` to verify semantic keys, exact dimensions, RGBA output, the atlas, and the QA sheet. This gate is part of `bun run ci`.
 - Artifact Forge imagery remains deferred and is not present in this pack.
 
 ![Fleet Board V2 simulation asset transparency and board-scale QA](./fleet-board-v2-simulation-assets-qa.png)
+
+![Fleet Board V2 simulation states on the current 72 px board grid](./fleet-board-v2-simulation-assets-board-scale-qa.png)
 
 ## Style Rules
 
