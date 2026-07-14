@@ -6,6 +6,7 @@ import {
   buildFleetBoardSceneModel,
   buildFleetBoardWorkbenchModifiers,
   createInitialFleetBoardState,
+  summarizeReactorSimulation,
   summarizeFleetBoard,
   type FleetBoardFacilityKind,
   type FleetBoardState
@@ -50,6 +51,9 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
   const selectedReactorTokenCount = selectedReactorId
     ? (summary.simulationContainerTokensByReactorId[selectedReactorId] ?? 0)
     : 0;
+  const selectedReactorSimulation = selectedReactorId
+    ? summarizeReactorSimulation(gameState, selectedReactorId)
+    : null;
 
   const placeFacility = useCallback((facilityKind: FleetBoardFacilityKind, x: number, y: number) => {
     setGameState((current) =>
@@ -79,6 +83,15 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
     }
     setGameState((current) =>
       applyFleetBoardAction(current, { type: "buySimulationContainerToken", reactorId: selectedReactorId })
+    );
+  }, [selectedReactorId]);
+
+  const queueSimulationJob = useCallback(() => {
+    if (!selectedReactorId) {
+      return;
+    }
+    setGameState((current) =>
+      applyFleetBoardAction(current, { type: "queueSimulationJob", reactorId: selectedReactorId })
     );
   }, [selectedReactorId]);
 
@@ -118,6 +131,11 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
         </span>
         <span data-testid="fleet-board-simulation-container-tokens" aria-live="polite">
           {summary.simulationContainerTokens} Simulation Container Tokens
+        </span>
+        <span data-testid="fleet-board-simulation-jobs" aria-live="polite">
+          {summary.queuedSimulationJobs} queued · {summary.runningSimulationJobs} running ·{" "}
+          {summary.completedSimulationJobs} completed · {summary.insightTokens} Insight Token
+          {summary.insightTokens === 1 ? "" : "s"}
         </span>
       </div>
 
@@ -175,10 +193,19 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
                 ? `${selectedReactorTokenCount} of ${summary.simulationContainerTokenCapPerReactor} Reactor Slot Rail positions installed`
                 : "Select a reactor to inspect its Reactor Slot Rail"}
             </p>
-            <p>Local game state only — does not submit backend work.</p>
+            <p data-testid="fleet-board-selected-reactor-jobs" aria-live="polite">
+              {selectedReactorSimulation
+                ? formatReactorSimulationSummary(selectedReactorSimulation)
+                : "Select a reactor to inspect local Simulation Jobs"}
+            </p>
+            <p>Local game state only — not a SimOps Run or backend artifact.</p>
             <button type="button" onClick={buySimulationContainerToken} disabled={!selectedReactorId}>
               <Cpu size={16} />
               Buy Simulation Container Token ({summary.simulationContainerTokenCost} budget)
+            </button>
+            <button type="button" onClick={queueSimulationJob} disabled={!selectedReactorId}>
+              <Cpu size={16} />
+              Queue local Simulation Job
             </button>
           </div>
           <div className="fleet-board-modifiers">
@@ -203,6 +230,33 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
       </div>
     </section>
   );
+}
+
+function formatReactorSimulationSummary(
+  simulation: ReturnType<typeof summarizeReactorSimulation>
+): string {
+  const idle = simulation.slots.filter((slot) => slot.status === "idle").length;
+  const queued = simulation.slots.filter((slot) => slot.status === "queued").length;
+  const running = simulation.slots.filter((slot) => slot.status === "running");
+  const parts: string[] = [];
+  if (idle > 0) {
+    parts.push(`${idle} idle`);
+  }
+  if (queued > 0) {
+    parts.push(`${queued} queued`);
+  }
+  if (running.length > 0) {
+    const advancesRemaining = Math.min(...running.map((slot) => slot.advancesRemaining ?? 0));
+    parts.push(
+      `${running.length} running`,
+      `${advancesRemaining} advance${advancesRemaining === 1 ? "" : "s"} remaining`
+    );
+  }
+  if (parts.length === 0) {
+    parts.push("No Simulation Container Tokens installed");
+  }
+  parts.push(`${simulation.insightTokens} Insight Token${simulation.insightTokens === 1 ? "" : "s"}`);
+  return parts.join(" · ");
 }
 
 function createStarterState(modifiers: ReturnType<typeof buildFleetBoardWorkbenchModifiers>): FleetBoardState {

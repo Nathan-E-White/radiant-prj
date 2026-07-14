@@ -53,12 +53,40 @@ describe("fleet board scene model", () => {
         reactorId: "reactor-1",
         label: "Reactor Slot Rail",
         slots: [
-          expect.objectContaining({ slotIndex: 0, status: "installed" }),
+          expect.objectContaining({ slotIndex: 0, status: "idle" }),
           expect.objectContaining({ slotIndex: 1, status: "empty" })
         ]
       })
     ]);
     expect(scene.resources.cash).toBe(gameState.resources.cash);
     expect(scene.valueBasisCounts).toEqual(projection.valueBasisSummary);
+  });
+
+  it("projects queued and running jobs plus completed reactor-scoped Insight Tokens", () => {
+    const projection = buildWorkbenchProjection(loadFixtureWorkbenchData(), { selectedUnitId: "KAL-03" });
+    let gameState = createInitialFleetBoardState({ seed: "job-scene" });
+    gameState = applyFleetBoardAction(gameState, {
+      type: "placeFacility",
+      facilityId: "reactor-1",
+      facilityKind: "reactor",
+      position: { x: 5, y: 2 }
+    });
+    gameState = applyFleetBoardAction(gameState, { type: "buySimulationContainerToken", reactorId: "reactor-1" });
+    gameState = applyFleetBoardAction(gameState, { type: "queueSimulationJob", reactorId: "reactor-1" });
+
+    expect(buildFleetBoardSceneModel(projection, gameState).reactorSlotRails[0]?.slots[0]).toEqual(
+      expect.objectContaining({ status: "queued", label: "Simulation Job queued" })
+    );
+
+    gameState = applyFleetBoardAction(gameState, { type: "tickDay" });
+    expect(buildFleetBoardSceneModel(projection, gameState).reactorSlotRails[0]?.slots[0]).toEqual(
+      expect.objectContaining({ status: "running", label: "Simulation Job running · 2 advances remaining" })
+    );
+
+    gameState = applyFleetBoardAction(gameState, { type: "tickDay" });
+    gameState = applyFleetBoardAction(gameState, { type: "tickDay" });
+    expect(buildFleetBoardSceneModel(projection, gameState).insightTokenBadges).toEqual([
+      expect.objectContaining({ reactorId: "reactor-1", count: 1, label: "1 Insight Token" })
+    ]);
   });
 });

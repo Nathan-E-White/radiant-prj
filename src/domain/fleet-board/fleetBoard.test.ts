@@ -3,6 +3,7 @@ import {
   applyFleetBoardAction,
   createInitialFleetBoardState,
   fleetBoardDefaultConfig,
+  summarizeReactorSimulation,
   summarizeFleetBoard
 } from "./fleetBoard";
 
@@ -163,6 +164,74 @@ describe("fleet board game reducer", () => {
         facilityId: "reactor-3",
         detail: expect.stringContaining("Simulation Budget is exhausted")
       })
+    );
+  });
+
+  it("queues work on an idle reactor token, starts next tick, and awards an Insight Token after three advances", () => {
+    let state = createInitialFleetBoardState({ seed: "simulation-job" });
+    state = applyFleetBoardAction(state, {
+      type: "placeFacility",
+      facilityId: "reactor-1",
+      facilityKind: "reactor",
+      position: { x: 5, y: 2 }
+    });
+
+    const withoutCapacity = applyFleetBoardAction(state, { type: "queueSimulationJob", reactorId: "reactor-1" });
+    expect(withoutCapacity.events.at(-1)).toEqual(
+      expect.objectContaining({
+        kind: "simulationJobQueueBlocked",
+        detail: expect.stringContaining("no idle Simulation Container Token")
+      })
+    );
+
+    state = applyFleetBoardAction(state, { type: "buySimulationContainerToken", reactorId: "reactor-1" });
+    state = applyFleetBoardAction(state, { type: "queueSimulationJob", reactorId: "reactor-1" });
+
+    expect(summarizeFleetBoard(state)).toEqual(
+      expect.objectContaining({ queuedSimulationJobs: 1, runningSimulationJobs: 0, completedSimulationJobs: 0 })
+    );
+    expect(summarizeReactorSimulation(state, "reactor-1")).toEqual({
+      slots: [
+        expect.objectContaining({
+          tokenId: "simulation-container-token-1",
+          status: "queued",
+          advancesRemaining: 3
+        })
+      ],
+      insightTokens: 0
+    });
+
+    const busy = applyFleetBoardAction(state, { type: "queueSimulationJob", reactorId: "reactor-1" });
+    expect(busy.events.at(-1)).toEqual(
+      expect.objectContaining({
+        kind: "simulationJobQueueBlocked",
+        detail: expect.stringContaining("no idle Simulation Container Token")
+      })
+    );
+
+    state = applyFleetBoardAction(state, { type: "tickDay" });
+    expect(summarizeReactorSimulation(state, "reactor-1").slots[0]).toEqual(
+      expect.objectContaining({ status: "running", advancesRemaining: 2 })
+    );
+    expect(state.events).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "simulationJobStarted", facilityId: "reactor-1" })])
+    );
+
+    state = applyFleetBoardAction(state, { type: "tickDay" });
+    expect(summarizeReactorSimulation(state, "reactor-1").slots[0]).toEqual(
+      expect.objectContaining({ status: "running", advancesRemaining: 1 })
+    );
+
+    state = applyFleetBoardAction(state, { type: "tickDay" });
+    expect(summarizeFleetBoard(state)).toEqual(
+      expect.objectContaining({ queuedSimulationJobs: 0, runningSimulationJobs: 0, completedSimulationJobs: 1 })
+    );
+    expect(summarizeReactorSimulation(state, "reactor-1")).toEqual({
+      slots: [expect.objectContaining({ status: "idle" })],
+      insightTokens: 1
+    });
+    expect(state.events).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "simulationJobCompleted", facilityId: "reactor-1" })])
     );
   });
 });
