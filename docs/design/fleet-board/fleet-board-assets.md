@@ -3,8 +3,8 @@
 | Field | Value |
 | --- | --- |
 | Document ID | FLEET-BOARD-ASSETS-001 |
-| Revision | 0.1 |
-| Status | Asset backlog |
+| Revision | 0.2 |
+| Status | V2 simulation pack delivered; remaining asset backlog open |
 | Owner | Software |
 | Scope | Fleet Board placeholder and finished asset tracking |
 
@@ -32,8 +32,24 @@
 | [ ] | Build palette icons | 64x64 PNG/WebP | Medium | Small icon variants for facility buttons. | Placeholder sheet | TBD | Pending |
 | [ ] | Outage/refueling markers | 128x128 PNG/WebP | Medium | Clear board markers, non-alarmist, no SCRAM/emergency language. | None | TBD | Pending |
 | [ ] | Service-credit tokens | 96x96 PNG/WebP | Low | Water/resilience/electric/thermal tokens for score feedback. | None | TBD | Pending |
-| [ ] | Simulation container token | 128x128 PNG/WebP | Low | Future v2 token for player-created simulation capacity, abstract compute container, no vendor/cloud logos. | None | TBD | Pending |
-| [ ] | Simulation job card | 256x256 PNG/WebP | Low | Future v2 card for queued/active simulated jobs, schematic compute tile, no shell/terminal text. | None | TBD | Pending |
+| [x] | Simulation container token | 128x128 PNG | Low | Abstract local-game compute cartridge, no vendor/cloud logos. | None | `simulation-container-token.png` | V2 approved |
+| [x] | Reactor Slot Rail states | 256x256 PNG | Low | Empty, idle, queued, and running states with distinct cyan, amber, and green cues. | None | `reactor-slot-rail-{empty,idle,queued,running}.png` | V2 approved |
+| [x] | Completed Simulation Job card | 256x256 PNG | Low | Schematic local-game compute tile with geometric completion mark, no shell/terminal text. | None | `simulation-job-completed.png` | V2 approved |
+| [x] | Insight Token | 128x128 PNG | Low | Reactor-scoped violet/cyan analytical reward token; no evidence or safety claim. | None | `insight-token.png` | V2 approved |
+
+## V2 Simulation Pack Provenance and QA
+
+- Stable semantic keys, file paths, dimensions, states, and provenance are recorded in `src/assets/fleet-board/fleet-board-v2-simulation-assets.json`.
+- The transparent source atlas is `src/assets/fleet-board/fleet-board-v2-simulation-atlas.png`; the small grouped preview is `src/assets/fleet-board/fleet-board-v2-simulation-pack-preview.png`.
+- The generated source came from OpenAI built-in image generation on 2026-07-13 using an eight-cell, hybrid-tabletop-schematic prompt and a flat magenta chroma key. The exact generated source path and removal settings are retained in the manifest.
+- `fleet-board-v2-simulation-assets-qa.png` is the visual QA artifact. Its checkerboard proves transparency and its order is: container token, empty rail, idle, queued, running, completed job, Insight Token, board-scale group.
+- `fleet-board-v2-simulation-assets-board-scale-qa.png` places every required state on the current 72 px dark-slate board grid. Its order is: container token, empty rail, idle, queued, running, completed job, Insight Token.
+- Run `bun run fleet-board:v2-assets:check` to verify semantic keys, exact dimensions, RGBA output, the atlas, and the QA sheet. This gate is part of `bun run ci`.
+- Artifact Forge imagery remains deferred and is not present in this pack.
+
+![Fleet Board V2 simulation asset transparency and board-scale QA](./fleet-board-v2-simulation-assets-qa.png)
+
+![Fleet Board V2 simulation states on the current 72 px board grid](./fleet-board-v2-simulation-assets-board-scale-qa.png)
 
 ## Style Rules
 
