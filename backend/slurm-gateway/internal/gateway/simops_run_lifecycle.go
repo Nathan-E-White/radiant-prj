@@ -9,6 +9,8 @@ import (
 	"time"
 )
 
+const incompleteStartStaleAfter = time.Minute
+
 type SimopsRunLifecycleStage string
 
 const (
@@ -89,7 +91,7 @@ func (p *SimopsRunLifecyclePolicy) Start(ctx context.Context, record SimopsRunRe
 	}
 	outcome := SimopsRunLifecycleOutcome{Run: stored, Created: created}
 	if !created {
-		if stored.Lifecycle == SimopsStarting {
+		if stored.Lifecycle == SimopsStarting && p.incompleteStartIsStale(stored) {
 			return p.recoverIncompleteStart(ctx, outcome)
 		}
 		return outcome, nil
@@ -132,6 +134,10 @@ func (p *SimopsRunLifecyclePolicy) Start(ctx context.Context, record SimopsRunRe
 	}
 
 	return outcome, nil
+}
+
+func (p *SimopsRunLifecyclePolicy) incompleteStartIsStale(run SimopsRunRecord) bool {
+	return run.UpdatedAt.IsZero() || !p.now().UTC().Before(run.UpdatedAt.Add(incompleteStartStaleAfter))
 }
 
 func (p *SimopsRunLifecyclePolicy) recoverIncompleteStart(ctx context.Context, outcome SimopsRunLifecycleOutcome) (SimopsRunLifecycleOutcome, error) {

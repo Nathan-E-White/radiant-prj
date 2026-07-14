@@ -124,7 +124,7 @@ func TestSimopsRunLifecycleRecoversStrandedStartingRunOnIdempotentRetry(t *testi
 	run := SimopsRunRecord{
 		RunID: "RUN-STRANDED", ScenarioID: "scheduler-drift", Lifecycle: SimopsStarting,
 		LaunchMode: "auto", IdempotencyKey: "retry-key", SubmittedBy: "react-backend-client",
-		IngestToken: "test-token", CreatedAt: now, UpdatedAt: now,
+		IngestToken: "test-token", CreatedAt: now.Add(-2 * incompleteStartStaleAfter), UpdatedAt: now.Add(-incompleteStartStaleAfter),
 	}
 	planned := plannedWorkerRecords(run, []SimopsWorkerKind{SimopsWorkerScheduler, SimopsWorkerStorage}, now)
 	if _, created, err := store.CreateRun(run, planned, nil); err != nil || !created {
@@ -162,6 +162,33 @@ func TestSimopsRunLifecycleRecoversStrandedStartingRunOnIdempotentRetry(t *testi
 	}
 }
 
+func TestSimopsRunLifecycleReplaysFreshStartingRunWithoutRecovery(t *testing.T) {
+	now := time.Date(2026, 7, 14, 3, 32, 0, 0, time.UTC)
+	store := NewInMemorySimopsStore()
+	run := SimopsRunRecord{
+		RunID: "RUN-IN-FLIGHT", ScenarioID: "scheduler-drift", Lifecycle: SimopsStarting,
+		LaunchMode: "auto", IdempotencyKey: "in-flight-key", SubmittedBy: "react-backend-client",
+		IngestToken: "test-token", CreatedAt: now, UpdatedAt: now,
+	}
+	planned := plannedWorkerRecords(run, []SimopsWorkerKind{SimopsWorkerScheduler}, now)
+	if _, created, err := store.CreateRun(run, planned, nil); err != nil || !created {
+		t.Fatalf("seed in-flight Run created=%v err=%v", created, err)
+	}
+	spooler := &recoveringLifecycleSpooler{}
+	lifecycle := NewSimopsRunLifecyclePolicy(testRunConnectionProfileConfig(), store, spooler, MemorySimopsEventLog{Store: store}, IcebergArtifactPlanner{})
+	lifecycle.SetNow(func() time.Time { return now })
+
+	retry := run
+	retry.RunID = "RUN-DUPLICATE-SHOULD-NOT-BE-CREATED"
+	outcome, err := lifecycle.Start(context.Background(), retry, []SimopsWorkerKind{SimopsWorkerStorage})
+	if err != nil || outcome.Created || outcome.Run.RunID != run.RunID || outcome.Run.Lifecycle != SimopsStarting {
+		t.Fatalf("fresh duplicate must replay in-flight Run: outcome=%#v err=%v", outcome, err)
+	}
+	if spooler.syncs != 0 || spooler.stops != 0 {
+		t.Fatalf("fresh duplicate must not observe or compensate runtime: syncs=%d stops=%d", spooler.syncs, spooler.stops)
+	}
+}
+
 func TestSimopsControllerIdempotentRetryRecoversStartingRunAtCapacity(t *testing.T) {
 	now := time.Date(2026, 7, 14, 3, 35, 0, 0, time.UTC)
 	cfg := testRunConnectionProfileConfig()
@@ -170,7 +197,8 @@ func TestSimopsControllerIdempotentRetryRecoversStartingRunAtCapacity(t *testing
 	run := SimopsRunRecord{
 		RunID: "RUN-CONTROLLER-STRANDED", ScenarioID: "scheduler-drift", Lifecycle: SimopsStarting,
 		Source: "frontend", WorkScript: "scheduler-drift", LaunchMode: "auto", RuntimeLimitSec: 120,
-		IdempotencyKey: "controller-retry", SubmittedBy: "react-backend-client", IngestToken: "test-token", CreatedAt: now, UpdatedAt: now,
+		IdempotencyKey: "controller-retry", SubmittedBy: "react-backend-client", IngestToken: "test-token",
+		CreatedAt: now.Add(-2 * incompleteStartStaleAfter), UpdatedAt: now.Add(-incompleteStartStaleAfter),
 	}
 	planned := plannedWorkerRecords(run, []SimopsWorkerKind{SimopsWorkerScheduler}, now)
 	if _, created, err := store.CreateRun(run, planned, nil); err != nil || !created {
@@ -421,6 +449,7 @@ type silentPartialLifecycleSpooler struct {
 type recoveringLifecycleSpooler struct {
 	observations []ObservedWorkerLifecycle
 	stops        int
+	syncs        int
 }
 
 func (s *recoveringLifecycleSpooler) StartRun(context.Context, SimopsRunRecord, []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
@@ -433,6 +462,7 @@ func (s *recoveringLifecycleSpooler) StopRun(context.Context, string) error {
 }
 
 func (s *recoveringLifecycleSpooler) SyncRun(context.Context, SimopsRunRecord, []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
+	s.syncs++
 	return append([]ObservedWorkerLifecycle(nil), s.observations...), nil
 }
 
