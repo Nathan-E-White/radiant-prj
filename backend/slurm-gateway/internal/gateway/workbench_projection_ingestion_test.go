@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -52,34 +53,44 @@ func TestWorkbenchProjectionIngestionPersistsBeforeCommitAndCountsOnlyNewFrames(
 }
 
 func TestWorkbenchProjectionIngestionMakesFailureStagesAndMetricsExplicit(t *testing.T) {
+	fetchFailure := errors.New("broker fetch failed")
+	projectFailure := errors.New("invalid measured frame")
 	persistFailure := errors.New("projection persistence failed")
 	commitFailure := errors.New("consumer position commit failed")
 	tests := []struct {
-		name        string
-		reader      *projectionIngestionTestReader
-		project     func(SimopsBrokerMessage) (int, error)
-		persist     func(int) (bool, error)
-		wantStage   WorkbenchProjectionIngestionStage
-		wantCause   error
-		wantCommits int
+		name         string
+		reader       *projectionIngestionTestReader
+		project      func(SimopsBrokerMessage) (int, error)
+		persist      func(int) (bool, error)
+		wantStage    WorkbenchProjectionIngestionStage
+		wantCause    error
+		wantCommits  int
+		wantFrames   uint64
+		wantPosition bool
 	}{
 		{
+			name: "fetch", reader: &projectionIngestionTestReader{fetchErr: fetchFailure},
+			project:   func(SimopsBrokerMessage) (int, error) { t.Fatal("fetch failure must not project"); return 0, nil },
+			persist:   func(int) (bool, error) { t.Fatal("fetch failure must not persist"); return false, nil },
+			wantStage: WorkbenchProjectionIngestionFetch, wantCause: fetchFailure,
+		},
+		{
 			name: "projection", reader: &projectionIngestionTestReader{messages: []SimopsBrokerMessage{{Offset: 20}}},
-			project:   func(SimopsBrokerMessage) (int, error) { return 0, errors.New("invalid measured frame") },
+			project:   func(SimopsBrokerMessage) (int, error) { return 0, projectFailure },
 			persist:   func(int) (bool, error) { t.Fatal("invalid projection must not persist"); return false, nil },
-			wantStage: WorkbenchProjectionIngestionProject,
+			wantStage: WorkbenchProjectionIngestionProject, wantCause: projectFailure, wantPosition: true,
 		},
 		{
 			name: "persistence", reader: &projectionIngestionTestReader{messages: []SimopsBrokerMessage{{Offset: 21}}},
 			project:   func(SimopsBrokerMessage) (int, error) { return 21, nil },
 			persist:   func(int) (bool, error) { return false, persistFailure },
-			wantStage: WorkbenchProjectionIngestionPersist, wantCause: persistFailure,
+			wantStage: WorkbenchProjectionIngestionPersist, wantCause: persistFailure, wantPosition: true,
 		},
 		{
 			name: "commit", reader: &projectionIngestionTestReader{messages: []SimopsBrokerMessage{{Offset: 22}}, commitErr: commitFailure},
 			project:   func(SimopsBrokerMessage) (int, error) { return 22, nil },
 			persist:   func(int) (bool, error) { return true, nil },
-			wantStage: WorkbenchProjectionIngestionCommit, wantCause: commitFailure, wantCommits: 1,
+			wantStage: WorkbenchProjectionIngestionCommit, wantCause: commitFailure, wantCommits: 1, wantFrames: 1, wantPosition: true,
 		},
 	}
 	for _, test := range tests {
@@ -95,11 +106,17 @@ func TestWorkbenchProjectionIngestionMakesFailureStagesAndMetricsExplicit(t *tes
 			if test.wantCause != nil && !errors.Is(err, test.wantCause) {
 				t.Fatalf("expected cause %v, got %v", test.wantCause, err)
 			}
+			if (ingestionErr.Position != nil) != test.wantPosition {
+				t.Fatalf("unexpected position evidence: %#v", ingestionErr.Position)
+			}
+			if test.wantStage == WorkbenchProjectionIngestionFetch && strings.Contains(err.Error(), "[0]@0") {
+				t.Fatalf("fetch failure fabricated a broker position: %v", err)
+			}
 			if len(test.reader.committed) != test.wantCommits {
 				t.Fatalf("unexpected commits: %#v", test.reader.committed)
 			}
 			snapshot := metrics.Snapshot()
-			if snapshot.WriteFailures != 1 || snapshot.LastError == "" || snapshot.FramesWritten != 0 || snapshot.LastConsumedOffset != -1 {
+			if snapshot.WriteFailures != 1 || snapshot.LastError == "" || snapshot.FramesWritten != test.wantFrames || snapshot.LastConsumedOffset != -1 {
 				t.Fatalf("expected explicit failure metrics, got %#v", snapshot)
 			}
 		})
@@ -141,8 +158,57 @@ func TestWorkbenchProjectionIngestionDoesNotCommitWhenCancelledAfterPersistence(
 	if !persisted || !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected persistence followed by cancellation, persisted=%v err=%v", persisted, err)
 	}
-	if snapshot := metrics.Snapshot(); len(reader.committed) != 0 || snapshot.FramesWritten != 0 || snapshot.WriteFailures != 0 {
+	if snapshot := metrics.Snapshot(); len(reader.committed) != 0 || snapshot.FramesWritten != 1 || snapshot.WriteFailures != 0 {
 		t.Fatalf("cancelled persistence must remain uncommitted for duplicate-safe replay: metrics=%#v commits=%#v", snapshot, reader.committed)
+	}
+}
+
+func TestWorkbenchProjectionIngestionDoesNotClearAnotherStreamsError(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	metrics := NewSimopsConsumerMetrics()
+	metrics.IncWriteFailures()
+	metrics.SetLastError(errors.New("twin stream failed"))
+	reader := &projectionIngestionTestReader{
+		messages:    []SimopsBrokerMessage{{Offset: 24}},
+		afterCommit: func(int) { cancel() },
+	}
+	err := RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[int]{
+		Stream:  WorkbenchProjectionMeasured,
+		Project: func(message SimopsBrokerMessage) (int, error) { return int(message.Offset), nil },
+		Persist: func(int) (bool, error) { return true, nil },
+	})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation after proof message, got %v", err)
+	}
+	if snapshot := metrics.Snapshot(); snapshot.LastError != "twin stream failed" || snapshot.WriteFailures != 1 {
+		t.Fatalf("healthy stream erased shared terminal error: %#v", snapshot)
+	}
+}
+
+func TestInMemoryWorkbenchStoreDeduplicatesProjectionCoordinatesAcrossStreams(t *testing.T) {
+	store := NewInMemoryWorkbenchStore()
+	scadaRaw, _ := json.Marshal(scadaFrameFixture())
+	scada, _ := ProjectScadaFrame("scada", 1, 40, scadaRaw)
+	resultRaw, _ := json.Marshal(simopsResultFixture("RUN-DEDUPE"))
+	result, _ := ProjectSimopsResultFrame("results", 1, 41, resultRaw)
+	twinState, _ := BuildTwinStateFromData([]ScadaTelemetryFrame{scadaFrameFixture()}, simopsResultFixture("RUN-DEDUPE"), time.Now().UTC())
+	twinRaw, _ := json.Marshal(twinState)
+	twin, _ := ProjectTwinState("twin", 1, 42, twinRaw)
+
+	first, err := store.SaveScadaProjection("scada-consumer", scada)
+	duplicate, duplicateErr := store.SaveScadaProjection("scada-consumer", scada)
+	if err != nil || duplicateErr != nil || !first || duplicate {
+		t.Fatalf("unexpected SCADA dedupe outcomes first=%v duplicate=%v errors=%v/%v", first, duplicate, err, duplicateErr)
+	}
+	first, err = store.SaveResultProjection("result-consumer", result)
+	duplicate, duplicateErr = store.SaveResultProjection("result-consumer", result)
+	if err != nil || duplicateErr != nil || !first || duplicate {
+		t.Fatalf("unexpected result dedupe outcomes first=%v duplicate=%v errors=%v/%v", first, duplicate, err, duplicateErr)
+	}
+	first, err = store.SaveTwinStateProjection("twin-consumer", twin)
+	duplicate, duplicateErr = store.SaveTwinStateProjection("twin-consumer", twin)
+	if err != nil || duplicateErr != nil || !first || duplicate {
+		t.Fatalf("unexpected twin dedupe outcomes first=%v duplicate=%v errors=%v/%v", first, duplicate, err, duplicateErr)
 	}
 }
 
@@ -197,11 +263,15 @@ type projectionIngestionTestReader struct {
 	commitErr   error
 	steps       *[]string
 	afterCommit func(int)
+	fetchErr    error
 }
 
 func (r *projectionIngestionTestReader) FetchMessage(ctx context.Context) (SimopsBrokerMessage, error) {
 	if r.steps != nil {
 		*r.steps = append(*r.steps, "fetch")
+	}
+	if r.fetchErr != nil {
+		return SimopsBrokerMessage{}, r.fetchErr
 	}
 	if len(r.messages) == 0 {
 		<-ctx.Done()

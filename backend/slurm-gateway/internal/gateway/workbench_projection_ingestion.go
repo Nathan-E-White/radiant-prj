@@ -23,16 +23,23 @@ const (
 )
 
 type WorkbenchProjectionIngestionError struct {
-	Stream    WorkbenchProjectionStream
-	Stage     WorkbenchProjectionIngestionStage
+	Stream   WorkbenchProjectionStream
+	Stage    WorkbenchProjectionIngestionStage
+	Position *WorkbenchProjectionPosition
+	Cause    error
+}
+
+type WorkbenchProjectionPosition struct {
 	Topic     string
 	Partition int
 	Offset    int64
-	Cause     error
 }
 
 func (e *WorkbenchProjectionIngestionError) Error() string {
-	return fmt.Sprintf("workbench %s ingestion failed during %s at %s[%d]@%d: %v", e.Stream, e.Stage, e.Topic, e.Partition, e.Offset, e.Cause)
+	if e.Position == nil {
+		return fmt.Sprintf("workbench %s ingestion failed during %s: %v", e.Stream, e.Stage, e.Cause)
+	}
+	return fmt.Sprintf("workbench %s ingestion failed during %s at %s[%d]@%d: %v", e.Stream, e.Stage, e.Position.Topic, e.Position.Partition, e.Position.Offset, e.Cause)
 }
 
 func (e *WorkbenchProjectionIngestionError) Unwrap() error {
@@ -62,7 +69,7 @@ func RunWorkbenchProjectionIngestion[T any](ctx context.Context, reader SimopsKa
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			return failWorkbenchProjectionIngestion(metrics, adapter.Stream, WorkbenchProjectionIngestionFetch, message, err, true)
+			return failWorkbenchProjectionIngestion(metrics, adapter.Stream, WorkbenchProjectionIngestionFetch, nil, err, true)
 		}
 		metrics.MarkBrokerConnected(true)
 		if err := ctx.Err(); err != nil {
@@ -71,7 +78,7 @@ func RunWorkbenchProjectionIngestion[T any](ctx context.Context, reader SimopsKa
 
 		projection, err := adapter.Project(message)
 		if err != nil {
-			return failWorkbenchProjectionIngestion(metrics, adapter.Stream, WorkbenchProjectionIngestionProject, message, err, false)
+			return failWorkbenchProjectionIngestion(metrics, adapter.Stream, WorkbenchProjectionIngestionProject, &message, err, false)
 		}
 		if err := ctx.Err(); err != nil {
 			return err
@@ -79,7 +86,10 @@ func RunWorkbenchProjectionIngestion[T any](ctx context.Context, reader SimopsKa
 
 		written, err := adapter.Persist(projection)
 		if err != nil {
-			return failWorkbenchProjectionIngestion(metrics, adapter.Stream, WorkbenchProjectionIngestionPersist, message, err, false)
+			return failWorkbenchProjectionIngestion(metrics, adapter.Stream, WorkbenchProjectionIngestionPersist, &message, err, false)
+		}
+		if written {
+			metrics.IncFramesWritten(1)
 		}
 		if err := ctx.Err(); err != nil {
 			return err
@@ -89,19 +99,18 @@ func RunWorkbenchProjectionIngestion[T any](ctx context.Context, reader SimopsKa
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			return failWorkbenchProjectionIngestion(metrics, adapter.Stream, WorkbenchProjectionIngestionCommit, message, err, false)
+			return failWorkbenchProjectionIngestion(metrics, adapter.Stream, WorkbenchProjectionIngestionCommit, &message, err, false)
 		}
 		metrics.MarkConsumed(message.Offset)
-		if written {
-			metrics.IncFramesWritten(1)
-		}
-		metrics.SetLastError(nil)
 	}
 }
 
-func failWorkbenchProjectionIngestion(metrics *SimopsConsumerMetrics, stream WorkbenchProjectionStream, stage WorkbenchProjectionIngestionStage, message SimopsBrokerMessage, cause error, disconnected bool) error {
+func failWorkbenchProjectionIngestion(metrics *SimopsConsumerMetrics, stream WorkbenchProjectionStream, stage WorkbenchProjectionIngestionStage, message *SimopsBrokerMessage, cause error, disconnected bool) error {
 	err := &WorkbenchProjectionIngestionError{
-		Stream: stream, Stage: stage, Topic: message.Topic, Partition: message.Partition, Offset: message.Offset, Cause: cause,
+		Stream: stream, Stage: stage, Cause: cause,
+	}
+	if message != nil {
+		err.Position = &WorkbenchProjectionPosition{Topic: message.Topic, Partition: message.Partition, Offset: message.Offset}
 	}
 	if disconnected {
 		metrics.MarkBrokerConnected(false)
