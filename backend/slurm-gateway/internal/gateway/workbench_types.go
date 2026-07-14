@@ -86,16 +86,28 @@ type SimopsResultProjection struct {
 type TwinStateProjection struct {
 	AsOf              time.Time
 	State             DigitalTwinState
+	Lineage           []DigitalTwinValueLineage
+	LineagePresent    bool
 	Raw               json.RawMessage
 	RedpandaTopic     string
 	RedpandaPartition int
 	RedpandaOffset    int64
 }
 
+type TwinStateTransition struct {
+	State   DigitalTwinState          `json:"state"`
+	Lineage []DigitalTwinValueLineage `json:"lineage"`
+}
+
+// WorkbenchSnapshot is one committed read moment. Generation advances exactly
+// once for each committed transition that changes a returned component; replayed
+// or rolled-back transitions do not advance it. State and all payloads are from
+// that same generation.
 type WorkbenchSnapshot struct {
-	State    SimulatorWorkbenchState   `json:"state"`
-	Measured []ScadaTelemetryFrame     `json:"measured"`
-	Twin     DigitalTwinState          `json:"twin"`
-	Lineage  []DigitalTwinValueLineage `json:"lineage"`
-	Results  []SimopsResultFrame       `json:"results"`
+	Generation uint64                    `json:"generation"`
+	State      SimulatorWorkbenchState   `json:"state"`
+	Measured   []ScadaTelemetryFrame     `json:"measured"`
+	Twin       DigitalTwinState          `json:"twin"`
+	Lineage    []DigitalTwinValueLineage `json:"lineage"`
+	Results    []SimopsResultFrame       `json:"results"`
 }

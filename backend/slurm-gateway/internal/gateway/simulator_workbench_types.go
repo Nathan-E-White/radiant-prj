@@ -5,6 +5,7 @@ import "time"
 type SimulatorWorkbenchState struct {
 	SchemaVersion        string                          `json:"schemaVersion"`
 	GeneratedAt          time.Time                       `json:"generatedAt"`
+	SnapshotGeneration   uint64                          `json:"snapshotGeneration"`
 	ScenarioID           string                          `json:"scenarioId"`
 	ValueBasisSummary    map[WorkbenchValueBasis]int     `json:"valueBasisSummary"`
 	MeasuredStateRefs    []string                        `json:"measuredStateRefs"`

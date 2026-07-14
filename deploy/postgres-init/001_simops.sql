@@ -270,6 +270,16 @@ CREATE TABLE IF NOT EXISTS workbench_consumer_offsets (
   PRIMARY KEY (consumer_name, redpanda_topic, redpanda_partition)
 );
 
+CREATE TABLE IF NOT EXISTS workbench_snapshot_generation (
+  singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+  generation BIGINT NOT NULL CHECK (generation >= 0),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+INSERT INTO workbench_snapshot_generation (singleton, generation)
+VALUES (TRUE, 0)
+ON CONFLICT (singleton) DO NOTHING;
+
 CREATE SCHEMA IF NOT EXISTS iceberg_catalog;
 
 CREATE TABLE IF NOT EXISTS iceberg_catalog.catalog_metadata (

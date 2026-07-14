@@ -136,7 +136,7 @@ func consumeTwin(ctx context.Context, cfg gateway.WorkbenchConfig, writer *gatew
 		if err != nil {
 			return err
 		}
-		projection, err := gateway.ProjectTwinState(msg.Topic, msg.Partition, msg.Offset, msg.Value)
+		projection, err := gateway.ProjectTwinState(msg.Topic, msg.Partition, msg.Offset, msg.Value, msg.Headers...)
 		if err != nil {
 			return err
 		}

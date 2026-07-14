@@ -9,10 +9,12 @@ import (
 	"time"
 )
 
+const workbenchTwinLineageHeader = "radiant-workbench-lineage-v1"
+
 type WorkbenchEventLog interface {
 	PublishScada(ctx context.Context, frame ScadaTelemetryFrame) error
 	PublishResult(ctx context.Context, frame SimopsResultFrame) error
-	PublishTwinState(ctx context.Context, state DigitalTwinState) error
+	PublishTwinState(ctx context.Context, state DigitalTwinState, lineage []DigitalTwinValueLineage) error
 }
 
 type MemoryWorkbenchEventLog struct {
@@ -60,7 +62,7 @@ func (l *MemoryWorkbenchEventLog) PublishResult(ctx context.Context, frame Simop
 	return err
 }
 
-func (l *MemoryWorkbenchEventLog) PublishTwinState(ctx context.Context, state DigitalTwinState) error {
+func (l *MemoryWorkbenchEventLog) PublishTwinState(ctx context.Context, state DigitalTwinState, lineage []DigitalTwinValueLineage) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -70,7 +72,8 @@ func (l *MemoryWorkbenchEventLog) PublishTwinState(ctx context.Context, state Di
 		return nil
 	}
 	raw, _ := json.Marshal(state)
-	projection, err := ProjectTwinState("memory.digital-twin.state.v1", 0, l.nextOffset(), raw)
+	lineageRaw, _ := json.Marshal(lineage)
+	projection, err := ProjectTwinState("memory.digital-twin.state.v1", 0, l.nextOffset(), raw, SimopsBrokerHeader{Key: workbenchTwinLineageHeader, Value: lineageRaw})
 	if err != nil {
 		return err
 	}
@@ -97,11 +100,31 @@ func (l *RedpandaWorkbenchEventLog) PublishResult(ctx context.Context, frame Sim
 	return publishWorkbenchMessage(ctx, l.resultWriter, key, frame)
 }
 
-func (l *RedpandaWorkbenchEventLog) PublishTwinState(ctx context.Context, state DigitalTwinState) error {
-	return publishWorkbenchMessage(ctx, l.twinWriter, strings.TrimSpace(state.TwinID), state)
+func (l *RedpandaWorkbenchEventLog) PublishTwinState(ctx context.Context, state DigitalTwinState, lineage []DigitalTwinValueLineage) error {
+	raw, err := json.Marshal(state)
+	if err != nil {
+		return err
+	}
+	lineageRaw, err := json.Marshal(lineage)
+	if err != nil {
+		return err
+	}
+	return publishWorkbenchBrokerMessage(ctx, l.twinWriter, SimopsBrokerMessage{
+		Key:     []byte(strings.TrimSpace(state.TwinID)),
+		Value:   raw,
+		Headers: []SimopsBrokerHeader{{Key: workbenchTwinLineageHeader, Value: lineageRaw}},
+	})
 }
 
 func publishWorkbenchMessage(ctx context.Context, writer simopsBrokerWriter, key string, payload any) error {
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return err
+	}
+	return publishWorkbenchBrokerMessage(ctx, writer, SimopsBrokerMessage{Key: []byte(key), Value: raw})
+}
+
+func publishWorkbenchBrokerMessage(ctx context.Context, writer simopsBrokerWriter, message SimopsBrokerMessage) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -110,14 +133,7 @@ func publishWorkbenchMessage(ctx context.Context, writer simopsBrokerWriter, key
 	if writer == nil {
 		return fmt.Errorf("workbench redpanda event log requires writer")
 	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	return writer.WriteMessages(ctx, SimopsBrokerMessage{
-		Key:   []byte(key),
-		Value: raw,
-	})
+	return writer.WriteMessages(ctx, message)
 }
 
 func ProjectScadaFrame(topic string, partition int, offset int64, raw json.RawMessage) (ScadaProjection, error) {
@@ -171,10 +187,21 @@ func ProjectSimopsResultFrame(topic string, partition int, offset int64, raw jso
 	}, nil
 }
 
-func ProjectTwinState(topic string, partition int, offset int64, raw json.RawMessage) (TwinStateProjection, error) {
+func ProjectTwinState(topic string, partition int, offset int64, raw json.RawMessage, headers ...SimopsBrokerHeader) (TwinStateProjection, error) {
 	var state DigitalTwinState
 	if err := json.Unmarshal(raw, &state); err != nil {
 		return TwinStateProjection{}, fmt.Errorf("decode twin state: %w", err)
+	}
+	lineage := []DigitalTwinValueLineage(nil)
+	lineagePresent := false
+	for _, header := range headers {
+		if header.Key == workbenchTwinLineageHeader {
+			lineagePresent = true
+			if err := json.Unmarshal(header.Value, &lineage); err != nil {
+				return TwinStateProjection{}, fmt.Errorf("decode Twin lineage header: %w", err)
+			}
+			break
+		}
 	}
 	if state.AsOf.IsZero() {
 		state.AsOf = timeNowUTC()
@@ -182,6 +209,8 @@ func ProjectTwinState(topic string, partition int, offset int64, raw json.RawMes
 	return TwinStateProjection{
 		AsOf:              state.AsOf.UTC(),
 		State:             state,
+		Lineage:           lineage,
+		LineagePresent:    lineagePresent,
 		Raw:               append(json.RawMessage(nil), raw...),
 		RedpandaTopic:     normalizeTopic(topic),
 		RedpandaPartition: partition,

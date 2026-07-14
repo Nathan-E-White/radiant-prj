@@ -19,7 +19,6 @@ type WorkbenchStore interface {
 	SaveScadaProjection(consumerName string, projection ScadaProjection) (bool, error)
 	SaveResultProjection(consumerName string, projection SimopsResultProjection) (bool, error)
 	SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error)
-	SaveLineage(lineage DigitalTwinValueLineage) error
 	LatestMeasuredFrames(limit int) ([]ScadaTelemetryFrame, error)
 	LatestResultFrames(limit int) ([]SimopsResultFrame, error)
 	CurrentTwinState() (DigitalTwinState, error)
@@ -36,6 +35,7 @@ type InMemoryWorkbenchStore struct {
 	twin           DigitalTwinState
 	lineageByValue map[string]DigitalTwinValueLineage
 	processed      map[string]struct{}
+	generation     uint64
 }
 
 func NewInMemoryWorkbenchStore() *InMemoryWorkbenchStore {
@@ -50,6 +50,10 @@ func NewInMemoryWorkbenchStore() *InMemoryWorkbenchStore {
 }
 
 func (s *InMemoryWorkbenchStore) SaveResidentSource(source ScadaResidentSourceDeclaration) error {
+	source, err := cloneWorkbenchValue(source)
+	if err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sources[source.SourceID] = source
@@ -66,58 +70,83 @@ func (s *InMemoryWorkbenchStore) GetResidentTag(tagID string) (ScadaSourceTag, e
 	if !ok {
 		return ScadaSourceTag{}, ErrWorkbenchNotFound
 	}
-	return tag, nil
+	return cloneWorkbenchValue(tag)
 }
 
 func (s *InMemoryWorkbenchStore) SaveScadaProjection(consumerName string, projection ScadaProjection) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.projectionProcessed(consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset) {
+	key := workbenchProjectionKey(consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset)
+	if s.projectionProcessed(key) {
 		return false, nil
 	}
-	s.measuredByTag[projection.Frame.TagID] = projection.Frame
+	frame, err := cloneWorkbenchValue(projection.Frame)
+	if err != nil {
+		return false, err
+	}
+	s.processed[key] = struct{}{}
+	s.measuredByTag[frame.TagID] = frame
+	s.generation++
 	return true, nil
 }
 
 func (s *InMemoryWorkbenchStore) SaveResultProjection(consumerName string, projection SimopsResultProjection) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.projectionProcessed(consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset) {
+	key := workbenchProjectionKey(consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset)
+	if s.projectionProcessed(key) {
 		return false, nil
 	}
-	for _, value := range projection.Frame.Values {
-		s.resultsByValue[value.ValueID] = projection.Frame
+	frame, err := cloneWorkbenchValue(projection.Frame)
+	if err != nil {
+		return false, err
 	}
+	s.processed[key] = struct{}{}
+	for _, value := range frame.Values {
+		s.resultsByValue[value.ValueID] = frame
+	}
+	s.generation++
 	return true, nil
 }
 
 func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if consumerName != "" && s.projectionProcessed(consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset) {
-		return false, nil
+	key := ""
+	if consumerName != "" {
+		key = workbenchProjectionKey(consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset)
+		if s.projectionProcessed(key) {
+			return false, nil
+		}
 	}
-	s.twin = projection.State
+	transition, err := cloneWorkbenchValue(TwinStateTransition{State: projection.State, Lineage: projection.Lineage})
+	if err != nil {
+		return false, err
+	}
+	if key != "" {
+		s.processed[key] = struct{}{}
+	}
+	s.twin = transition.State
+	if projection.LineagePresent {
+		s.lineageByValue = make(map[string]DigitalTwinValueLineage, len(transition.Lineage))
+		for _, lineage := range transition.Lineage {
+			s.lineageByValue[lineage.ValueID] = lineage
+		}
+	}
+	s.generation++
 	return true, nil
 }
 
-func (s *InMemoryWorkbenchStore) projectionProcessed(consumerName, topic string, partition int, offset int64) bool {
+func (s *InMemoryWorkbenchStore) projectionProcessed(key string) bool {
 	if s.processed == nil {
 		s.processed = make(map[string]struct{})
 	}
-	key := fmt.Sprintf("%s\x00%s\x00%d\x00%d", consumerName, topic, partition, offset)
-	if _, ok := s.processed[key]; ok {
-		return true
-	}
-	s.processed[key] = struct{}{}
-	return false
+	_, ok := s.processed[key]
+	return ok
 }
 
-func (s *InMemoryWorkbenchStore) SaveLineage(lineage DigitalTwinValueLineage) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.lineageByValue[lineage.ValueID] = lineage
-	return nil
+func workbenchProjectionKey(consumerName, topic string, partition int, offset int64) string {
+	return fmt.Sprintf("%s\x00%s\x00%d\x00%d", consumerName, topic, partition, offset)
 }
 
 func (s *InMemoryWorkbenchStore) LatestMeasuredFrames(limit int) ([]ScadaTelemetryFrame, error) {
@@ -133,7 +162,7 @@ func (s *InMemoryWorkbenchStore) LatestMeasuredFrames(limit int) ([]ScadaTelemet
 		}
 		return frames[i].ObservedAt.After(frames[j].ObservedAt)
 	})
-	return trimMeasured(frames, limit), nil
+	return cloneWorkbenchValue(trimMeasured(frames, limit))
 }
 
 func (s *InMemoryWorkbenchStore) LatestResultFrames(limit int) ([]SimopsResultFrame, error) {
@@ -152,7 +181,7 @@ func (s *InMemoryWorkbenchStore) LatestResultFrames(limit int) ([]SimopsResultFr
 	sort.Slice(results, func(i, j int) bool {
 		return results[i].ProducedAt > results[j].ProducedAt
 	})
-	return trimResults(results, limit), nil
+	return cloneWorkbenchValue(trimResults(results, limit))
 }
 
 func (s *InMemoryWorkbenchStore) CurrentTwinState() (DigitalTwinState, error) {
@@ -161,7 +190,7 @@ func (s *InMemoryWorkbenchStore) CurrentTwinState() (DigitalTwinState, error) {
 	if s.twin.SchemaVersion == "" {
 		return DigitalTwinState{}, ErrWorkbenchNotFound
 	}
-	return s.twin, nil
+	return cloneWorkbenchValue(s.twin)
 }
 
 func (s *InMemoryWorkbenchStore) LineageForValue(valueID string) (DigitalTwinValueLineage, error) {
@@ -171,31 +200,65 @@ func (s *InMemoryWorkbenchStore) LineageForValue(valueID string) (DigitalTwinVal
 	if !ok {
 		return DigitalTwinValueLineage{}, ErrWorkbenchNotFound
 	}
-	return lineage, nil
+	return cloneWorkbenchValue(lineage)
 }
 
 func (s *InMemoryWorkbenchStore) Snapshot() (WorkbenchSnapshot, error) {
-	measured, _ := s.LatestMeasuredFrames(100)
-	results, _ := s.LatestResultFrames(20)
-	twin, _ := s.CurrentTwinState()
-	lineage := []DigitalTwinValueLineage{}
 	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	measured := make([]ScadaTelemetryFrame, 0, len(s.measuredByTag))
+	for _, frame := range s.measuredByTag {
+		measured = append(measured, frame)
+	}
+	sort.Slice(measured, func(i, j int) bool {
+		if measured[i].ObservedAt.Equal(measured[j].ObservedAt) {
+			return measured[i].TagID < measured[j].TagID
+		}
+		return measured[i].ObservedAt.After(measured[j].ObservedAt)
+	})
+	measured = trimMeasured(measured, 100)
+
+	results := make([]SimopsResultFrame, 0, len(s.resultsByValue))
+	seenResults := make(map[string]struct{})
+	for _, frame := range s.resultsByValue {
+		key := fmt.Sprintf("%s/%s/%d", frame.RunID, frame.WorkerID, frame.Sequence)
+		if _, ok := seenResults[key]; ok {
+			continue
+		}
+		seenResults[key] = struct{}{}
+		results = append(results, frame)
+	}
+	sort.Slice(results, func(i, j int) bool { return results[i].ProducedAt > results[j].ProducedAt })
+	results = trimResults(results, 20)
+
+	twin := s.twin
+	lineage := []DigitalTwinValueLineage{}
 	for _, record := range s.lineageByValue {
 		lineage = append(lineage, record)
 	}
-	s.mu.RUnlock()
 	sort.Slice(lineage, func(i, j int) bool { return lineage[i].LineageID < lineage[j].LineageID })
-	return WorkbenchSnapshot{
-		State:    buildWorkbenchState(measured, results, twin),
-		Measured: measured,
-		Twin:     twin,
-		Lineage:  lineage,
-		Results:  results,
-	}, nil
+	state := buildWorkbenchState(measured, results, twin)
+	state.SnapshotGeneration = s.generation
+	snapshot := WorkbenchSnapshot{
+		Generation: s.generation,
+		State:      state,
+		Measured:   measured,
+		Twin:       twin,
+		Lineage:    lineage,
+		Results:    results,
+	}
+	return cloneWorkbenchValue(snapshot)
 }
 
 type PostgresWorkbenchStore struct {
-	db *sql.DB
+	db                      *sql.DB
+	afterSnapshotGeneration func()
+}
+
+type workbenchSQLQueryer interface {
+	QueryContext(context.Context, string, ...any) (*sql.Rows, error)
+	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
 
 func NewPostgresWorkbenchStore(dsn string) (*PostgresWorkbenchStore, error) {
@@ -215,7 +278,25 @@ func NewPostgresWorkbenchStore(dsn string) (*PostgresWorkbenchStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("ping workbench postgres store: %w", err)
 	}
+	if err := ensureWorkbenchSnapshotSchema(ctx, db); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("migrate workbench Snapshot schema: %w", err)
+	}
 	return &PostgresWorkbenchStore{db: db}, nil
+}
+
+func ensureWorkbenchSnapshotSchema(ctx context.Context, db *sql.DB) error {
+	_, err := db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS workbench_snapshot_generation (
+			singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
+			generation BIGINT NOT NULL CHECK (generation >= 0),
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		);
+		INSERT INTO workbench_snapshot_generation (singleton, generation)
+		VALUES (TRUE, 0)
+		ON CONFLICT (singleton) DO NOTHING
+	`)
+	return err
 }
 
 func (s *PostgresWorkbenchStore) SaveResidentSource(source ScadaResidentSourceDeclaration) error {
@@ -316,6 +397,9 @@ func (s *PostgresWorkbenchStore) SaveScadaProjection(consumerName string, projec
 	if err := upsertWorkbenchOffset(ctx, tx, consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset); err != nil {
 		return false, err
 	}
+	if err := advanceWorkbenchSnapshotGeneration(ctx, tx); err != nil {
+		return false, err
+	}
 	return true, tx.Commit()
 }
 
@@ -361,6 +445,9 @@ func (s *PostgresWorkbenchStore) SaveResultProjection(consumerName string, proje
 	if err := upsertWorkbenchOffset(ctx, tx, consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset); err != nil {
 		return false, err
 	}
+	if err := advanceWorkbenchSnapshotGeneration(ctx, tx); err != nil {
+		return false, err
+	}
 	return true, tx.Commit()
 }
 
@@ -379,9 +466,31 @@ func (s *PostgresWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 			return processed, err
 		}
 	}
-	stateRaw := projection.Raw
-	if len(stateRaw) == 0 {
-		stateRaw, _ = json.Marshal(projection.State)
+	if projection.LineagePresent {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM digital_twin_lineage`); err != nil {
+			return false, err
+		}
+		for _, lineage := range projection.Lineage {
+			lineageRaw, err := json.Marshal(lineage)
+			if err != nil {
+				return false, err
+			}
+			if _, err := tx.ExecContext(ctx, `
+			INSERT INTO digital_twin_lineage (lineage_id, value_id, value_basis, lineage, updated_at)
+			VALUES ($1,$2,$3,$4::jsonb,now())
+			ON CONFLICT (lineage_id) DO UPDATE
+			SET value_id = EXCLUDED.value_id,
+			    value_basis = EXCLUDED.value_basis,
+			    lineage = EXCLUDED.lineage,
+			    updated_at = now()
+			`, lineage.LineageID, lineage.ValueID, string(lineage.ValueBasis), lineageRaw); err != nil {
+				return false, err
+			}
+		}
+	}
+	stateRaw, err := json.Marshal(projection.State)
+	if err != nil {
+		return false, err
 	}
 	for _, entity := range projection.State.Entities {
 		for _, value := range entity.Values {
@@ -432,32 +541,20 @@ func (s *PostgresWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 			return false, err
 		}
 	}
-	return true, tx.Commit()
-}
-
-func (s *PostgresWorkbenchStore) SaveLineage(lineage DigitalTwinValueLineage) error {
-	ctx, cancel := simopsSQLContext()
-	defer cancel()
-	raw, err := json.Marshal(lineage)
-	if err != nil {
-		return err
+	if err := advanceWorkbenchSnapshotGeneration(ctx, tx); err != nil {
+		return false, err
 	}
-	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO digital_twin_lineage (lineage_id, value_id, value_basis, lineage, updated_at)
-		VALUES ($1,$2,$3,$4::jsonb,now())
-		ON CONFLICT (lineage_id) DO UPDATE
-		SET value_id = EXCLUDED.value_id,
-		    value_basis = EXCLUDED.value_basis,
-		    lineage = EXCLUDED.lineage,
-		    updated_at = now()
-	`, lineage.LineageID, lineage.ValueID, string(lineage.ValueBasis), raw)
-	return err
+	return true, tx.Commit()
 }
 
 func (s *PostgresWorkbenchStore) LatestMeasuredFrames(limit int) ([]ScadaTelemetryFrame, error) {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
-	rows, err := s.db.QueryContext(ctx, `
+	return latestMeasuredFrames(ctx, s.db, limit)
+}
+
+func latestMeasuredFrames(ctx context.Context, queryer workbenchSQLQueryer, limit int) ([]ScadaTelemetryFrame, error) {
+	rows, err := queryer.QueryContext(ctx, `
 		SELECT frame
 		FROM (
 			SELECT DISTINCT ON (tag_id) tag_id, observed_at, frame
@@ -489,7 +586,11 @@ func (s *PostgresWorkbenchStore) LatestMeasuredFrames(limit int) ([]ScadaTelemet
 func (s *PostgresWorkbenchStore) LatestResultFrames(limit int) ([]SimopsResultFrame, error) {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
-	rows, err := s.db.QueryContext(ctx, `
+	return latestResultFrames(ctx, s.db, limit)
+}
+
+func latestResultFrames(ctx context.Context, queryer workbenchSQLQueryer, limit int) ([]SimopsResultFrame, error) {
+	rows, err := queryer.QueryContext(ctx, `
 		SELECT DISTINCT ON (run_id, worker_id, sequence) frame
 		FROM simops_result_values
 		ORDER BY run_id, worker_id, sequence, produced_at DESC
@@ -518,8 +619,12 @@ func (s *PostgresWorkbenchStore) LatestResultFrames(limit int) ([]SimopsResultFr
 func (s *PostgresWorkbenchStore) CurrentTwinState() (DigitalTwinState, error) {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
+	return currentTwinState(ctx, s.db)
+}
+
+func currentTwinState(ctx context.Context, queryer workbenchSQLQueryer) (DigitalTwinState, error) {
 	var raw []byte
-	if err := s.db.QueryRowContext(ctx, `
+	if err := queryer.QueryRowContext(ctx, `
 		SELECT state
 		FROM digital_twin_state_values
 		ORDER BY as_of DESC
@@ -540,8 +645,12 @@ func (s *PostgresWorkbenchStore) CurrentTwinState() (DigitalTwinState, error) {
 func (s *PostgresWorkbenchStore) LineageForValue(valueID string) (DigitalTwinValueLineage, error) {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
+	return lineageForValue(ctx, s.db, valueID)
+}
+
+func lineageForValue(ctx context.Context, queryer workbenchSQLQueryer, valueID string) (DigitalTwinValueLineage, error) {
 	var raw []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT lineage FROM digital_twin_lineage WHERE value_id = $1`, valueID).Scan(&raw); err != nil {
+	if err := queryer.QueryRowContext(ctx, `SELECT lineage FROM digital_twin_lineage WHERE value_id = $1`, valueID).Scan(&raw); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return DigitalTwinValueLineage{}, ErrWorkbenchNotFound
 		}
@@ -555,41 +664,84 @@ func (s *PostgresWorkbenchStore) LineageForValue(valueID string) (DigitalTwinVal
 }
 
 func (s *PostgresWorkbenchStore) Snapshot() (WorkbenchSnapshot, error) {
-	measured, err := s.LatestMeasuredFrames(100)
-	if err != nil {
-		return WorkbenchSnapshot{}, err
-	}
-	results, err := s.LatestResultFrames(20)
-	if err != nil {
-		return WorkbenchSnapshot{}, err
-	}
-	twin, _ := s.CurrentTwinState()
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
-	rows, err := s.db.QueryContext(ctx, `SELECT lineage FROM digital_twin_lineage ORDER BY lineage_id`)
+	tx, err := s.db.BeginTx(ctx, workbenchSnapshotTxOptions())
 	if err != nil {
 		return WorkbenchSnapshot{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	generation, err := workbenchSnapshotGeneration(ctx, tx)
+	if err != nil {
+		return WorkbenchSnapshot{}, err
+	}
+	if s.afterSnapshotGeneration != nil {
+		s.afterSnapshotGeneration()
+	}
+	measured, err := latestMeasuredFrames(ctx, tx, 100)
+	if err != nil {
+		return WorkbenchSnapshot{}, err
+	}
+	results, err := latestResultFrames(ctx, tx, 20)
+	if err != nil {
+		return WorkbenchSnapshot{}, err
+	}
+	twin, err := currentTwinState(ctx, tx)
+	if err != nil && !errors.Is(err, ErrWorkbenchNotFound) {
+		return WorkbenchSnapshot{}, err
+	}
+	lineage, err := allWorkbenchLineage(ctx, tx)
+	if err != nil {
+		return WorkbenchSnapshot{}, err
+	}
+	state := buildWorkbenchState(measured, results, twin)
+	state.SnapshotGeneration = generation
+	if err := tx.Commit(); err != nil {
+		return WorkbenchSnapshot{}, err
+	}
+	return WorkbenchSnapshot{
+		Generation: generation,
+		State:      state,
+		Measured:   measured,
+		Twin:       twin,
+		Lineage:    lineage,
+		Results:    results,
+	}, nil
+}
+
+func workbenchSnapshotTxOptions() *sql.TxOptions {
+	return &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true}
+}
+
+func workbenchSnapshotGeneration(ctx context.Context, queryer workbenchSQLQueryer) (uint64, error) {
+	var generation uint64
+	err := queryer.QueryRowContext(ctx, `SELECT generation FROM workbench_snapshot_generation WHERE singleton = TRUE`).Scan(&generation)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return generation, err
+}
+
+func allWorkbenchLineage(ctx context.Context, queryer workbenchSQLQueryer) ([]DigitalTwinValueLineage, error) {
+	rows, err := queryer.QueryContext(ctx, `SELECT lineage FROM digital_twin_lineage ORDER BY lineage_id`)
+	if err != nil {
+		return nil, err
 	}
 	defer rows.Close()
 	lineage := []DigitalTwinValueLineage{}
 	for rows.Next() {
 		var raw []byte
 		if err := rows.Scan(&raw); err != nil {
-			return WorkbenchSnapshot{}, err
+			return nil, err
 		}
 		var record DigitalTwinValueLineage
 		if err := json.Unmarshal(raw, &record); err != nil {
-			return WorkbenchSnapshot{}, err
+			return nil, err
 		}
 		lineage = append(lineage, record)
 	}
-	return WorkbenchSnapshot{
-		State:    buildWorkbenchState(measured, results, twin),
-		Measured: measured,
-		Twin:     twin,
-		Lineage:  lineage,
-		Results:  results,
-	}, rows.Err()
+	return lineage, rows.Err()
 }
 
 func insertWorkbenchProcessed(ctx context.Context, tx *sql.Tx, consumerName, topic string, partition int, offset int64) (bool, error) {
@@ -605,6 +757,17 @@ func insertWorkbenchProcessed(ctx context.Context, tx *sql.Tx, consumerName, top
 	}
 	affected, err := result.RowsAffected()
 	return affected > 0, err
+}
+
+func advanceWorkbenchSnapshotGeneration(ctx context.Context, tx *sql.Tx) error {
+	_, err := tx.ExecContext(ctx, `
+		INSERT INTO workbench_snapshot_generation (singleton, generation, updated_at)
+		VALUES (TRUE, 1, now())
+		ON CONFLICT (singleton) DO UPDATE
+		SET generation = workbench_snapshot_generation.generation + 1,
+		    updated_at = now()
+	`)
+	return err
 }
 
 func upsertWorkbenchOffset(ctx context.Context, tx *sql.Tx, consumerName, topic string, partition int, offset int64) error {
@@ -700,4 +863,16 @@ func normalizeLimit(limit int, fallback int) int {
 		return fallback
 	}
 	return limit
+}
+
+func cloneWorkbenchValue[T any](value T) (T, error) {
+	var clone T
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return clone, err
+	}
+	if err := json.Unmarshal(raw, &clone); err != nil {
+		return clone, err
+	}
+	return clone, nil
 }

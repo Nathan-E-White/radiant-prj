@@ -93,6 +93,7 @@ export type WorkbenchLineage = {
 export type SimulatorWorkbenchState = {
   schemaVersion: "simulator-workbench.state.v1";
   generatedAt: string;
+  snapshotGeneration?: number;
   scenarioId: string;
   selectedUnitId: string;
   valueBasisSummary: Record<WorkbenchValueBasis, number>;

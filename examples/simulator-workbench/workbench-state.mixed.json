@@ -1,6 +1,7 @@
 {
   "schemaVersion": "simulator-workbench.state.v1",
   "generatedAt": "2026-07-06T15:00:05Z",
+  "snapshotGeneration": 0,
   "scenarioId": "mixed-public-safe-kaleidos-fleet-demo",
   "selectedUnitId": "KAL-01",
   "valueBasisSummary": {

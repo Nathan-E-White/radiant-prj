@@ -11,7 +11,13 @@ type SimopsBrokerMessage struct {
 	Offset    int64
 	Key       []byte
 	Value     []byte
+	Headers   []SimopsBrokerHeader
 	Time      time.Time
+}
+
+type SimopsBrokerHeader struct {
+	Key   string
+	Value []byte
 }
 
 type SimopsKafkaReader interface {

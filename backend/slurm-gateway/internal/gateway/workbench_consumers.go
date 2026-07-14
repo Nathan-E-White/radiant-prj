@@ -71,7 +71,7 @@ func RunWorkbenchTwinProjectionConsumer(ctx context.Context, cfg WorkbenchConfig
 	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[TwinStateProjection]{
 		Stream: WorkbenchProjectionTwin,
 		Project: func(message SimopsBrokerMessage) (TwinStateProjection, error) {
-			return ProjectTwinState(message.Topic, message.Partition, message.Offset, message.Value)
+			return ProjectTwinState(message.Topic, message.Partition, message.Offset, message.Value, message.Headers...)
 		},
 		Persist: func(projection TwinStateProjection) (bool, error) {
 			return store.SaveTwinStateProjection(cfg.TwinProjectionConsumerGroup, projection)
@@ -195,12 +195,7 @@ func (p *TwinProjector) runResults(ctx context.Context, reader SimopsKafkaReader
 }
 
 func (p *TwinProjector) publishState(ctx context.Context, state DigitalTwinState, lineage []DigitalTwinValueLineage) error {
-	for _, record := range lineage {
-		if err := p.store.SaveLineage(record); err != nil {
-			return err
-		}
-	}
-	return p.eventLog.PublishTwinState(ctx, state)
+	return p.eventLog.PublishTwinState(ctx, state, lineage)
 }
 
 func (p *TwinProjector) applyScada(frame ScadaTelemetryFrame) (DigitalTwinState, []DigitalTwinValueLineage, bool) {

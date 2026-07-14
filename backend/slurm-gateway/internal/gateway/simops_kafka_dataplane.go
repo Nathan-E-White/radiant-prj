@@ -70,23 +70,33 @@ func (w *kafkaBrokerWriter) WriteMessages(ctx context.Context, msgs ...SimopsBro
 }
 
 func fromKafkaMessage(msg kafka.Message) SimopsBrokerMessage {
+	headers := make([]SimopsBrokerHeader, 0, len(msg.Headers))
+	for _, header := range msg.Headers {
+		headers = append(headers, SimopsBrokerHeader{Key: header.Key, Value: append([]byte(nil), header.Value...)})
+	}
 	return SimopsBrokerMessage{
 		Topic:     msg.Topic,
 		Partition: msg.Partition,
 		Offset:    msg.Offset,
 		Key:       append([]byte(nil), msg.Key...),
 		Value:     append([]byte(nil), msg.Value...),
+		Headers:   headers,
 		Time:      msg.Time,
 	}
 }
 
 func toKafkaMessage(msg SimopsBrokerMessage) kafka.Message {
+	headers := make([]kafka.Header, 0, len(msg.Headers))
+	for _, header := range msg.Headers {
+		headers = append(headers, kafka.Header{Key: header.Key, Value: append([]byte(nil), header.Value...)})
+	}
 	return kafka.Message{
 		Topic:     msg.Topic,
 		Partition: msg.Partition,
 		Offset:    msg.Offset,
 		Key:       append([]byte(nil), msg.Key...),
 		Value:     append([]byte(nil), msg.Value...),
+		Headers:   headers,
 		Time:      msg.Time,
 	}
 }
