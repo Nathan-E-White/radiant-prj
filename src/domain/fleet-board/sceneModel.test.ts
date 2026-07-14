@@ -21,6 +21,10 @@ describe("fleet board scene model", () => {
       facilityKind: "trisoFactory",
       position: { x: 1, y: 2 }
     });
+    gameState = applyFleetBoardAction(gameState, {
+      type: "buySimulationContainerToken",
+      reactorId: "reactor-1"
+    });
 
     const scene = buildFleetBoardSceneModel(projection, gameState, "reactor-1");
 
@@ -44,6 +48,16 @@ describe("fleet board scene model", () => {
         })
       ])
     );
+    expect(scene.reactorSlotRails).toEqual([
+      expect.objectContaining({
+        reactorId: "reactor-1",
+        label: "Reactor Slot Rail",
+        slots: [
+          expect.objectContaining({ slotIndex: 0, status: "installed" }),
+          expect.objectContaining({ slotIndex: 1, status: "empty" })
+        ]
+      })
+    ]);
     expect(scene.resources.cash).toBe(gameState.resources.cash);
     expect(scene.valueBasisCounts).toEqual(projection.valueBasisSummary);
   });

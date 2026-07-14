@@ -21,6 +21,22 @@ export type FleetBoardScenePawn = {
   gridY: number;
 };
 
+export type FleetBoardSceneReactorSlot = {
+  id: string;
+  slotIndex: number;
+  status: "empty" | "installed";
+  label: string;
+  tokenId?: string;
+};
+
+export type FleetBoardSceneReactorSlotRail = {
+  reactorId: string;
+  gridX: number;
+  gridY: number;
+  label: "Reactor Slot Rail";
+  slots: FleetBoardSceneReactorSlot[];
+};
+
 export type FleetBoardSceneModel = {
   selectedUnitId: string;
   selectedReactorId: string | null;
@@ -29,6 +45,7 @@ export type FleetBoardSceneModel = {
   facilities: FleetBoardSceneFacility[];
   pawns: FleetBoardScenePawn[];
   routes: Array<{ from: FleetBoardSceneFacility; to: FleetBoardSceneFacility }>;
+  reactorSlotRails: FleetBoardSceneReactorSlotRail[];
   resources: FleetBoardState["resources"];
   score: FleetBoardState["score"];
   valueBasisCounts: Record<WorkbenchValueBasis, number>;
@@ -61,10 +78,37 @@ export function buildFleetBoardSceneModel(
       gridY: pawn.position.y
     })),
     routes: buildFleetBoardRoutes(facilities, gameState.config.routeRange),
+    reactorSlotRails: buildReactorSlotRails(gameState, facilities),
     resources: gameState.resources,
     score: gameState.score,
     valueBasisCounts: projection.valueBasisSummary
   };
+}
+
+function buildReactorSlotRails(gameState: FleetBoardState, facilities: FleetBoardSceneFacility[]) {
+  return facilities
+    .filter((facility) => facility.kind === "reactor")
+    .map((reactor): FleetBoardSceneReactorSlotRail => {
+      const tokens = Object.values(gameState.simulation.containerTokens).filter(
+        (token) => token.reactorId === reactor.id
+      );
+      return {
+        reactorId: reactor.id,
+        gridX: reactor.gridX,
+        gridY: reactor.gridY - 0.58,
+        label: "Reactor Slot Rail",
+        slots: Array.from({ length: gameState.config.simulationContainerTokenCapPerReactor }, (_, slotIndex) => {
+          const token = tokens[slotIndex];
+          return {
+            id: `${reactor.id}-simulation-slot-${slotIndex + 1}`,
+            slotIndex,
+            status: token ? "installed" : "empty",
+            label: token ? "Simulation Container Token installed" : "Empty simulation slot",
+            ...(token ? { tokenId: token.id } : {})
+          };
+        })
+      };
+    });
 }
 
 function buildFleetBoardRoutes(facilities: FleetBoardSceneFacility[], routeRange: number) {

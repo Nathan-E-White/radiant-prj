@@ -1,4 +1,4 @@
-import { BatteryCharging, CalendarClock, Droplets, Factory, Fuel, Gauge, Shield, Zap } from "lucide-react";
+import { BatteryCharging, CalendarClock, Cpu, Droplets, Factory, Fuel, Gauge, Shield, Zap } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { WorkbenchProjection } from "../../domain/simulator-workbench";
 import {
@@ -46,6 +46,10 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
     [gameState, projection, selectedReactorId]
   );
   const summary = summarizeFleetBoard(gameState);
+  const reactors = Object.values(gameState.facilities).filter((facility) => facility.kind === "reactor");
+  const selectedReactorTokenCount = selectedReactorId
+    ? (summary.simulationContainerTokensByReactorId[selectedReactorId] ?? 0)
+    : 0;
 
   const placeFacility = useCallback((facilityKind: FleetBoardFacilityKind, x: number, y: number) => {
     setGameState((current) =>
@@ -68,6 +72,15 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
       return reactor ? applyFleetBoardAction(current, { type: "refuelFacility", facilityId: reactor.id }) : current;
     });
   }, []);
+
+  const buySimulationContainerToken = useCallback(() => {
+    if (!selectedReactorId) {
+      return;
+    }
+    setGameState((current) =>
+      applyFleetBoardAction(current, { type: "buySimulationContainerToken", reactorId: selectedReactorId })
+    );
+  }, [selectedReactorId]);
 
   return (
     <section className="fleet-board-shell" aria-label="Fleet Board">
@@ -100,6 +113,12 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
         </span>
         <span className={summary.cash < 0 ? "fleet-board-negative" : ""}>${summary.cash}</span>
         <span data-testid="fleet-board-facility-count">{Object.keys(gameState.facilities).length} facilities</span>
+        <span data-testid="fleet-board-simulation-budget" aria-live="polite">
+          <Cpu size={15} /> {summary.simulationBudget} Simulation Budget
+        </span>
+        <span data-testid="fleet-board-simulation-container-tokens" aria-live="polite">
+          {summary.simulationContainerTokens} Simulation Container Tokens
+        </span>
       </div>
 
       <div className="fleet-board-layout">
@@ -129,6 +148,37 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
             <button type="button" onClick={refuelFirstReactor}>
               <Fuel size={16} />
               Refuel Reactor
+            </button>
+          </div>
+          <div className="fleet-board-control-group">
+            <h4>Local Simulation Capacity</h4>
+            <label>
+              Choose reactor for local simulation capacity
+              <select
+                aria-label="Choose reactor for local simulation capacity"
+                value={selectedReactorId ?? ""}
+                onChange={(event) => setSelectedReactorId(event.target.value || null)}
+              >
+                <option value="">Select a reactor</option>
+                {reactors.map((reactor) => (
+                  <option key={reactor.id} value={reactor.id}>
+                    {reactor.label} ({reactor.id})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p data-testid="fleet-board-selected-reactor">
+              {selectedReactorId ? `Selected ${selectedReactorId}` : "No reactor selected"}
+            </p>
+            <p data-testid="fleet-board-selected-reactor-rail" aria-live="polite">
+              {selectedReactorId
+                ? `${selectedReactorTokenCount} of ${summary.simulationContainerTokenCapPerReactor} Reactor Slot Rail positions installed`
+                : "Select a reactor to inspect its Reactor Slot Rail"}
+            </p>
+            <p>Local game state only — does not submit backend work.</p>
+            <button type="button" onClick={buySimulationContainerToken} disabled={!selectedReactorId}>
+              <Cpu size={16} />
+              Buy Simulation Container Token ({summary.simulationContainerTokenCost} budget)
             </button>
           </div>
           <div className="fleet-board-modifiers">
