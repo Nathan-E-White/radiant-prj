@@ -22,38 +22,15 @@ func RunWorkbenchScadaProjectionConsumer(ctx context.Context, cfg WorkbenchConfi
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
-	for {
-		msg, err := reader.FetchMessage(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		projection, err := ProjectScadaFrame(msg.Topic, msg.Partition, msg.Offset, msg.Value)
-		if err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		wrote, err := store.SaveScadaProjection(cfg.ScadaProjectionConsumerGroup, projection)
-		if err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		if err := reader.CommitMessages(ctx, msg); err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		metrics.MarkConsumed(msg.Offset)
-		if wrote {
-			metrics.IncFramesWritten(1)
-		}
-	}
+	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[ScadaProjection]{
+		Stream: WorkbenchProjectionMeasured,
+		Project: func(message SimopsBrokerMessage) (ScadaProjection, error) {
+			return ProjectScadaFrame(message.Topic, message.Partition, message.Offset, message.Value)
+		},
+		Persist: func(projection ScadaProjection) (bool, error) {
+			return store.SaveScadaProjection(cfg.ScadaProjectionConsumerGroup, projection)
+		},
+	})
 }
 
 func RunWorkbenchResultProjectionConsumer(ctx context.Context, cfg WorkbenchConfig, reader SimopsKafkaReader, store WorkbenchStore, metrics *SimopsConsumerMetrics) error {
@@ -68,38 +45,15 @@ func RunWorkbenchResultProjectionConsumer(ctx context.Context, cfg WorkbenchConf
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
-	for {
-		msg, err := reader.FetchMessage(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		projection, err := ProjectSimopsResultFrame(msg.Topic, msg.Partition, msg.Offset, msg.Value)
-		if err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		wrote, err := store.SaveResultProjection(cfg.ResultProjectionConsumerGroup, projection)
-		if err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		if err := reader.CommitMessages(ctx, msg); err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		metrics.MarkConsumed(msg.Offset)
-		if wrote {
-			metrics.IncFramesWritten(1)
-		}
-	}
+	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[SimopsResultProjection]{
+		Stream: WorkbenchProjectionSimulated,
+		Project: func(message SimopsBrokerMessage) (SimopsResultProjection, error) {
+			return ProjectSimopsResultFrame(message.Topic, message.Partition, message.Offset, message.Value)
+		},
+		Persist: func(projection SimopsResultProjection) (bool, error) {
+			return store.SaveResultProjection(cfg.ResultProjectionConsumerGroup, projection)
+		},
+	})
 }
 
 func RunWorkbenchTwinProjectionConsumer(ctx context.Context, cfg WorkbenchConfig, reader SimopsKafkaReader, store WorkbenchStore, metrics *SimopsConsumerMetrics) error {
@@ -114,38 +68,15 @@ func RunWorkbenchTwinProjectionConsumer(ctx context.Context, cfg WorkbenchConfig
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
-	for {
-		msg, err := reader.FetchMessage(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		projection, err := ProjectTwinState(msg.Topic, msg.Partition, msg.Offset, msg.Value)
-		if err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		wrote, err := store.SaveTwinStateProjection(cfg.TwinProjectionConsumerGroup, projection)
-		if err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		if err := reader.CommitMessages(ctx, msg); err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		metrics.MarkConsumed(msg.Offset)
-		if wrote {
-			metrics.IncFramesWritten(1)
-		}
-	}
+	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[TwinStateProjection]{
+		Stream: WorkbenchProjectionTwin,
+		Project: func(message SimopsBrokerMessage) (TwinStateProjection, error) {
+			return ProjectTwinState(message.Topic, message.Partition, message.Offset, message.Value)
+		},
+		Persist: func(projection TwinStateProjection) (bool, error) {
+			return store.SaveTwinStateProjection(cfg.TwinProjectionConsumerGroup, projection)
+		},
+	})
 }
 
 type TwinProjector struct {

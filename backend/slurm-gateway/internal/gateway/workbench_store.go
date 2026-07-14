@@ -35,6 +35,7 @@ type InMemoryWorkbenchStore struct {
 	resultsByValue map[string]SimopsResultFrame
 	twin           DigitalTwinState
 	lineageByValue map[string]DigitalTwinValueLineage
+	processed      map[string]struct{}
 }
 
 func NewInMemoryWorkbenchStore() *InMemoryWorkbenchStore {
@@ -44,6 +45,7 @@ func NewInMemoryWorkbenchStore() *InMemoryWorkbenchStore {
 		measuredByTag:  make(map[string]ScadaTelemetryFrame),
 		resultsByValue: make(map[string]SimopsResultFrame),
 		lineageByValue: make(map[string]DigitalTwinValueLineage),
+		processed:      make(map[string]struct{}),
 	}
 }
 
@@ -67,27 +69,48 @@ func (s *InMemoryWorkbenchStore) GetResidentTag(tagID string) (ScadaSourceTag, e
 	return tag, nil
 }
 
-func (s *InMemoryWorkbenchStore) SaveScadaProjection(_ string, projection ScadaProjection) (bool, error) {
+func (s *InMemoryWorkbenchStore) SaveScadaProjection(consumerName string, projection ScadaProjection) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.projectionProcessed(consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset) {
+		return false, nil
+	}
 	s.measuredByTag[projection.Frame.TagID] = projection.Frame
 	return true, nil
 }
 
-func (s *InMemoryWorkbenchStore) SaveResultProjection(_ string, projection SimopsResultProjection) (bool, error) {
+func (s *InMemoryWorkbenchStore) SaveResultProjection(consumerName string, projection SimopsResultProjection) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.projectionProcessed(consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset) {
+		return false, nil
+	}
 	for _, value := range projection.Frame.Values {
 		s.resultsByValue[value.ValueID] = projection.Frame
 	}
 	return true, nil
 }
 
-func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(_ string, projection TwinStateProjection) (bool, error) {
+func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if consumerName != "" && s.projectionProcessed(consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset) {
+		return false, nil
+	}
 	s.twin = projection.State
 	return true, nil
+}
+
+func (s *InMemoryWorkbenchStore) projectionProcessed(consumerName, topic string, partition int, offset int64) bool {
+	if s.processed == nil {
+		s.processed = make(map[string]struct{})
+	}
+	key := fmt.Sprintf("%s\x00%s\x00%d\x00%d", consumerName, topic, partition, offset)
+	if _, ok := s.processed[key]; ok {
+		return true
+	}
+	s.processed[key] = struct{}{}
+	return false
 }
 
 func (s *InMemoryWorkbenchStore) SaveLineage(lineage DigitalTwinValueLineage) error {
