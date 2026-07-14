@@ -118,7 +118,7 @@ A deterministic Fleet Board local-game lifecycle queued on one idle Simulation C
 _Avoid_: SimOps Run, Slurm job, backend submission, objective evidence
 
 **Insight Token**:
-A reactor-scoped Fleet Board local-game reward produced when a Simulation Job completes. Its later pressure-absorption behavior is a game rule, not a safety claim, operating recommendation, or backend simulation result.
+A reactor-scoped Fleet Board local-game reward produced when a Simulation Job completes. One token automatically absorbs one Inspector or Trouble non-refueling outage for its reactor; fuel-driven refueling never spends it. This is a game rule, not a safety claim, operating recommendation, or backend simulation result.
 _Avoid_: Safety credit, validated result, operational recommendation, backend artifact
 
 **Cooldown**:

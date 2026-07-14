@@ -234,4 +234,84 @@ describe("fleet board game reducer", () => {
       expect.arrayContaining([expect.objectContaining({ kind: "simulationJobCompleted", facilityId: "reactor-1" })])
     );
   });
+
+  it("spends one reactor Insight Token to absorb Inspector pressure", () => {
+    let state = createInitialFleetBoardState({ seed: "inspector-insight", fuelBlocks: 100 });
+    state = applyFleetBoardAction(state, {
+      type: "placeFacility",
+      facilityId: "reactor-1",
+      facilityKind: "reactor",
+      position: { x: 5, y: 2 }
+    });
+    state = {
+      ...state,
+      day: 5,
+      simulation: { ...state.simulation, insightTokensByReactorId: { "reactor-1": 1 } }
+    };
+
+    state = applyFleetBoardAction(state, { type: "tickDay" });
+
+    expect(state.facilities["reactor-1"]?.status).toBe("active");
+    expect(state.simulation.insightTokensByReactorId["reactor-1"]).toBe(0);
+    expect(state.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "insightTokenSpent",
+          facilityId: "reactor-1",
+          detail: expect.stringContaining("Inspector")
+        })
+      ])
+    );
+    expect(state.events.some((event) => event.day === 6 && event.kind === "inspectorHold")).toBe(false);
+  });
+
+  it("spends one reactor Insight Token to absorb Trouble pressure", () => {
+    let state = createInitialFleetBoardState({ seed: "trouble-insight", fuelBlocks: 100 });
+    state = applyFleetBoardAction(state, {
+      type: "placeFacility",
+      facilityId: "reactor-1",
+      facilityKind: "reactor",
+      position: { x: 5, y: 2 }
+    });
+    state = {
+      ...state,
+      day: 4,
+      simulation: { ...state.simulation, insightTokensByReactorId: { "reactor-1": 1 } }
+    };
+
+    state = applyFleetBoardAction(state, { type: "tickDay" });
+
+    expect(state.facilities["reactor-1"]?.status).toBe("active");
+    expect(state.simulation.insightTokensByReactorId["reactor-1"]).toBe(0);
+    expect(state.events.at(-1)).toEqual(
+      expect.objectContaining({
+        kind: "insightTokenSpent",
+        facilityId: "reactor-1",
+        detail: expect.stringContaining("Trouble")
+      })
+    );
+  });
+
+  it("does not spend Insight Tokens on a fuel-driven refueling outage", () => {
+    let state = createInitialFleetBoardState({ seed: "refueling-insight", fuelBlocks: 0 });
+    state = applyFleetBoardAction(state, {
+      type: "placeFacility",
+      facilityId: "reactor-1",
+      facilityKind: "reactor",
+      position: { x: 5, y: 2 }
+    });
+    state = {
+      ...state,
+      simulation: { ...state.simulation, insightTokensByReactorId: { "reactor-1": 1 } }
+    };
+
+    state = applyFleetBoardAction(state, { type: "tickDay" });
+
+    expect(state.facilities["reactor-1"]?.status).toBe("refueling");
+    expect(state.simulation.insightTokensByReactorId["reactor-1"]).toBe(1);
+    expect(state.events).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "refuelingNeeded", facilityId: "reactor-1" })])
+    );
+    expect(state.events.some((event) => event.kind === "insightTokenSpent")).toBe(false);
+  });
 });
