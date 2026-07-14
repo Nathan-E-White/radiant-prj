@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
@@ -25,6 +26,8 @@ var (
 	workbenchResultIcebergIdentifier = icetable.Identifier{"simops", "simulated_results"}
 	workbenchTwinIcebergIdentifier   = icetable.Identifier{"digital_twin", "state_values"}
 )
+
+const workbenchTwinPublicationSnapshotProperty = "workbench.publication-id"
 
 type WorkbenchIcebergWriter struct {
 	cfg WorkbenchConfig
@@ -93,17 +96,30 @@ func (w *WorkbenchIcebergWriter) AppendTwin(ctx context.Context, projection Twin
 	if err != nil {
 		return err
 	}
+	if projection.PublicationID != "" && icebergTwinPublicationSeen(tbl, projection.PublicationID) {
+		return nil
+	}
 	arrowTable, err := twinProjectionArrowTable(projection)
 	if err != nil {
 		return err
 	}
 	defer arrowTable.Release()
 	if _, err := tbl.AppendTable(ctx, arrowTable, arrowTable.NumRows(), iceberg.Properties{
-		"workbench.topic": projection.RedpandaTopic,
+		"workbench.topic":                        projection.RedpandaTopic,
+		workbenchTwinPublicationSnapshotProperty: projection.PublicationID,
 	}); err != nil {
 		return err
 	}
 	return verifyWorkbenchIcebergOffset(ctx, cat, workbenchTwinIcebergIdentifier, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset)
+}
+
+func icebergTwinPublicationSeen(tbl *icetable.Table, publicationID string) bool {
+	for _, snapshot := range tbl.Metadata().Snapshots() {
+		if snapshot.Summary != nil && snapshot.Summary.Properties[workbenchTwinPublicationSnapshotProperty] == publicationID {
+			return true
+		}
+	}
+	return false
 }
 
 func (w *WorkbenchIcebergWriter) loadCatalog(ctx context.Context) (icecatalog.Catalog, error) {
@@ -329,17 +345,17 @@ func resultProjectionArrowTable(projection SimopsResultProjection) (arrow.Table,
 
 func twinProjectionArrowTable(projection TwinStateProjection) (arrow.Table, error) {
 	schema := arrow.NewSchema([]arrow.Field{
-		{Name: "as_of", Type: timestampType(), Nullable: false},
-		{Name: "twin_id", Type: arrow.BinaryTypes.String, Nullable: false},
-		{Name: "entity_id", Type: arrow.BinaryTypes.String, Nullable: false},
-		{Name: "value_id", Type: arrow.BinaryTypes.String, Nullable: false},
-		{Name: "value_basis", Type: arrow.BinaryTypes.String, Nullable: false},
-		{Name: "unit", Type: arrow.BinaryTypes.String, Nullable: false},
-		{Name: "confidence", Type: arrow.PrimitiveTypes.Float64, Nullable: false},
-		{Name: "state", Type: arrow.BinaryTypes.String, Nullable: false},
-		{Name: "redpanda_topic", Type: arrow.BinaryTypes.String, Nullable: false},
-		{Name: "redpanda_partition", Type: arrow.PrimitiveTypes.Int32, Nullable: false},
-		{Name: "redpanda_offset", Type: arrow.PrimitiveTypes.Int64, Nullable: false},
+		icebergArrowField(1, "as_of", timestampType(), false),
+		icebergArrowField(2, "twin_id", arrow.BinaryTypes.String, false),
+		icebergArrowField(3, "entity_id", arrow.BinaryTypes.String, false),
+		icebergArrowField(4, "value_id", arrow.BinaryTypes.String, false),
+		icebergArrowField(5, "value_basis", arrow.BinaryTypes.String, false),
+		icebergArrowField(6, "unit", arrow.BinaryTypes.String, false),
+		icebergArrowField(7, "confidence", arrow.PrimitiveTypes.Float64, false),
+		icebergArrowField(8, "state", arrow.BinaryTypes.String, false),
+		icebergArrowField(9, "redpanda_topic", arrow.BinaryTypes.String, false),
+		icebergArrowField(10, "redpanda_partition", arrow.PrimitiveTypes.Int32, false),
+		icebergArrowField(11, "redpanda_offset", arrow.PrimitiveTypes.Int64, false),
 	}, nil)
 	rows := 0
 	for _, entity := range projection.State.Entities {
@@ -365,6 +381,13 @@ func twinProjectionArrowTable(projection TwinStateProjection) (arrow.Table, erro
 			}
 		}
 	})
+}
+
+func icebergArrowField(id int, name string, dataType arrow.DataType, nullable bool) arrow.Field {
+	return arrow.Field{
+		Name: name, Type: dataType, Nullable: nullable,
+		Metadata: arrow.MetadataFrom(map[string]string{icetable.ArrowParquetFieldIDKey: strconv.Itoa(id)}),
+	}
 }
 
 func timestampType() *arrow.TimestampType {

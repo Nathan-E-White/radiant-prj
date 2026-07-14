@@ -19,6 +19,8 @@ type WorkbenchStore interface {
 	SaveScadaProjection(consumerName string, projection ScadaProjection) (bool, error)
 	SaveResultProjection(consumerName string, projection SimopsResultProjection) (bool, error)
 	SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error)
+	GetTwinStatePublication(publicationID string) (TwinStatePublication, error)
+	AcknowledgeTwinStatePublication(publicationID string) error
 	LatestMeasuredFrames(limit int) ([]ScadaTelemetryFrame, error)
 	LatestResultFrames(limit int) ([]SimopsResultFrame, error)
 	CurrentTwinState() (DigitalTwinState, error)
@@ -35,6 +37,7 @@ type InMemoryWorkbenchStore struct {
 	twin           DigitalTwinState
 	lineageByValue map[string]DigitalTwinValueLineage
 	processed      map[string]struct{}
+	publications   map[string]TwinStatePublication
 	generation     uint64
 }
 
@@ -46,6 +49,7 @@ func NewInMemoryWorkbenchStore() *InMemoryWorkbenchStore {
 		resultsByValue: make(map[string]SimopsResultFrame),
 		lineageByValue: make(map[string]DigitalTwinValueLineage),
 		processed:      make(map[string]struct{}),
+		publications:   make(map[string]TwinStatePublication),
 	}
 }
 
@@ -113,7 +117,12 @@ func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := ""
-	if consumerName != "" {
+	if projection.PublicationID != "" {
+		key = "twin-publication\x00" + projection.PublicationID
+		if s.projectionProcessed(key) {
+			return false, nil
+		}
+	} else if consumerName != "" {
 		key = workbenchProjectionKey(consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset)
 		if s.projectionProcessed(key) {
 			return false, nil
@@ -122,6 +131,16 @@ func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 	transition, err := cloneWorkbenchValue(TwinStateTransition{State: projection.State, Lineage: projection.Lineage})
 	if err != nil {
 		return false, err
+	}
+	var publication TwinStatePublication
+	if projection.PublicationID != "" && consumerName == "" {
+		publication, err = cloneWorkbenchValue(TwinStatePublication{
+			PublicationID: projection.PublicationID, Source: projection.PublicationSource,
+			TwinStateTopic: projection.RedpandaTopic, State: transition.State, Lineage: transition.Lineage,
+		})
+		if err != nil {
+			return false, err
+		}
 	}
 	if key != "" {
 		s.processed[key] = struct{}{}
@@ -133,8 +152,37 @@ func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 			s.lineageByValue[lineage.ValueID] = lineage
 		}
 	}
+	if projection.PublicationID != "" && consumerName == "" {
+		if s.publications == nil {
+			s.publications = make(map[string]TwinStatePublication)
+		}
+		s.publications[projection.PublicationID] = publication
+	}
 	s.generation++
 	return true, nil
+}
+
+func (s *InMemoryWorkbenchStore) GetTwinStatePublication(publicationID string) (TwinStatePublication, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	publication, ok := s.publications[publicationID]
+	if !ok {
+		return TwinStatePublication{}, ErrWorkbenchNotFound
+	}
+	return cloneWorkbenchValue(publication)
+}
+
+func (s *InMemoryWorkbenchStore) AcknowledgeTwinStatePublication(publicationID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	publication, ok := s.publications[publicationID]
+	if ok {
+		s.publications[publicationID] = TwinStatePublication{
+			PublicationID: publication.PublicationID, Source: publication.Source,
+			TwinStateTopic: publication.TwinStateTopic, Acknowledged: true,
+		}
+	}
+	return nil
 }
 
 func (s *InMemoryWorkbenchStore) projectionProcessed(key string) bool {
@@ -294,7 +342,12 @@ func ensureWorkbenchSnapshotSchema(ctx context.Context, db *sql.DB) error {
 		);
 		INSERT INTO workbench_snapshot_generation (singleton, generation)
 		VALUES (TRUE, 0)
-		ON CONFLICT (singleton) DO NOTHING
+		ON CONFLICT (singleton) DO NOTHING;
+		CREATE TABLE IF NOT EXISTS workbench_twin_publications (
+			publication_id TEXT PRIMARY KEY,
+			publication JSONB NOT NULL,
+			persisted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+		)
 	`)
 	return err
 }
@@ -460,7 +513,12 @@ func (s *PostgresWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 	}
 	defer func() { _ = tx.Rollback() }()
 	processed := true
-	if consumerName != "" {
+	if projection.PublicationID != "" {
+		processed, err = insertWorkbenchProcessed(ctx, tx, "twin-publication", projection.PublicationID, 0, 0)
+		if err != nil || !processed {
+			return processed, err
+		}
+	} else if consumerName != "" {
 		processed, err = insertWorkbenchProcessed(ctx, tx, consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset)
 		if err != nil || !processed {
 			return processed, err
@@ -541,10 +599,59 @@ func (s *PostgresWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 			return false, err
 		}
 	}
+	if projection.PublicationID != "" && consumerName == "" {
+		publicationRaw, err := json.Marshal(TwinStatePublication{
+			PublicationID: projection.PublicationID, Source: projection.PublicationSource,
+			TwinStateTopic: projection.RedpandaTopic, State: projection.State, Lineage: projection.Lineage,
+		})
+		if err != nil {
+			return false, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO workbench_twin_publications (publication_id, publication, persisted_at)
+			VALUES ($1, $2::jsonb, now())
+			ON CONFLICT (publication_id) DO NOTHING
+		`, projection.PublicationID, publicationRaw); err != nil {
+			return false, err
+		}
+	}
 	if err := advanceWorkbenchSnapshotGeneration(ctx, tx); err != nil {
 		return false, err
 	}
 	return true, tx.Commit()
+}
+
+func (s *PostgresWorkbenchStore) GetTwinStatePublication(publicationID string) (TwinStatePublication, error) {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	var raw []byte
+	if err := s.db.QueryRowContext(ctx, `SELECT publication FROM workbench_twin_publications WHERE publication_id = $1`, publicationID).Scan(&raw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return TwinStatePublication{}, ErrWorkbenchNotFound
+		}
+		return TwinStatePublication{}, err
+	}
+	var publication TwinStatePublication
+	if err := json.Unmarshal(raw, &publication); err != nil {
+		return TwinStatePublication{}, err
+	}
+	return publication, nil
+}
+
+func (s *PostgresWorkbenchStore) AcknowledgeTwinStatePublication(publicationID string) error {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE workbench_twin_publications
+		SET publication = jsonb_build_object(
+			'publicationId', publication->>'publicationId',
+			'source', publication->'source',
+			'twinStateTopic', publication->>'twinStateTopic',
+			'acknowledged', true
+		)
+		WHERE publication_id = $1
+	`, publicationID)
+	return err
 }
 
 func (s *PostgresWorkbenchStore) LatestMeasuredFrames(limit int) ([]ScadaTelemetryFrame, error) {
@@ -591,9 +698,14 @@ func (s *PostgresWorkbenchStore) LatestResultFrames(limit int) ([]SimopsResultFr
 
 func latestResultFrames(ctx context.Context, queryer workbenchSQLQueryer, limit int) ([]SimopsResultFrame, error) {
 	rows, err := queryer.QueryContext(ctx, `
-		SELECT DISTINCT ON (run_id, worker_id, sequence) frame
-		FROM simops_result_values
-		ORDER BY run_id, worker_id, sequence, produced_at DESC
+		SELECT frame
+		FROM (
+			SELECT DISTINCT ON (run_id, worker_id, sequence)
+				run_id, worker_id, sequence, produced_at, frame
+			FROM simops_result_values
+			ORDER BY run_id, worker_id, sequence, produced_at DESC
+		) latest
+		ORDER BY produced_at DESC, run_id, worker_id, sequence
 		LIMIT $1
 	`, normalizeLimit(limit, 20))
 	if err != nil {

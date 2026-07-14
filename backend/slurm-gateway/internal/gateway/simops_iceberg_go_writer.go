@@ -198,10 +198,10 @@ func observedIcebergOffsets(tbl arrow.Table) (map[string]struct{}, error) {
 
 	observed := make(map[string]struct{})
 	row := 0
-	for chunkIdx := 0; chunkIdx < topicCol.Data().Len(); chunkIdx++ {
-		topics, ok := topicCol.Data().Chunk(chunkIdx).(*array.String)
+	for chunkIdx, chunk := range topicCol.Data().Chunks() {
+		topics, ok := chunk.(*array.String)
 		if !ok {
-			return nil, fmt.Errorf("iceberg readback redpanda_topic column has %T", topicCol.Data().Chunk(chunkIdx))
+			return nil, fmt.Errorf("iceberg readback redpanda_topic chunk %d has %T", chunkIdx, chunk)
 		}
 		for i := 0; i < topics.Len(); i++ {
 			partition, err := int32ValueAt(partitionCol, row)

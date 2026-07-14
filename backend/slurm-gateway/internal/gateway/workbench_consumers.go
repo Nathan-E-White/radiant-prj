@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"sort"
 	"strings"
@@ -80,34 +81,54 @@ func RunWorkbenchTwinProjectionConsumer(ctx context.Context, cfg WorkbenchConfig
 }
 
 type TwinProjector struct {
-	cfg      WorkbenchConfig
-	store    WorkbenchStore
-	eventLog WorkbenchEventLog
-	now      func() time.Time
+	cfg       WorkbenchConfig
+	publisher TwinStatePublisher
+	now       func() time.Time
 
-	mu       sync.Mutex
-	measured map[string]ScadaTelemetryFrame
-	result   *SimopsResultFrame
+	mu           sync.Mutex
+	transitionMu sync.Mutex
+	measured     map[string]ScadaTelemetryFrame
+	result       *SimopsResultFrame
 }
 
-func NewTwinProjector(cfg WorkbenchConfig, store WorkbenchStore, eventLog WorkbenchEventLog) *TwinProjector {
+func NewTwinProjector(cfg WorkbenchConfig, store WorkbenchStore, eventLog WorkbenchEventLog) (*TwinProjector, error) {
 	if store == nil {
 		store = NewInMemoryWorkbenchStore()
 	}
 	if eventLog == nil {
 		eventLog = &MemoryWorkbenchEventLog{Store: store}
 	}
-	return &TwinProjector{
-		cfg:      cfg,
-		store:    store,
-		eventLog: eventLog,
-		now:      time.Now,
-		measured: make(map[string]ScadaTelemetryFrame),
+	projector := &TwinProjector{
+		cfg:       cfg,
+		publisher: NewTwinStatePublisher(store, eventLog),
+		now:       time.Now,
+		measured:  make(map[string]ScadaTelemetryFrame),
 	}
+	measured, err := store.LatestMeasuredFrames(100)
+	if err != nil {
+		return nil, fmt.Errorf("hydrate Twin projector measured state: %w", err)
+	}
+	for _, frame := range measured {
+		projector.measured[frame.TagID] = frame
+	}
+	results, err := store.LatestResultFrames(1)
+	if err != nil {
+		return nil, fmt.Errorf("hydrate Twin projector simulated state: %w", err)
+	}
+	if len(results) > 0 {
+		result := results[0]
+		projector.result = &result
+	}
+	return projector, nil
 }
 
 func RunTwinProjector(ctx context.Context, cfg WorkbenchConfig, scadaReader SimopsKafkaReader, resultReader SimopsKafkaReader, store WorkbenchStore, eventLog WorkbenchEventLog, metrics *SimopsConsumerMetrics) error {
-	projector := NewTwinProjector(cfg, store, eventLog)
+	projector, err := NewTwinProjector(cfg, store, eventLog)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
@@ -149,21 +170,10 @@ func (p *TwinProjector) runScada(ctx context.Context, reader SimopsKafkaReader, 
 			}
 			return err
 		}
-		projection, err := ProjectScadaFrame(msg.Topic, msg.Partition, msg.Offset, msg.Value)
-		if err != nil {
+		source := WorkbenchProjectionPosition{Topic: msg.Topic, Partition: msg.Partition, Offset: msg.Offset}
+		if err := p.consumeScada(ctx, reader, metrics, msg, source); err != nil {
 			return err
 		}
-		state, lineage, ok := p.applyScada(projection.Frame)
-		if ok {
-			if err := p.publishState(ctx, state, lineage); err != nil {
-				return err
-			}
-			metrics.IncFramesWritten(1)
-		}
-		if err := reader.CommitMessages(ctx, msg); err != nil {
-			return err
-		}
-		metrics.MarkConsumed(msg.Offset)
 	}
 }
 
@@ -176,26 +186,74 @@ func (p *TwinProjector) runResults(ctx context.Context, reader SimopsKafkaReader
 			}
 			return err
 		}
-		projection, err := ProjectSimopsResultFrame(msg.Topic, msg.Partition, msg.Offset, msg.Value)
-		if err != nil {
+		source := WorkbenchProjectionPosition{Topic: msg.Topic, Partition: msg.Partition, Offset: msg.Offset}
+		if err := p.consumeResult(ctx, reader, metrics, msg, source); err != nil {
 			return err
 		}
-		state, lineage, ok := p.applyResult(projection.Frame)
-		if ok {
-			if err := p.publishState(ctx, state, lineage); err != nil {
-				return err
-			}
-			metrics.IncFramesWritten(1)
-		}
-		if err := reader.CommitMessages(ctx, msg); err != nil {
-			return err
-		}
-		metrics.MarkConsumed(msg.Offset)
 	}
 }
 
-func (p *TwinProjector) publishState(ctx context.Context, state DigitalTwinState, lineage []DigitalTwinValueLineage) error {
-	return p.eventLog.PublishTwinState(ctx, state, lineage)
+func (p *TwinProjector) consumeScada(ctx context.Context, reader SimopsKafkaReader, metrics *SimopsConsumerMetrics, msg SimopsBrokerMessage, source WorkbenchProjectionPosition) error {
+	p.transitionMu.Lock()
+	defer p.transitionMu.Unlock()
+	published, err := p.processScada(ctx, msg, source)
+	return p.finishSourceMessage(ctx, reader, metrics, msg, source, published, err)
+}
+
+func (p *TwinProjector) consumeResult(ctx context.Context, reader SimopsKafkaReader, metrics *SimopsConsumerMetrics, msg SimopsBrokerMessage, source WorkbenchProjectionPosition) error {
+	p.transitionMu.Lock()
+	defer p.transitionMu.Unlock()
+	published, err := p.processResult(ctx, msg, source)
+	return p.finishSourceMessage(ctx, reader, metrics, msg, source, published, err)
+}
+
+func (p *TwinProjector) finishSourceMessage(ctx context.Context, reader SimopsKafkaReader, metrics *SimopsConsumerMetrics, msg SimopsBrokerMessage, source WorkbenchProjectionPosition, published bool, publicationErr error) error {
+	if publicationErr != nil {
+		return publicationErr
+	}
+	if published {
+		metrics.IncFramesWritten(1)
+		if err := p.publisher.Acknowledge(source); err != nil {
+			return err
+		}
+	}
+	if err := reader.CommitMessages(ctx, msg); err != nil {
+		return err
+	}
+	metrics.MarkConsumed(msg.Offset)
+	return nil
+}
+
+func (p *TwinProjector) processScada(ctx context.Context, msg SimopsBrokerMessage, source WorkbenchProjectionPosition) (bool, error) {
+	if _, resumed, err := p.publisher.Resume(ctx, source); err != nil || resumed {
+		return resumed, err
+	}
+	projection, err := ProjectScadaFrame(msg.Topic, msg.Partition, msg.Offset, msg.Value)
+	if err != nil {
+		return false, err
+	}
+	state, lineage, ok := p.applyScada(projection.Frame)
+	if !ok {
+		return false, nil
+	}
+	_, err = p.publisher.Publish(ctx, NewTwinStatePublication(source, p.cfg.TwinStateTopic, state, lineage))
+	return err == nil, err
+}
+
+func (p *TwinProjector) processResult(ctx context.Context, msg SimopsBrokerMessage, source WorkbenchProjectionPosition) (bool, error) {
+	if _, resumed, err := p.publisher.Resume(ctx, source); err != nil || resumed {
+		return resumed, err
+	}
+	projection, err := ProjectSimopsResultFrame(msg.Topic, msg.Partition, msg.Offset, msg.Value)
+	if err != nil {
+		return false, err
+	}
+	state, lineage, ok := p.applyResult(projection.Frame)
+	if !ok {
+		return false, nil
+	}
+	_, err = p.publisher.Publish(ctx, NewTwinStatePublication(source, p.cfg.TwinStateTopic, state, lineage))
+	return err == nil, err
 }
 
 func (p *TwinProjector) applyScada(frame ScadaTelemetryFrame) (DigitalTwinState, []DigitalTwinValueLineage, bool) {
