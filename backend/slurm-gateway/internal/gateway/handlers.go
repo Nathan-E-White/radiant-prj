@@ -71,7 +71,7 @@ func NewDefaultGatewayWithRuntimes(cfg Config, simopsSpooler SimopsSpooler, reac
 			}
 			forgeStore = postgresForgeStore
 		}
-		app.artifactForge = NewArtifactForgeManager(forgeStore, simops, workbench.store)
+		app.artifactForge = NewArtifactForgeManager(forgeStore, simops, workbench.artifactForgeEligibility)
 		workbench.resultLineageContext = app.artifactForge.ResultLineageContext
 	}
 	if cfg.ReactorTelemetry.Enabled {
