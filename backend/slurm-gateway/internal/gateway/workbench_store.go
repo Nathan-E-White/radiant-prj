@@ -19,6 +19,7 @@ type WorkbenchStore interface {
 	SaveScadaProjection(consumerName string, projection ScadaProjection) (bool, error)
 	SaveResultProjection(consumerName string, projection SimopsResultProjection) (bool, error)
 	SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error)
+	SaveTwinStatePublication(publication TwinStatePublication) (bool, error)
 	GetTwinStatePublication(publicationID string) (TwinStatePublication, error)
 	AcknowledgeTwinStatePublication(publicationID string) error
 	LatestMeasuredFrames(limit int) ([]ScadaTelemetryFrame, error)
@@ -193,6 +194,19 @@ func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 	}
 	s.generation++
 	return true, nil
+}
+
+func (s *InMemoryWorkbenchStore) SaveTwinStatePublication(publication TwinStatePublication) (bool, error) {
+	projection, err := ProjectTwinStatePublication(
+		publication.TwinStateTopic,
+		publication.Source.Partition,
+		publication.Source.Offset,
+		publication,
+	)
+	if err != nil {
+		return false, err
+	}
+	return s.SaveTwinStateProjection("", projection)
 }
 
 func (s *InMemoryWorkbenchStore) GetTwinStatePublication(publicationID string) (TwinStatePublication, error) {
@@ -709,6 +723,19 @@ func (s *PostgresWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 		return false, err
 	}
 	return true, tx.Commit()
+}
+
+func (s *PostgresWorkbenchStore) SaveTwinStatePublication(publication TwinStatePublication) (bool, error) {
+	projection, err := ProjectTwinStatePublication(
+		publication.TwinStateTopic,
+		publication.Source.Partition,
+		publication.Source.Offset,
+		publication,
+	)
+	if err != nil {
+		return false, err
+	}
+	return s.SaveTwinStateProjection("", projection)
 }
 
 func (s *PostgresWorkbenchStore) GetTwinStatePublication(publicationID string) (TwinStatePublication, error) {

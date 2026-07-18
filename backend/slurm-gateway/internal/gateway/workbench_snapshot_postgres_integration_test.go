@@ -59,6 +59,10 @@ func TestPostgresTwinStatePublisherRecoversEventFailureFromPersistedPublication(
 	}
 }
 
+func TestPostgresTwinStatePublicationStoreContract(t *testing.T) {
+	assertTwinStatePublicationStoreContract(t, openPostgresSnapshotTestStore(t))
+}
+
 func TestPostgresTwinProjectorHydratesNewestResultAcrossKeys(t *testing.T) {
 	store := openPostgresSnapshotTestStore(t)
 	cfg := DefaultConfig().Workbench
