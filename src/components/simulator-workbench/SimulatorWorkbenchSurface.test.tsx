@@ -84,6 +84,49 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(markup).toContain("not settlement");
     expect(markup).not.toContain("Redpanda");
   });
+
+  it("presents stale retention and recovery as explicit read outcomes", () => {
+    const projectionInput = loadFixtureWorkbenchData();
+    const projection = buildWorkbenchProjection(projectionInput);
+    const model = {
+      generation: 8,
+      source: "live" as const,
+      input: projectionInput,
+      acceptedAt: "2026-07-18T12:00:00Z"
+    };
+    const renderStatus = (readState: WorkbenchReadState) => renderToStaticMarkup(
+      <SimulatorWorkbenchSurface
+        onSelectUnit={vi.fn()}
+        onSelectValue={vi.fn()}
+        projection={projection}
+        readState={readState}
+        onRefresh={vi.fn()}
+        computeQueue={<div>Scientific compute queue</div>}
+        selectedJob={fixtures.computeJobs[0]}
+        scenario="DOME synthetic full-power readiness bundle"
+        scenarioJobs={fixtures.computeJobs}
+        bundleState="ready"
+        orchestrationPanel={<div>Containerized worker orchestration</div>}
+      />
+    );
+
+    const stale = renderStatus({
+      phase: "stale",
+      model,
+      message: "Workbench service unavailable. Retaining live generation 8 as stale.",
+      errorKind: "unavailable"
+    });
+    expect(stale).toContain("Stale live generation 8");
+    expect(stale).toContain("Retaining live generation 8 as stale");
+
+    const recovering = renderStatus({
+      phase: "recovering",
+      model,
+      message: "Refreshing one coherent live Workbench Snapshot."
+    });
+    expect(recovering).toContain("Recovering live Snapshot");
+    expect(recovering).toContain("Refreshing one coherent live Workbench Snapshot");
+  });
 });
 
 function fixtureReadState(): WorkbenchReadState {

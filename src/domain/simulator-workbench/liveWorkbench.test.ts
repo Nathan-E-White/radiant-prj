@@ -4,7 +4,6 @@ import { buildWorkbenchProjection } from "./projection";
 import {
   WorkbenchReadError,
   createHttpWorkbenchDataAdapter,
-  createWorkbenchRefreshCoordinator,
   initialWorkbenchReadState,
   refreshWorkbenchReadState,
   type LiveWorkbenchSnapshot
@@ -144,34 +143,6 @@ describe("live Workbench read boundary", () => {
     expect(older.model?.generation).toBe(12);
   });
 
-  it("aborts an overlapping refresh and the active refresh on disposal", async () => {
-    const fixture = loadFixtureWorkbenchData();
-    const pending: Array<{ signal: AbortSignal; resolve: (response: Response) => void }> = [];
-    const fetcher = vi.fn((_url: string | URL | Request, init?: RequestInit) =>
-      new Promise<Response>((resolve, reject) => {
-        const signal = init?.signal;
-        if (!signal) throw new Error("missing refresh signal");
-        signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
-        pending.push({ signal, resolve });
-      })
-    );
-    const coordinator = createWorkbenchRefreshCoordinator(createHttpWorkbenchDataAdapter(fetcher), {
-      allowFixtureFallback: false,
-      fixtureInput: fixture
-    });
-
-    const first = coordinator.refresh(initialWorkbenchReadState());
-    const second = coordinator.refresh(initialWorkbenchReadState());
-    expect(pending[0]?.signal.aborted).toBe(true);
-    pending[1]?.resolve(new Response(JSON.stringify(liveSnapshot(14))));
-    await expect(first).resolves.toBeNull();
-    await expect(second).resolves.toMatchObject({ phase: "live", model: { generation: 14 } });
-
-    const third = coordinator.refresh(initialWorkbenchReadState());
-    coordinator.dispose();
-    expect(pending[2]?.signal.aborted).toBe(true);
-    await expect(third).resolves.toBeNull();
-  });
 });
 
 function liveSnapshot(generation: number): LiveWorkbenchSnapshot {

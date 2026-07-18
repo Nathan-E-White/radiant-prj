@@ -93,11 +93,6 @@ export type WorkbenchRefreshOptions = {
   signal?: AbortSignal;
 };
 
-export type WorkbenchRefreshCoordinator = {
-  refresh(current: WorkbenchReadState): Promise<WorkbenchReadState | null>;
-  dispose(): void;
-};
-
 export function initialWorkbenchReadState(): WorkbenchReadState {
   return { phase: "loading", model: null, message: "Loading one coherent live Workbench Snapshot." };
 }
@@ -184,11 +179,22 @@ export async function refreshWorkbenchReadState(
         errorKind: readError.kind
       };
     }
-    if (current.model?.source === "fixture") {
+    if (
+      current.model?.source === "fixture" &&
+      (readError.kind === "unavailable" || readError.kind === "empty")
+    ) {
       return {
         phase: "fixture",
         model: current.model,
         message: `${readError.message} Retaining the explicit whole-Snapshot fixture fallback.`,
+        errorKind: readError.kind
+      };
+    }
+    if (current.model?.source === "fixture") {
+      return {
+        phase: "error",
+        model: current.model,
+        message: `${readError.message} The existing fixture remains visible but did not satisfy this live read.`,
         errorKind: readError.kind
       };
     }
@@ -202,30 +208,6 @@ export async function refreshWorkbenchReadState(
     }
     return { phase: "error", model: null, message: readError.message, errorKind: readError.kind };
   }
-}
-
-export function createWorkbenchRefreshCoordinator(
-  adapter: WorkbenchSnapshotAdapter,
-  options: Omit<WorkbenchRefreshOptions, "signal">
-): WorkbenchRefreshCoordinator {
-  let active: AbortController | null = null;
-  let disposed = false;
-  return {
-    async refresh(current) {
-      active?.abort();
-      const controller = new AbortController();
-      active = controller;
-      const next = await refreshWorkbenchReadState(current, adapter, { ...options, signal: controller.signal });
-      if (disposed || active !== controller) return null;
-      active = null;
-      return next;
-    },
-    dispose() {
-      disposed = true;
-      active?.abort();
-      active = null;
-    }
-  };
 }
 
 function validateLiveWorkbenchSnapshot(snapshot: LiveWorkbenchSnapshot): void {

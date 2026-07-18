@@ -1,75 +1,45 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { SimulatorWorkbenchSurface, type SimulationHealthPanelModel } from "../../components/simulator-workbench";
 import type { ComputeJob } from "../../domain/types";
 import {
   buildWorkbenchProjection,
-  createHttpWorkbenchDataAdapter,
+  createBrowserWorkbenchSnapshotSession,
   createHealthTickDriver,
-  createWorkbenchRefreshCoordinator,
-  initialWorkbenchReadState,
-  loadFixtureWorkbenchData,
   projectHealthCards,
   workbenchReadLabel,
   type WorkbenchHealthRunState,
   type WorkbenchSelection,
   type WorkbenchProjection,
   type WorkbenchReadState,
-  type WorkbenchRefreshCoordinator,
+  type WorkbenchSnapshotSession,
   type WorkbenchStateView
 } from "../../domain/simulator-workbench";
 
 const WORKBENCH_HEALTH_TICK_MS = 1250;
-const WORKBENCH_REFRESH_MS = 10_000;
-const ALLOW_FIXTURE_FALLBACK = import.meta.env.VITE_WORKBENCH_ALLOW_FIXTURE_FALLBACK === "true";
 
 export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelection = {}) {
-  const fixtureInput = useMemo(() => loadFixtureWorkbenchData(), []);
-  const adapter = useMemo(() => createHttpWorkbenchDataAdapter(), []);
-  const [readState, setReadState] = useState<WorkbenchReadState>(() => initialWorkbenchReadState());
-  const readStateRef = useRef(readState);
-  const coordinatorRef = useRef<WorkbenchRefreshCoordinator | null>(null);
+  const [session] = useState<WorkbenchSnapshotSession>(() => createBrowserWorkbenchSnapshotSession());
+  const [readState, setReadState] = useState<WorkbenchReadState>(() => session.getState());
   const [selection, setSelection] = useState<WorkbenchSelection>(initialSelection);
   const data = readState.model?.input ?? null;
   const projection = useMemo(() => (data ? buildWorkbenchProjection(data, selection) : null), [data, selection]);
   const [healthPanelModel, setHealthPanelModel] = useState<SimulationHealthPanelModel>(() =>
-    projectHealthCards(stateViewFromWorkbenchState(fixtureInput.state), new Date(fixtureInput.state.generatedAt))
+    projectHealthCards({ generatedAt: "1970-01-01T00:00:00Z", activeSimulationRuns: [] }, new Date(0))
   );
 
-  const runRefresh = useCallback(async (coordinator: WorkbenchRefreshCoordinator) => {
-    const current = readStateRef.current;
-    const pending: WorkbenchReadState = {
-      ...current,
-      phase: current.model ? "recovering" : "loading",
-      message: current.model ? "Refreshing one coherent live Workbench Snapshot." : current.message
-    };
-    readStateRef.current = pending;
-    setReadState(pending);
-    const next = await coordinator.refresh(current);
-    if (!next) return;
-    readStateRef.current = next;
-    setReadState(next);
-  }, []);
-
   const refresh = useCallback(() => {
-    const coordinator = coordinatorRef.current;
-    if (coordinator) void runRefresh(coordinator);
-  }, [runRefresh]);
+    void session.refresh();
+  }, [session]);
 
   useEffect(() => {
-    const coordinator = createWorkbenchRefreshCoordinator(adapter, {
-      allowFixtureFallback: ALLOW_FIXTURE_FALLBACK,
-      fixtureInput
-    });
-    coordinatorRef.current = coordinator;
-    void runRefresh(coordinator);
-    const timer = window.setInterval(() => void runRefresh(coordinator), WORKBENCH_REFRESH_MS);
+    const unsubscribe = session.subscribe(setReadState);
+    void session.start();
     return () => {
-      window.clearInterval(timer);
-      coordinator.dispose();
-      if (coordinatorRef.current === coordinator) coordinatorRef.current = null;
+      unsubscribe();
+      session.dispose();
     };
-  }, [adapter, fixtureInput, runRefresh]);
+  }, [session]);
 
   useEffect(() => {
     if (!data) return;

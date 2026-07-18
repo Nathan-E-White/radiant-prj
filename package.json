@@ -9,6 +9,7 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH vitest run",
+    "test:mutation:workbench": "stryker run",
     "test:e2e": "playwright test",
     "fleet-board:prototype": "bun scripts/fleet-board-prototype.ts",
     "fleet-board:v2-assets:check": "node scripts/check-fleet-board-v2-assets.mjs",
@@ -71,8 +72,10 @@
     "vite": "^7.3.0"
   },
   "devDependencies": {
-    "@types/node": "^24.10.3",
     "@playwright/test": "^1.61.1",
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
+    "@types/node": "^24.10.3",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "typescript": "^5.9.3",

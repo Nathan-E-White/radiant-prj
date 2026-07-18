@@ -33,13 +33,54 @@ test("Workbench fallback is explicit and recovers by replacing the whole Snapsho
   }
 });
 
-function liveSnapshot() {
+test("Workbench retains stale live data, rejects generation regression, and recovers", async ({ page }) => {
+  let generation = 8;
+  let unavailable = false;
+  await page.route("**/api/simulator-workbench/snapshot", async (route) => {
+    if (unavailable) {
+      await route.fulfill({ status: 503, body: "unavailable" });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(liveSnapshot(generation)) });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Status Workbench" }).click();
+  await expect(page.getByText("Live generation 8")).toBeVisible();
+
+  unavailable = true;
+  await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await expect(page.getByText("Stale live generation 8")).toBeVisible();
+  await expect(page.getByText(/Retaining live generation 8 as stale/)).toBeVisible();
+
+  unavailable = false;
+  generation = 7;
+  await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await expect(page.getByText("Stale live generation 8")).toBeVisible();
+  await expect(page.getByText(/generation regressed from 8 to 7/)).toBeVisible();
+
+  generation = 9;
+  await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await expect(page.getByText("Live generation 9")).toBeVisible();
+});
+
+test("Workbench unmount cancels its pending Snapshot request", async ({ page }) => {
+  await page.goto("/tests/e2e/fixtures/workbench-session-unmount.html");
+  await expect(page.locator("body")).toHaveAttribute("data-request-started", "true");
+
+  await page.getByRole("button", { name: "Unmount Workbench" }).click();
+
+  await expect(page.getByText("Workbench session unmounted")).toBeVisible();
+  await expect(page.locator("body")).toHaveAttribute("data-request-aborted", "true");
+});
+
+function liveSnapshot(generation = 4) {
   return {
-    generation: 4,
+    generation,
     state: {
       schemaVersion: "simulator-workbench.state.v1",
       generatedAt: "2026-07-14T11:00:00Z",
-      snapshotGeneration: 4,
+      snapshotGeneration: generation,
       scenarioId: "scheduler-drift",
       valueBasisSummary: { measured: 1, imputed: 1, simulated: 1 },
       measuredStateRefs: ["scada_measured_frames"],
