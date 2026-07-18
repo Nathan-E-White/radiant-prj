@@ -372,14 +372,44 @@ describe("Workbench Snapshot session", () => {
     expect(Object.isFrozen(initial.projection)).toBe(true);
     expect(Object.isFrozen(initial.selection)).toBe(true);
 
+    for (const basis of ["measured", "imputed", "simulated"] as const) {
+      const value = session.getState().projection?.groups[basis].values[0];
+      if (!value) throw new Error(`missing visible ${basis} value`);
+      session.selectValue(value.valueId);
+      const selected = session.getState();
+      expect(selected.selection.selectedValueId).toBe(value.valueId);
+      expect(selected.projection?.selectedValue?.valueBasis).toBe(basis);
+      expect(selected.projection?.viewport.layers.find((layer) => layer.valueId === value.valueId)?.selected).toBe(true);
+      expect(selected.projection?.explanation.basisLabel).toBe(basis);
+    }
+
+    const missingLineage = session.getState().projection?.groups.imputed.values.find((value) => !value.lineage);
+    if (!missingLineage) throw new Error("missing explicit missing-Lineage fixture value");
+    session.selectValue(missingLineage.valueId);
+    expect(session.getState().projection).toMatchObject({
+      selectedValue: { valueId: missingLineage.valueId },
+      selectedLineage: null,
+      selectedLineageMissing: true,
+      explanation: { kind: "engineering" }
+    });
+
+    const otherUnitValue = fixtureInput.twin.entities
+      .find((entity) => entity.unitId !== "KAL-03")
+      ?.values[0]?.valueId;
+    if (!otherUnitValue) throw new Error("missing other-unit fixture value");
+    const beforeInvalidValue = session.getState();
+    session.selectValue(otherUnitValue);
+    session.selectValue("missing-value");
+    expect(session.getState()).toBe(beforeInvalidValue);
+
     session.selectUnit("missing-unit");
     const normalizedUnit = session.getState();
     expect(normalizedUnit.selection.selectedUnitId).toBe(fixtureInput.state.selectedUnitId);
     expect(normalizedUnit.projection?.selectedUnit.unitId).toBe(normalizedUnit.selection.selectedUnitId);
 
+    const beforeUnknownValue = session.getState();
     session.selectValue("missing-value");
-    const normalizedValue = session.getState();
-    expect(normalizedValue.selection.selectedValueId).toBe(normalizedValue.projection?.selectedValue?.valueId);
+    expect(session.getState()).toBe(beforeUnknownValue);
     session.dispose();
   });
 });
