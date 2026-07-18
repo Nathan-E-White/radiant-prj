@@ -143,6 +143,7 @@ export function createWorkbenchSnapshotSession(
     },
     refresh,
     selectUnit(unitId) {
+      if (state.selection.selectedUnitId === unitId) return;
       const selectedUnit = state.projection?.fleetUnits.find((unit) => unit.unitId === unitId);
       const input = state.readState.model?.input;
       if (!selectedUnit || !input) return;

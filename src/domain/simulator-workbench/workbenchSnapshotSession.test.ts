@@ -388,6 +388,13 @@ describe("Workbench Snapshot session", () => {
     expect(commercialUnit.projection?.explanation.kind).toBe("commercial");
     expect(commercialUnit.projection?.fleetUnits.find((unit) => unit.unitId === "KAL-02")?.selected).toBe(true);
 
+    const repeatedListener = vi.fn();
+    const unsubscribeRepeated = session.subscribe(repeatedListener);
+    session.selectUnit("KAL-02");
+    expect(session.getState()).toBe(commercialUnit);
+    expect(repeatedListener).toHaveBeenCalledTimes(1);
+    unsubscribeRepeated();
+
     session.selectValue("missing-value");
     const normalizedValue = session.getState();
     expect(normalizedValue.selection.selectedValueId).toBe(normalizedValue.projection?.selectedValue?.valueId);
