@@ -18,9 +18,19 @@ export type WorkbenchSnapshotSession = {
 
 export type WorkbenchSnapshotSessionOptions = Omit<WorkbenchRefreshOptions, "signal"> & {
   refreshIntervalMs: number;
+  scheduler?: WorkbenchSnapshotScheduler;
+};
+
+export type WorkbenchSnapshotScheduler = {
+  schedule(task: () => void, delayMs: number): unknown;
+  cancel(handle: unknown): void;
 };
 
 const DEFAULT_REFRESH_INTERVAL_MS = 10_000;
+const browserScheduler: WorkbenchSnapshotScheduler = {
+  schedule: (task, delayMs) => setTimeout(task, delayMs),
+  cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>)
+};
 
 export function createBrowserWorkbenchSnapshotSession(): WorkbenchSnapshotSession {
   return createWorkbenchSnapshotSession(createHttpWorkbenchDataAdapter(), {
@@ -34,6 +44,7 @@ export function createWorkbenchSnapshotSession(
   adapter: WorkbenchSnapshotAdapter,
   options: WorkbenchSnapshotSessionOptions
 ): WorkbenchSnapshotSession {
+  const scheduler = options.scheduler ?? browserScheduler;
   const configuration: WorkbenchSnapshotSessionOptions = {
     allowFixtureFallback: options.allowFixtureFallback,
     fixtureInput: structuredClone(options.fixtureInput),
@@ -43,7 +54,7 @@ export function createWorkbenchSnapshotSession(
   let state = immutableSnapshot(initialWorkbenchReadState());
   let settledState = state;
   let active: AbortController | null = null;
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timer: unknown | null = null;
   let running = false;
   let hasSettledRead = false;
   const listeners = new Set<(state: WorkbenchReadState) => void>();
@@ -60,13 +71,13 @@ export function createWorkbenchSnapshotSession(
   }
 
   function clearScheduledRefresh(): void {
-    if (timer !== null) clearTimeout(timer);
+    if (timer !== null) scheduler.cancel(timer);
     timer = null;
   }
 
   function scheduleRefresh(): void {
     clearScheduledRefresh();
-    timer = setTimeout(() => {
+    timer = scheduler.schedule(() => {
       timer = null;
       void refresh();
     }, configuration.refreshIntervalMs);
