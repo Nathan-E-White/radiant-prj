@@ -14,8 +14,12 @@ test("Workbench fallback is explicit and recovers by replacing the whole Snapsho
 
   await page.goto("/");
   await page.getByRole("button", { name: "Status Workbench" }).click();
-  await expect(page.getByText("Fixture fallback")).toBeVisible();
+  await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();
   await expect(page.getByText(/explicit local-demo fixture Snapshot/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Retaining the explicit whole-Snapshot fixture fallback/)).toBeVisible();
 
   serveLive = true;
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
