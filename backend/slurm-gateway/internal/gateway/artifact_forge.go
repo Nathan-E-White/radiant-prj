@@ -251,6 +251,10 @@ func (m *ArtifactForgeManager) ResultLineageContext(runID string) ([]TwinLineage
 	return inputs, artifacts, true
 }
 
+func (m *ArtifactForgeManager) TouchSession(gameSessionID string) error {
+	return m.store.TouchSession(gameSessionID, m.now().UTC())
+}
+
 func (m *ArtifactForgeManager) Request(ctx context.Context, request ArtifactForgeRequest, identity string) (ArtifactForgeRecord, bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -258,7 +262,7 @@ func (m *ArtifactForgeManager) Request(ctx context.Context, request ArtifactForg
 	if err := validateArtifactForgeIdentity(request); err != nil {
 		return ArtifactForgeRecord{}, false, err
 	}
-	if err := m.store.TouchSession(request.GameSessionID, m.now().UTC()); err != nil {
+	if err := m.TouchSession(request.GameSessionID); err != nil {
 		return ArtifactForgeRecord{}, false, err
 	}
 

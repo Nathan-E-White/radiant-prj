@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestFleetBoardDynamicReactorIntentModuleTranslatesRegistration(t *testing.T) {
@@ -59,8 +61,129 @@ func TestFleetBoardDynamicReactorIntentModuleConcentratesExpiryReconciliation(t 
 		t.Fatalf("expected stable reconciliation failure, calls=%d result=%#v", manager.reconcileCalls, result)
 	}
 	outcome, ok := result.Body.(FleetBoardIntentError)
-	if !ok || outcome.Code != "reactor_telemetry_expiry_cleanup_failed" {
+	if !ok || outcome.Code != "fleet_board_session_reconciliation_failed" {
 		t.Fatalf("unexpected reconciliation outcome: %#v", result.Body)
+	}
+}
+
+func TestFleetBoardSessionModuleCoordinatesExpiryOrderingAndConfiguredFlush(t *testing.T) {
+	var calls []string
+	reactors := &recordingDynamicReactorIntentManager{reconcile: func() { calls = append(calls, "reactor") }}
+	forge := &recordingArtifactForgeSessionReconciler{calls: &calls}
+	measured := &recordingDynamicMeasuredRetentionReconciler{calls: &calls}
+	flush := &recordingConfiguredDataFlushParticipant{
+		plan: ConfiguredDataFlushPlan{PlanID: "reviewed-plan", Mode: "dry-run", Ready: true},
+	}
+	module := NewFleetBoardIntentModuleWithSessionLifecycle(reactors, nil, FleetBoardSessionLifecycle{
+		ArtifactForge:     forge,
+		MeasuredRetention: measured,
+		ConfiguredFlush:   flush,
+	})
+
+	if err := module.ReconcileSessions(context.Background()); err != nil {
+		t.Fatalf("reconcile Fleet Board session: %v", err)
+	}
+	if got, want := calls, []string{"reactor", "artifact-forge", "measured-retention"}; !equalStrings(got, want) {
+		t.Fatalf("session expiry ordering changed: got=%v want=%v", got, want)
+	}
+	plan, err := module.PlanConfiguredDataFlush(context.Background())
+	if err != nil || plan.Mode != "dry-run" || flush.planCalls != 1 || flush.applyCalls != 0 {
+		t.Fatalf("configured flush did not remain dry-run-first: plan=%#v err=%v calls=%d/%d", plan, err, flush.planCalls, flush.applyCalls)
+	}
+	result, err := module.ApplyConfiguredDataFlush(context.Background(), plan.PlanID)
+	if err != nil || result.PlanID != plan.PlanID || flush.applyCalls != 1 {
+		t.Fatalf("reviewed configured flush was not delegated: result=%#v err=%v calls=%d", result, err, flush.applyCalls)
+	}
+}
+
+func TestFleetBoardSessionModuleReportsEveryReconciliationFailure(t *testing.T) {
+	reactors := &recordingDynamicReactorIntentManager{reconcileErr: errors.New("credential cleanup failed")}
+	forge := &recordingArtifactForgeSessionReconciler{err: errors.New("forge retention failed")}
+	measured := &recordingDynamicMeasuredRetentionReconciler{err: errors.New("measured retention failed")}
+	module := NewFleetBoardIntentModuleWithSessionLifecycle(reactors, nil, FleetBoardSessionLifecycle{
+		ArtifactForge: forge, MeasuredRetention: measured,
+	})
+
+	err := module.ReconcileSessions(context.Background())
+	for _, message := range []string{"credential cleanup failed", "forge retention failed", "measured retention failed"} {
+		if err == nil || !strings.Contains(err.Error(), message) {
+			t.Fatalf("reconciliation hid %q: %v", message, err)
+		}
+	}
+}
+
+func TestFleetBoardSessionActivityExtendsTheSameReactorSession(t *testing.T) {
+	now := time.Date(2026, time.July, 18, 12, 0, 0, 0, time.UTC)
+	store := NewInMemoryReactorTelemetryStore()
+	runtime := &recordingReactorTelemetryRuntime{}
+	manager := NewReactorTelemetryManager(DefaultReactorTelemetryConfig(), store, runtime, nil)
+	manager.now = func() time.Time { return now }
+	forge := &recordingArtifactForgeIntentManager{record: ArtifactForgeRecord{Decision: ArtifactForgeAwaitingRun}}
+	module := NewFleetBoardIntentModuleWithSessionLifecycle(manager, forge, FleetBoardSessionLifecycle{
+		Activity: []FleetBoardSessionActivityRecorder{manager},
+	})
+
+	registered, handled := module.ExecuteDynamicReactor(context.Background(), validDynamicReactorIntent("registerDynamicReactor"))
+	if !handled || registered.Status != http.StatusAccepted {
+		t.Fatalf("register session reactor: handled=%t result=%#v", handled, registered)
+	}
+	first := registered.Body.(RegisterDynamicReactorOutcome).WorkerSet
+	now = now.Add(23 * time.Hour)
+	if forged, handled := module.ExecuteArtifactForge(context.Background(), validArtifactForgeIntent(), "fleet-player"); !handled || forged.Status != http.StatusOK {
+		t.Fatalf("record same-session activity: handled=%t result=%#v", handled, forged)
+	}
+	refreshed, err := store.GetWorkerSet(first.GameSessionID, first.ReactorID)
+	if err != nil || !refreshed.ExpiresAt.Equal(now.Add(24*time.Hour)) {
+		t.Fatalf("same-session activity did not refresh 24-hour inactivity expiry: set=%#v err=%v", refreshed, err)
+	}
+
+	now = now.Add(2 * time.Hour)
+	if err := module.ReconcileSessions(context.Background()); err != nil {
+		t.Fatalf("reconcile active refreshed session: %v", err)
+	}
+	active, err := store.GetWorkerSet(first.GameSessionID, first.ReactorID)
+	if err != nil || active.Lifecycle != ReactorTelemetryActive || len(runtime.stops) != 0 {
+		t.Fatalf("refreshed session expired against its creation time: set=%#v err=%v stops=%v", active, err, runtime.stops)
+	}
+}
+
+func TestFleetBoardRemovalRevokesCredentialsDespiteUnrelatedSessionFailures(t *testing.T) {
+	store := NewInMemoryReactorTelemetryStore()
+	runtime := &recordingReactorTelemetryRuntime{}
+	manager := NewReactorTelemetryManager(DefaultReactorTelemetryConfig(), store, runtime, nil)
+	registered, _, err := manager.RegisterDynamicReactor(context.Background(), RegisterDynamicReactorRequest{
+		GameSessionID: "session-1", ReactorID: "reactor-1", IdempotencyKey: "register-1",
+	})
+	if err != nil {
+		t.Fatalf("register reactor: %v", err)
+	}
+	worker := registered.Workers[0]
+	if !manager.AuthorizeSourceCredential(worker.Gateway.IngestToken, worker.SourceID, worker.ReactorID) {
+		t.Fatal("registered source credential was not authorized")
+	}
+	runtime.stopErr = context.DeadlineExceeded
+	activity := &failingFleetBoardSessionActivityRecorder{err: errors.New("activity store unavailable")}
+	module := NewFleetBoardIntentModuleWithSessionLifecycle(manager, nil, FleetBoardSessionLifecycle{
+		ArtifactForge:     &recordingArtifactForgeSessionReconciler{err: errors.New("forge retention unavailable")},
+		MeasuredRetention: &recordingDynamicMeasuredRetentionReconciler{err: errors.New("measured retention unavailable")},
+		Activity:          []FleetBoardSessionActivityRecorder{activity},
+	})
+
+	result, handled := module.ExecuteDynamicReactor(context.Background(), FleetBoardIntentRequest{
+		Intent: "removeDynamicReactor", GameSessionID: registered.GameSessionID, ReactorID: registered.ReactorID, IdempotencyKey: "remove-1",
+	})
+	if !handled || result.Status != http.StatusBadGateway {
+		t.Fatalf("expected retryable runtime cleanup failure after revocation, handled=%t result=%#v", handled, result)
+	}
+	removed, err := store.GetWorkerSet(registered.GameSessionID, registered.ReactorID)
+	if err != nil || !removed.CredentialsRevoked || removed.Lifecycle != ReactorTelemetryCleanupFailed {
+		t.Fatalf("removal did not preserve immediate revocation and retry state: set=%#v err=%v", removed, err)
+	}
+	if manager.AuthorizeSourceCredential(worker.Gateway.IngestToken, worker.SourceID, worker.ReactorID) {
+		t.Fatal("source credential remained authorized after failed runtime cleanup")
+	}
+	if activity.calls != 0 {
+		t.Fatalf("unrelated activity persistence blocked or preceded credential revocation: calls=%d", activity.calls)
 	}
 }
 
@@ -342,6 +465,7 @@ type recordingDynamicReactorIntentManager struct {
 	removeErr       error
 	reconcileCalls  int
 	reconcileErr    error
+	reconcile       func()
 }
 
 func (m *recordingDynamicReactorIntentManager) RegisterDynamicReactor(_ context.Context, request RegisterDynamicReactorRequest) (ReactorTelemetryWorkerSet, bool, error) {
@@ -357,7 +481,72 @@ func (m *recordingDynamicReactorIntentManager) RemoveDynamicReactor(_ context.Co
 
 func (m *recordingDynamicReactorIntentManager) ReconcileExpired(context.Context) error {
 	m.reconcileCalls++
+	if m.reconcile != nil {
+		m.reconcile()
+	}
 	return m.reconcileErr
 }
 
 var _ DynamicReactorIntentManager = (*recordingDynamicReactorIntentManager)(nil)
+
+type recordingArtifactForgeSessionReconciler struct {
+	calls *[]string
+	err   error
+}
+
+func (r *recordingArtifactForgeSessionReconciler) ReconcileExpired() (int64, error) {
+	if r.calls != nil {
+		*r.calls = append(*r.calls, "artifact-forge")
+	}
+	return 0, r.err
+}
+
+type recordingDynamicMeasuredRetentionReconciler struct {
+	calls *[]string
+	err   error
+}
+
+func (r *recordingDynamicMeasuredRetentionReconciler) ReconcileDynamicMeasuredRetention() error {
+	if r.calls != nil {
+		*r.calls = append(*r.calls, "measured-retention")
+	}
+	return r.err
+}
+
+type recordingConfiguredDataFlushParticipant struct {
+	plan       ConfiguredDataFlushPlan
+	planCalls  int
+	applyCalls int
+}
+
+type failingFleetBoardSessionActivityRecorder struct {
+	err   error
+	calls int
+}
+
+func (r *failingFleetBoardSessionActivityRecorder) TouchSession(string) error {
+	r.calls++
+	return r.err
+}
+
+func (p *recordingConfiguredDataFlushParticipant) Plan(context.Context) (ConfiguredDataFlushPlan, error) {
+	p.planCalls++
+	return p.plan, nil
+}
+
+func (p *recordingConfiguredDataFlushParticipant) Apply(_ context.Context, reviewedPlanID string) (ConfiguredDataFlushResult, error) {
+	p.applyCalls++
+	return ConfiguredDataFlushResult{PlanID: reviewedPlanID}, nil
+}
+
+func equalStrings(left, right []string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for index := range left {
+		if left[index] != right[index] {
+			return false
+		}
+	}
+	return true
+}

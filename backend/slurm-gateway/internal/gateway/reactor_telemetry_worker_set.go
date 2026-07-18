@@ -186,6 +186,27 @@ func NewReactorTelemetryManager(cfg ReactorTelemetryConfig, store ReactorTelemet
 	return &ReactorTelemetryManager{cfg: cfg, store: store, runtime: runtime, sources: sources, now: time.Now}
 }
 
+func (m *ReactorTelemetryManager) TouchSession(gameSessionID string) error {
+	m.transition.Lock()
+	defer m.transition.Unlock()
+	sets, err := m.store.ListWorkerSets(gameSessionID)
+	if err != nil {
+		return err
+	}
+	now := m.now().UTC()
+	for _, set := range sets {
+		if set.Lifecycle == ReactorTelemetryRemoved || set.Lifecycle == ReactorTelemetryCleanup || set.Lifecycle == ReactorTelemetryCleanupFailed {
+			continue
+		}
+		set.UpdatedAt = now
+		set.ExpiresAt = now.Add(m.cfg.SessionTTL)
+		if err := m.store.SaveWorkerSet(set); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (m *ReactorTelemetryManager) RegisterDynamicReactor(ctx context.Context, request RegisterDynamicReactorRequest) (ReactorTelemetryWorkerSet, bool, error) {
 	m.transition.Lock()
 	defer m.transition.Unlock()
