@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Document ID | SDD-001 |
-| Revision | 3.0 |
+| Revision | 3.1 |
 | Status | Draft for v3.0 review |
 | Owner | Software |
 | Baseline | v3.0 candidate |
@@ -30,6 +30,7 @@ The console is a local React and TypeScript application with an optional Go back
 | Simulation Ops contract | `docs/design/simulation-ops-telemetry-contract.md`, `docs/schemas/simulation-ops/`, `examples/simulation-ops/` | Defines transport-agnostic scenario telemetry frames, payload schemas, and example run artifacts |
 | Simulator Workbench contracts | `docs/design/simulator-workbench-stub-ledger.md`, `docs/design/simulator-workbench-backend-dataflow-slice.md`, `docs/schemas/scada/`, `docs/schemas/digital-twin/`, `docs/schemas/simulator-workbench/`, `examples/scada/`, `examples/digital-twin/`, `examples/simulator-workbench/` | Defines measured, imputed, simulated, lineage, workbench-state, and backend dataflow contracts |
 | Simulator Workbench backend dataflow | `workers/scada-standins/`, `backend/slurm-gateway/internal/gateway/*workbench*.go`, `backend/slurm-gateway/cmd/workbench-projection-writer/`, `backend/slurm-gateway/cmd/twin-projector/`, `backend/slurm-gateway/cmd/workbench-iceberg-writer/` | Ingests resident measured SCADA frames and simulated result frames, projects read models, appends Iceberg tables, emits twin state, and serves read-only Workbench APIs |
+| Browser Workbench Snapshot session | `src/domain/simulator-workbench/workbenchSnapshotSession.ts`, `src/domain/simulator-workbench/liveWorkbench.ts`, `src/features/simulator-workbench/simulatorWorkbenchFeature.tsx` | Accepts one coherent Snapshot, owns refresh/recovery/fallback/projection/selection/health policy, and publishes render-ready read state without browser data-plane credentials |
 | Slurm gateway | `backend/slurm-gateway/` | Provides health, readiness, metrics, submit, and status handlers with mTLS identity checks and mock/`sbatch` spooler modes |
 | SimOps control plane | `backend/slurm-gateway/internal/gateway/simops_*.go` | Provides run creation, status, stop, event polling, token-gated ingest, idempotency, WebTransport subscription metadata, Postgres/Redpanda adapters, Docker worker launch, and artifact status transitions |
 | SimOps and Workbench deployment | `deploy/slurm-gateway.compose.yml`, `deploy/postgres-init/001_simops.sql`, `deploy/scada-standins.Dockerfile` | Defines local Redpanda, Postgres, MinIO, stream-gateway, SimOps writers, Workbench writers, twin projector, Docker-launch access, and resident SCADA stand-ins |
@@ -62,7 +63,8 @@ The console is a local React and TypeScript application with an optional Go back
 10. Resident SCADA stand-ins register a public-safe source declaration, post measured frames to `/internal/scada/telemetry`, and publish through Redpanda topic `scada.telemetry.v1` to Postgres projection `scada_measured_frames`, Iceberg table `scada.measured_frames`, and the twin projector.
 11. SimOps workers continue to post operational telemetry to `/internal/simops/runs/{run_id}/ingest` for `simops.telemetry.v1`, and additionally post synthetic simulated result frames to `/internal/simops/runs/{run_id}/results` for `simops.results.v1`.
 12. The twin projector consumes measured and simulated result streams, records lineage, emits `digital-twin.state.v1`, and the Workbench projection/Iceberg writers materialize `digital_twin_state_values` and `digital_twin.state_values`.
-13. Read-only Workbench APIs expose `/api/simulator-workbench/state`, `/measured`, `/twin`, and `/lineage/{value_id}` for a later frontend-control slice.
+13. The read-only Workbench API exposes `/api/simulator-workbench/snapshot` as one coherent generation without browser data-plane credentials.
+14. The browser Snapshot session accepts or rejects the whole response, retains stale live truth on later failure, and atomically publishes projection, reconciled selection, and Simulation Health to React.
 
 ## Design Outputs
 

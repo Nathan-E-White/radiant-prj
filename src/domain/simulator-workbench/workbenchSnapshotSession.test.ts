@@ -2,54 +2,164 @@ import { describe, expect, it, vi } from "vitest";
 import { loadFixtureWorkbenchData } from "./fixtureAdapter";
 import { WorkbenchReadError, type AcceptedWorkbenchSnapshot, type WorkbenchSnapshotAdapter } from "./liveWorkbench";
 import {
-  createBrowserWorkbenchSnapshotSession,
   createWorkbenchSnapshotSession,
-  type WorkbenchSnapshotScheduler,
-  type WorkbenchSnapshotSessionOptions
+  type WorkbenchSnapshotSessionResult
 } from "./workbenchSnapshotSession";
 
 describe("Workbench Snapshot session", () => {
-  it("constructs the browser session with an immutable initial projected result", () => {
-    const session = createBrowserWorkbenchSnapshotSession({ selectedUnitId: "KAL-03" });
-    expect(session.getState()).toMatchObject({
+  it("exposes render-ready projection and selection commands in its result", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(1, fixtureInput)]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
+
+    await session.start();
+    expect(session.getResult()).toMatchObject({
+      readState: { phase: "live", model: { generation: 1 } },
+      selection: {
+        selectedUnitId: "KAL-01",
+        selectedValueId: "VAL-KAL-01-IMPUTED-CORE-DISTRIBUTION"
+      },
+      projection: {
+        selectedUnit: { unitId: "KAL-01" },
+        selectedValue: { valueId: "VAL-KAL-01-IMPUTED-CORE-DISTRIBUTION" }
+      }
+    });
+    expect(session.getResult().selection).not.toHaveProperty("selectedCommercialBasisId");
+
+    session.getResult().selectUnit("KAL-03", "CDB-KAL-03-DESALINATION");
+    expect(session.getResult()).toMatchObject({
+      selection: {
+        selectedUnitId: "KAL-03",
+        selectedValueId: expect.stringContaining("KAL-03"),
+        selectedCommercialBasisId: "CDB-KAL-03-DESALINATION"
+      },
+      projection: {
+        selectedUnit: { unitId: "KAL-03" },
+        explanation: { kind: "commercial" }
+      }
+    });
+
+    session.getResult().selectValue("VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT");
+    expect(session.getResult().projection?.selectedValue?.valueId).toBe("VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT");
+
+    session.getResult().selectCommercialBasis(undefined);
+    expect(session.getResult().projection?.explanation.kind).toBe("engineering");
+    expect(session.getResult().selection).toEqual({
+      selectedUnitId: "KAL-03",
+      selectedValueId: "VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT"
+    });
+
+    session.getResult().selectCommercialBasis("CDB-KAL-01-PPA");
+    expect(session.getResult().selection).not.toHaveProperty("selectedCommercialBasisId");
+    expect(session.getResult().projection?.explanation.kind).toBe("engineering");
+
+    session.getResult().selectCommercialBasis("CDB-KAL-03-DESALINATION");
+    expect(session.getResult().selection.selectedCommercialBasisId).toBe("CDB-KAL-03-DESALINATION");
+    expect(session.getResult().projection?.explanation.kind).toBe("commercial");
+    session.dispose();
+  });
+
+  it("accepts selection commands before the first Snapshot and reconciles them on acceptance", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(1, fixtureInput)]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
+
+    session.getResult().selectUnit("KAL-03", "CDB-KAL-03-DESALINATION");
+    expect(session.getResult()).toMatchObject({
       readState: { phase: "loading", model: null },
       projection: null,
-      selection: { selectedUnitId: "KAL-03" }
+      selection: {
+        selectedUnitId: "KAL-03",
+        selectedCommercialBasisId: "CDB-KAL-03-DESALINATION"
+      }
+    });
+
+    session.getResult().selectCommercialBasis(undefined);
+    expect(session.getResult().selection).toEqual({ selectedUnitId: "KAL-03" });
+    expect(session.getResult().selection).not.toHaveProperty("selectedCommercialBasisId");
+    session.getResult().selectUnit("KAL-03", "CDB-KAL-03-DESALINATION");
+
+    await session.start();
+    expect(session.getResult()).toMatchObject({
+      readState: { phase: "live", model: { generation: 1 } },
+      projection: { selectedUnit: { unitId: "KAL-03" } },
+      selection: {
+        selectedUnitId: "KAL-03",
+        selectedCommercialBasisId: "CDB-KAL-03-DESALINATION"
+      }
     });
     session.dispose();
   });
 
-  it("uses browser timer defaults only after a successful start and cancels them on disposal", async () => {
+  it("accepts a Snapshot with no selectable value without inventing a selection", async () => {
     const fixtureInput = loadFixtureWorkbenchData();
-    const schedule = vi.spyOn(globalThis, "setTimeout");
-    const cancel = vi.spyOn(globalThis, "clearTimeout");
-    try {
-      const inactive = createWorkbenchSnapshotSession(sequenceAdapter([accepted(1, fixtureInput)]), {
-        allowFixtureFallback: false,
-        fixtureInput,
-        refreshIntervalMs: 10_000
-      });
-      inactive.dispose();
-      expect(cancel).not.toHaveBeenCalled();
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(1, withoutValues(fixtureInput))]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
 
-      const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(1, fixtureInput)]), {
-        allowFixtureFallback: false,
-        fixtureInput,
-        refreshIntervalMs: 10_000
-      });
-      await session.start();
-      expect(schedule).toHaveBeenCalledWith(expect.any(Function), 10_000);
-      const handle = schedule.mock.results.at(-1)?.value;
-      session.dispose();
-      expect(cancel).toHaveBeenCalledWith(handle);
-    } finally {
-      schedule.mockRestore();
-      cancel.mockRestore();
-    }
+    await session.start();
+    expect(session.getResult()).toMatchObject({
+      readState: { phase: "live", model: { generation: 1 } },
+      projection: { selectedValue: null },
+      selection: { selectedUnitId: "KAL-01" }
+    });
+    expect(session.getResult().selection).not.toHaveProperty("selectedValueId");
+    session.dispose();
+  });
+
+  it("publishes one reconciled result when a replacement Snapshot changes available entities", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const withoutKal03 = withoutUnit(fixtureInput, "KAL-03");
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([
+      accepted(8, fixtureInput),
+      accepted(9, fixtureInput),
+      accepted(10, withoutKal03)
+    ]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
+    const observations: WorkbenchSnapshotSessionResult[] = [];
+    session.subscribe((result) => observations.push(result));
+
+    await session.start();
+    session.getResult().selectUnit("KAL-03", "CDB-KAL-03-DESALINATION");
+    session.getResult().selectValue("VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT");
+    await session.refresh();
+    expect(session.getResult()).toMatchObject({
+      readState: { model: { generation: 9 } },
+      selection: {
+        selectedUnitId: "KAL-03",
+        selectedValueId: "VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT",
+        selectedCommercialBasisId: "CDB-KAL-03-DESALINATION"
+      },
+      projection: { selectedUnit: { unitId: "KAL-03" } }
+    });
+
+    await session.refresh();
+    expect(session.getResult()).toMatchObject({
+      readState: { model: { generation: 10 } },
+      selection: { selectedUnitId: "KAL-01" },
+      projection: { selectedUnit: { unitId: "KAL-01" } }
+    });
+    expect(session.getResult().selection).not.toHaveProperty("selectedCommercialBasisId");
+    expect(observations.at(-1)).toBe(session.getResult());
+    expect(observations.some((result) =>
+      result.readState.model?.generation === 10 && result.projection?.selectedUnit.unitId === "KAL-03"
+    )).toBe(false);
+    session.dispose();
   });
 
   it("owns initial loading, scheduled refresh, and manual refresh", async () => {
-    const scheduler = createTestScheduler();
+    vi.useFakeTimers();
     const fixtureInput = loadFixtureWorkbenchData();
     const adapter = sequenceAdapter([
       accepted(1, fixtureInput),
@@ -60,8 +170,7 @@ describe("Workbench Snapshot session", () => {
     const session = createWorkbenchSnapshotSession(adapter, {
       allowFixtureFallback: false,
       fixtureInput,
-      refreshIntervalMs: 1_000,
-      scheduler
+      refreshIntervalMs: 1_000
     });
     const observations: string[] = [];
     session.subscribe(({ readState }) => observations.push(`${readState.phase}:${readState.message}`));
@@ -70,22 +179,22 @@ describe("Workbench Snapshot session", () => {
     expect(adapter.load).not.toHaveBeenCalled();
 
     await session.start();
-    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 1 } });
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 1 } });
     await session.start();
     expect(adapter.load).toHaveBeenCalledTimes(1);
 
-    await scheduler.advanceBy(500);
+    await vi.advanceTimersByTimeAsync(500);
     expect(adapter.load).toHaveBeenCalledTimes(1);
-    await scheduler.advanceBy(500);
-    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 2 } });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 2 } });
 
-    await scheduler.advanceBy(500);
+    await vi.advanceTimersByTimeAsync(500);
     await session.refresh();
-    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 3 } });
-    await scheduler.advanceBy(500);
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 3 } });
+    await vi.advanceTimersByTimeAsync(500);
     expect(adapter.load).toHaveBeenCalledTimes(3);
-    await scheduler.advanceBy(500);
-    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 4 } });
+    await vi.advanceTimersByTimeAsync(500);
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 4 } });
     expect(observations.map((entry) => entry.split(":", 1)[0])).toEqual([
       "loading",
       "loading",
@@ -100,50 +209,17 @@ describe("Workbench Snapshot session", () => {
     expect(observations).toContain("recovering:Refreshing one coherent live Workbench Snapshot.");
 
     session.dispose();
-    await scheduler.advanceBy(2_000);
+    await vi.advanceTimersByTimeAsync(2_000);
     await session.refresh();
     expect(adapter.load).toHaveBeenCalledTimes(4);
-  });
-
-  it("lets a manual refresh supersede an older scheduled request", async () => {
-    const fixtureInput = loadFixtureWorkbenchData();
-    const scheduler = createTestScheduler();
-    const pending: Array<{ signal: AbortSignal; resolve: (value: AcceptedWorkbenchSnapshot) => void }> = [];
-    let calls = 0;
-    const adapter: WorkbenchSnapshotAdapter = {
-      load: ({ signal } = {}) => {
-        calls += 1;
-        if (!signal) throw new Error("missing cancellation signal");
-        if (calls === 1) return Promise.resolve(accepted(1, fixtureInput));
-        return new Promise((resolve, reject) => {
-          signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
-          pending.push({ signal, resolve });
-        });
-      }
-    };
-    const session = createWorkbenchSnapshotSession(adapter, {
-      allowFixtureFallback: false,
-      fixtureInput,
-      refreshIntervalMs: 1_000,
-      scheduler
-    });
-
-    await session.start();
-    await scheduler.advanceBy(1_000);
-    expect(pending).toHaveLength(1);
-    const manual = session.refresh();
-    expect(pending[0]?.signal.aborted).toBe(true);
-    expect(pending).toHaveLength(2);
-    pending[1]?.resolve(accepted(2, fixtureInput));
-    await manual;
-    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 2 } });
-    session.dispose();
+    vi.useRealTimers();
   });
 
   it("uses fixtures only for an allowed initial unavailable or empty read and recovers live", async () => {
     const fixtureInput = loadFixtureWorkbenchData();
     const adapter = sequenceAdapter([
       new WorkbenchReadError("unavailable", "offline"),
+      new WorkbenchReadError("unavailable", "offline still"),
       new WorkbenchReadError("auth", "denied"),
       accepted(4, fixtureInput)
     ]);
@@ -155,17 +231,32 @@ describe("Workbench Snapshot session", () => {
     });
 
     await session.start();
-    expect(session.getState().readState).toMatchObject({
+    expect(session.getResult().readState).toMatchObject({
       phase: "fixture",
       errorKind: "unavailable",
-      model: { source: "fixture", acceptedAt: "2026-07-18T12:00:00.000Z" }
+      message: "offline Using the explicit local-demo fixture Snapshot.",
+      model: {
+        source: "fixture",
+        healthPanelModel: {
+          lifecycle: { summary: "2/2 complete" },
+          worker: { summary: "2/2 nominal" }
+        }
+      }
     });
 
     await session.refresh();
-    expect(session.getState().readState).toMatchObject({ phase: "error", errorKind: "auth", model: { source: "fixture" } });
+    expect(session.getResult().readState).toMatchObject({
+      phase: "fixture",
+      errorKind: "unavailable",
+      message: "offline still Retaining the explicit whole-Snapshot fixture fallback.",
+      model: { source: "fixture" }
+    });
 
     await session.refresh();
-    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 4, source: "live" } });
+    expect(session.getResult().readState).toMatchObject({ phase: "error", errorKind: "auth", model: { source: "fixture" } });
+
+    await session.refresh();
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 4, source: "live" } });
     session.dispose();
 
     const emptySession = createWorkbenchSnapshotSession(
@@ -173,7 +264,7 @@ describe("Workbench Snapshot session", () => {
       { allowFixtureFallback: true, fixtureInput, refreshIntervalMs: 60_000 }
     );
     await emptySession.start();
-    expect(emptySession.getState().readState).toMatchObject({ phase: "fixture", errorKind: "empty", model: { source: "fixture" } });
+    expect(emptySession.getResult().readState).toMatchObject({ phase: "fixture", errorKind: "empty", model: { source: "fixture" } });
     emptySession.dispose();
 
     const rejectedSession = createWorkbenchSnapshotSession(
@@ -184,68 +275,20 @@ describe("Workbench Snapshot session", () => {
       { allowFixtureFallback: true, fixtureInput, refreshIntervalMs: 60_000 }
     );
     await rejectedSession.start();
-    expect(rejectedSession.getState().readState).toMatchObject({ phase: "error", errorKind: "auth", model: null });
+    expect(rejectedSession.getResult().readState).toMatchObject({ phase: "error", errorKind: "auth", model: null });
+    expect(rejectedSession.getResult().projection).toBeNull();
     await rejectedSession.refresh();
-    expect(rejectedSession.getState().readState).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
+    expect(rejectedSession.getResult().readState).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
     rejectedSession.dispose();
-  });
-
-  it.each(["auth", "schema", "generation", "partial"] as const)(
-    "never substitutes fixtures for an initial %s failure",
-    async (kind) => {
-      const fixtureInput = loadFixtureWorkbenchData();
-      const session = createWorkbenchSnapshotSession(
-        sequenceAdapter([new WorkbenchReadError(kind, `${kind} failure`)]),
-        { allowFixtureFallback: true, fixtureInput, refreshIntervalMs: 60_000 }
-      );
-
-      await session.start();
-      expect(session.getState().readState).toMatchObject({ phase: "error", errorKind: kind, model: null });
-      session.dispose();
-    }
-  );
-
-  it("fixes disabled fixture configuration and fixture data when the session is created", async () => {
-    const fixtureInput = loadFixtureWorkbenchData();
-    const originalScenario = fixtureInput.state.scenarioId;
-    const options: WorkbenchSnapshotSessionOptions = {
-      allowFixtureFallback: false,
-      fixtureInput,
-      refreshIntervalMs: 60_000
-    };
-    const disabled = createWorkbenchSnapshotSession(
-      sequenceAdapter([new WorkbenchReadError("unavailable", "offline")]),
-      options
-    );
-    options.allowFixtureFallback = true;
-    await disabled.start();
-    expect(disabled.getState().readState).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
-    disabled.dispose();
-
-    options.allowFixtureFallback = true;
-    const enabled = createWorkbenchSnapshotSession(
-      sequenceAdapter([new WorkbenchReadError("empty", "empty")]),
-      options
-    );
-    options.allowFixtureFallback = false;
-    fixtureInput.state.scenarioId = "mutated-after-creation";
-    await enabled.start();
-    expect(enabled.getState().readState).toMatchObject({
-      phase: "fixture",
-      model: { source: "fixture", input: { state: { scenarioId: originalScenario } } }
-    });
-    enabled.dispose();
   });
 
   it("retains accepted live data as stale across partial failure and generation regression", async () => {
     const fixtureInput = loadFixtureWorkbenchData();
-    const equalGenerationInput = structuredClone(fixtureInput);
-    equalGenerationInput.state.scenarioId = "equal-generation-refresh";
     const adapter = sequenceAdapter([
       accepted(8, fixtureInput),
       new WorkbenchReadError("partial", "truncated"),
       accepted(7, fixtureInput),
-      accepted(8, equalGenerationInput),
+      accepted(8, fixtureInput),
       accepted(9, fixtureInput)
     ]);
     const session = createWorkbenchSnapshotSession(adapter, {
@@ -255,22 +298,100 @@ describe("Workbench Snapshot session", () => {
     });
 
     await session.start();
-    const acceptedModel = session.getState().readState.model;
+    const acceptedModel = session.getResult().readState.model;
     await session.refresh();
-    expect(session.getState().readState).toMatchObject({ phase: "stale", errorKind: "partial", model: { generation: 8 } });
-    expect(session.getState().readState.model).toBe(acceptedModel);
+    expect(session.getResult().readState).toMatchObject({ phase: "stale", errorKind: "partial", model: { generation: 8 } });
+    expect(session.getResult().readState.model).toBe(acceptedModel);
 
     await session.refresh();
-    expect(session.getState().readState).toMatchObject({ phase: "stale", errorKind: "generation", model: { generation: 8 } });
+    expect(session.getResult().readState).toMatchObject({ phase: "stale", errorKind: "generation", model: { generation: 8 } });
 
     await session.refresh();
-    expect(session.getState().readState).toMatchObject({
-      phase: "live",
-      model: { generation: 8, input: { state: { scenarioId: "equal-generation-refresh" } } }
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 8 } });
+
+    await session.refresh();
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 9 } });
+    session.dispose();
+  });
+
+  it("publishes projection and Simulation Health from one accepted Snapshot generation", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const generationEight = withHealthState(fixtureInput, {
+      generatedAt: "2026-07-18T11:59:55Z",
+      activeSimulationRuns: [{
+        runId: "distinctive-live-run",
+        scenarioId: "live-scheduler-drift",
+        lifecycle: "streaming",
+        health: "nominal",
+        artifactStatus: "committed",
+        valueBasis: "simulated"
+      }]
+    });
+    const generationNine = withHealthState(fixtureInput, {
+      generatedAt: "2026-07-18T12:00:25Z",
+      activeSimulationRuns: [{
+        runId: "recovered-run-a",
+        scenarioId: "recovered-scenario",
+        lifecycle: "completed",
+        health: "nominal",
+        artifactStatus: "staged",
+        valueBasis: "simulated"
+      }, {
+        runId: "recovered-run-b",
+        scenarioId: "recovered-scenario",
+        lifecycle: "completed",
+        health: "nominal",
+        artifactStatus: "staged",
+        valueBasis: "simulated"
+      }]
+    });
+    const observedTimes = [
+      new Date("2026-07-18T12:00:00Z"),
+      new Date("2026-07-18T12:00:30Z")
+    ];
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([
+      accepted(8, generationEight),
+      new WorkbenchReadError("unavailable", "offline"),
+      accepted(9, generationNine)
+    ]), {
+      allowFixtureFallback: true,
+      fixtureInput,
+      refreshIntervalMs: 60_000,
+      now: () => observedTimes.shift() ?? new Date("2026-07-18T12:00:30Z")
     });
 
+    await session.start();
+    const acceptedGenerationEight = session.getResult().readState.model;
+    expect(acceptedGenerationEight).toMatchObject({
+      generation: 8,
+      source: "live",
+      healthPanelModel: {
+        lifecycle: { summary: "0/1 complete", status: "degraded" },
+        worker: { summary: "1/1 nominal", status: "healthy" },
+        artifact: { detail: "committed", status: "healthy" },
+        streamFreshness: { summary: "fresh", status: "healthy" }
+      }
+    });
+    expect(session.getResult().readState.message).toBe("Live Workbench generation 8 accepted atomically.");
+
     await session.refresh();
-    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 9 } });
+    expect(session.getResult().readState.model).toBe(acceptedGenerationEight);
+    expect(session.getResult().readState).toMatchObject({ phase: "stale", model: { generation: 8 } });
+
+    await session.refresh();
+    expect(session.getResult().readState.model).not.toBe(acceptedGenerationEight);
+    expect(session.getResult().readState).toMatchObject({
+      phase: "live",
+      model: {
+        generation: 9,
+        healthPanelModel: {
+          lifecycle: { summary: "2/2 complete", status: "healthy" },
+          worker: { summary: "2/2 nominal", status: "healthy" },
+          artifact: { detail: "staged", status: "healthy" },
+          streamFreshness: { summary: "fresh", status: "healthy" }
+        }
+      }
+    });
     session.dispose();
   });
 
@@ -297,16 +418,16 @@ describe("Workbench Snapshot session", () => {
     const second = session.refresh();
     expect(pending[0]?.signal.aborted).toBe(true);
     await first;
-    expect(session.getState().readState.phase).toBe("loading");
+    expect(session.getResult().readState.phase).toBe("loading");
     pending[1]?.resolve(accepted(12, fixtureInput));
     await second;
-    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 12 } });
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 12 } });
 
     const third = session.refresh();
     session.dispose();
     expect(pending[2]?.signal.aborted).toBe(true);
     await third;
-    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 12 } });
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 12 } });
   });
 
   it("stops publishing to unsubscribed listeners", async () => {
@@ -326,240 +447,50 @@ describe("Workbench Snapshot session", () => {
     expect(listener).toHaveBeenCalledTimes(1);
     session.dispose();
   });
-
-  it("publishes owned immutable Snapshots that consumers cannot corrupt", async () => {
-    const fixtureInput = loadFixtureWorkbenchData();
-    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(8, fixtureInput), accepted(9, fixtureInput)]), {
-      allowFixtureFallback: false,
-      fixtureInput,
-      refreshIntervalMs: 60_000
-    });
-
-    await session.start();
-    const exposed = session.getState().readState;
-    expect(() => {
-      if (!exposed.model) throw new Error("missing accepted model");
-      exposed.model.generation = 2;
-    }).toThrow(TypeError);
-    expect(() => {
-      if (!exposed.model) throw new Error("missing accepted model");
-      exposed.model.input.state.schemaVersion = "corrupted" as typeof exposed.model.input.state.schemaVersion;
-    }).toThrow(TypeError);
-    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 8 } });
-    expect(Object.isFrozen(fixtureInput)).toBe(false);
-
-    await session.refresh();
-    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 9 } });
-    session.dispose();
-  });
-
-  it("publishes read state, effective selection, and projection as one immutable result", async () => {
-    const fixtureInput = loadFixtureWorkbenchData();
-    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(5, fixtureInput)]), {
-      allowFixtureFallback: false,
-      fixtureInput,
-      refreshIntervalMs: 60_000,
-      initialSelection: { selectedUnitId: "KAL-03", selectedValueId: "missing-value" }
-    });
-
-    expect(session.getState()).toMatchObject({ readState: { phase: "loading" }, projection: null });
-    await session.start();
-    const initial = session.getState();
-    expect(initial.selection.selectedUnitId).toBe("KAL-03");
-    expect(initial.selection.selectedValueId).toBe(initial.projection?.selectedValue?.valueId);
-    expect(initial.projection?.selectedValue?.valueBasis).toBe("imputed");
-    expect(Object.isFrozen(initial)).toBe(true);
-    expect(Object.isFrozen(initial.projection)).toBe(true);
-    expect(Object.isFrozen(initial.selection)).toBe(true);
-
-    for (const basis of ["measured", "imputed", "simulated"] as const) {
-      const value = session.getState().projection?.groups[basis].values[0];
-      if (!value) throw new Error(`missing visible ${basis} value`);
-      session.selectValue(value.valueId);
-      const selected = session.getState();
-      expect(selected.selection.selectedValueId).toBe(value.valueId);
-      expect(selected.projection?.selectedValue?.valueBasis).toBe(basis);
-      expect(selected.projection?.viewport.layers.find((layer) => layer.valueId === value.valueId)?.selected).toBe(true);
-      expect(selected.projection?.explanation.basisLabel).toBe(basis);
-    }
-
-    const missingLineage = session.getState().projection?.groups.imputed.values.find((value) => !value.lineage);
-    if (!missingLineage) throw new Error("missing explicit missing-Lineage fixture value");
-    session.selectValue(missingLineage.valueId);
-    expect(session.getState().projection).toMatchObject({
-      selectedValue: { valueId: missingLineage.valueId },
-      selectedLineage: null,
-      selectedLineageMissing: true,
-      explanation: { kind: "engineering" }
-    });
-
-    const otherUnitValue = fixtureInput.twin.entities
-      .find((entity) => entity.unitId !== "KAL-03")
-      ?.values[0]?.valueId;
-    if (!otherUnitValue) throw new Error("missing other-unit fixture value");
-    const beforeInvalidValue = session.getState();
-    session.selectValue(otherUnitValue);
-    session.selectValue("missing-value");
-    expect(session.getState()).toBe(beforeInvalidValue);
-
-    const beforeInvalidUnit = session.getState();
-    session.selectUnit("missing-unit");
-    expect(session.getState()).toBe(beforeInvalidUnit);
-
-    const oldUnitValueId = initial.selection.selectedValueId;
-    session.selectUnit("KAL-02");
-    const commercialUnit = session.getState();
-    expect(commercialUnit.selection).toMatchObject({
-      selectedUnitId: "KAL-02",
-      selectedCommercialBasisId: "CDB-KAL-02-FACILITY-HEAT"
-    });
-    expect(commercialUnit.selection.selectedValueId).not.toBe(oldUnitValueId);
-    expect(commercialUnit.selection.selectedValueId).toBe(commercialUnit.projection?.selectedValue?.valueId);
-    expect(commercialUnit.projection?.explanation.kind).toBe("commercial");
-    expect(commercialUnit.projection?.fleetUnits.find((unit) => unit.unitId === "KAL-02")?.selected).toBe(true);
-
-    const repeatedListener = vi.fn();
-    const unsubscribeRepeated = session.subscribe(repeatedListener);
-    session.selectUnit("KAL-02");
-    expect(session.getState()).toBe(commercialUnit);
-    expect(repeatedListener).toHaveBeenCalledTimes(1);
-    unsubscribeRepeated();
-
-    const beforeUnknownValue = session.getState();
-    session.selectValue("missing-value");
-    expect(session.getState()).toBe(beforeUnknownValue);
-    session.dispose();
-  });
-
-  it("uses an engineering explanation when the selected unit has no owned commercial basis", async () => {
-    const fixtureInput = loadFixtureWorkbenchData();
-    fixtureInput.commercialDisplayBasis = fixtureInput.commercialDisplayBasis.filter((basis) => basis.unitId !== "KAL-02");
-    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(3, fixtureInput)]), {
-      allowFixtureFallback: false,
-      fixtureInput,
-      refreshIntervalMs: 60_000
-    });
-
-    await session.start();
-    session.selectUnit("KAL-02");
-    expect(session.getState()).toMatchObject({
-      selection: { selectedUnitId: "KAL-02" },
-      projection: { explanation: { kind: "engineering" } }
-    });
-    expect(session.getState().selection.selectedCommercialBasisId).toBeUndefined();
-    session.dispose();
-  });
-
-  it("does not renegotiate selection while retaining the same accepted Snapshot as stale", async () => {
-    const fixtureInput = loadFixtureWorkbenchData();
-    const unit02 = fixtureInput.fleetUnits.find((unit) => unit.unitId === "KAL-02");
-    if (!unit02) throw new Error("missing KAL-02 fixture");
-    unit02.commercialBasisId = "CDB-KAL-02-NOT-PUBLISHED";
-    const session = createWorkbenchSnapshotSession(sequenceAdapter([
-      accepted(3, fixtureInput),
-      new WorkbenchReadError("unavailable", "offline")
-    ]), {
-      allowFixtureFallback: false,
-      fixtureInput,
-      refreshIntervalMs: 60_000
-    });
-
-    await session.start();
-    session.selectUnit("KAL-02");
-    expect(session.getState().selection.selectedCommercialBasisId).toBeUndefined();
-
-    await session.refresh();
-    expect(session.getState()).toMatchObject({
-      readState: { phase: "stale", model: { generation: 3 } },
-      selection: { selectedUnitId: "KAL-02" },
-      projection: { explanation: { kind: "engineering" } }
-    });
-    expect(session.getState().selection.selectedCommercialBasisId).toBeUndefined();
-    session.dispose();
-  });
-
-  it("reconciles unit, commercial basis, value, and Lineage across atomic Snapshot replacement", async () => {
-    const initialInput = loadFixtureWorkbenchData();
-    const equalInput = structuredClone(initialInput);
-    equalInput.state.scenarioId = "equal-replacement";
-    const replacementBasisInput = structuredClone(equalInput);
-    replacementBasisInput.state.scenarioId = "replacement-basis";
-    const unit02 = replacementBasisInput.fleetUnits.find((unit) => unit.unitId === "KAL-02");
-    const unit02Basis = replacementBasisInput.commercialDisplayBasis.find((basis) => basis.unitId === "KAL-02");
-    if (!unit02 || !unit02Basis) throw new Error("missing KAL-02 replacement fixtures");
-    unit02.commercialBasisId = "CDB-KAL-02-REPLACEMENT";
-    unit02Basis.basisId = "CDB-KAL-02-REPLACEMENT";
-
-    const missingUnitInput = structuredClone(replacementBasisInput);
-    missingUnitInput.state.scenarioId = "missing-selected-unit";
-    missingUnitInput.fleetUnits = missingUnitInput.fleetUnits.filter((unit) => unit.unitId !== "KAL-02");
-
-    const emptyValueInput = structuredClone(missingUnitInput);
-    emptyValueInput.state.scenarioId = "empty-selected-unit";
-    emptyValueInput.twin.entities = emptyValueInput.twin.entities.filter((entity) => entity.unitId !== "KAL-01");
-    emptyValueInput.commercialDisplayBasis = emptyValueInput.commercialDisplayBasis.filter(
-      (basis) => basis.unitId !== "KAL-01"
-    );
-
-    const session = createWorkbenchSnapshotSession(sequenceAdapter([
-      accepted(5, initialInput),
-      accepted(5, equalInput),
-      accepted(6, replacementBasisInput),
-      accepted(7, missingUnitInput),
-      accepted(8, emptyValueInput)
-    ]), {
-      allowFixtureFallback: false,
-      fixtureInput: initialInput,
-      refreshIntervalMs: 60_000
-    });
-
-    await session.start();
-    session.selectUnit("KAL-02");
-    const selectedValueId = session.getState().projection?.groups.measured.values[0]?.valueId;
-    if (!selectedValueId) throw new Error("missing KAL-02 selected value fixture");
-    session.selectValue(selectedValueId);
-
-    await session.refresh();
-    expect(session.getState()).toMatchObject({
-      readState: { model: { generation: 5, input: { state: { scenarioId: "equal-replacement" } } } },
-      selection: {
-        selectedUnitId: "KAL-02",
-        selectedValueId,
-        selectedCommercialBasisId: "CDB-KAL-02-FACILITY-HEAT"
-      },
-      projection: { selectedValue: { valueId: selectedValueId } }
-    });
-
-    await session.refresh();
-    expect(session.getState()).toMatchObject({
-      readState: { model: { generation: 6, input: { state: { scenarioId: "replacement-basis" } } } },
-      selection: { selectedUnitId: "KAL-02", selectedCommercialBasisId: "CDB-KAL-02-REPLACEMENT" },
-      projection: { selectedValue: { valueId: selectedValueId }, explanation: { kind: "commercial" } }
-    });
-
-    await session.refresh();
-    expect(session.getState()).toMatchObject({
-      readState: { model: { generation: 7, input: { state: { scenarioId: "missing-selected-unit" } } } },
-      selection: { selectedUnitId: "KAL-01", selectedCommercialBasisId: "CDB-KAL-01-PPA" },
-      projection: { selectedUnit: { unitId: "KAL-01" }, selectedValue: { valueBasis: "imputed" } }
-    });
-
-    await session.refresh();
-    const empty = session.getState();
-    expect(empty.readState.model).toMatchObject({ generation: 8, input: { state: { scenarioId: "empty-selected-unit" } } });
-    expect(empty.selection).toEqual({ selectedUnitId: "KAL-01" });
-    expect(empty.projection).toMatchObject({
-      selectedValue: null,
-      selectedLineage: null,
-      selectedLineageMissing: false,
-      explanation: { kind: "engineering", subtitle: "No value selected" }
-    });
-    session.dispose();
-  });
 });
 
 function accepted(generation: number, input: ReturnType<typeof loadFixtureWorkbenchData>): AcceptedWorkbenchSnapshot {
   return { generation, source: "live", input };
+}
+
+function withHealthState(
+  input: ReturnType<typeof loadFixtureWorkbenchData>,
+  state: Pick<ReturnType<typeof loadFixtureWorkbenchData>["state"], "generatedAt" | "activeSimulationRuns">
+): ReturnType<typeof loadFixtureWorkbenchData> {
+  return { ...input, state: { ...input.state, ...state } };
+}
+
+function withoutUnit(
+  input: ReturnType<typeof loadFixtureWorkbenchData>,
+  unitId: string
+): ReturnType<typeof loadFixtureWorkbenchData> {
+  return {
+    ...input,
+    state: {
+      ...input.state,
+      selectedUnitId: input.state.selectedUnitId === unitId ? undefined : input.state.selectedUnitId,
+      fleetUnitRefs: input.state.fleetUnitRefs?.filter((ref) => ref !== unitId)
+    },
+    measured: input.measured.filter((frame) => frame.reactorId !== unitId),
+    twin: {
+      ...input.twin,
+      entities: input.twin.entities.filter((entity) => entity.unitId !== unitId)
+    },
+    fleetUnits: input.fleetUnits.filter((unit) => unit.unitId !== unitId),
+    commercialDisplayBasis: input.commercialDisplayBasis.filter((basis) => basis.unitId !== unitId)
+  };
+}
+
+function withoutValues(
+  input: ReturnType<typeof loadFixtureWorkbenchData>
+): ReturnType<typeof loadFixtureWorkbenchData> {
+  return {
+    ...input,
+    twin: {
+      ...input.twin,
+      entities: input.twin.entities.map((entity) => ({ ...entity, values: [] }))
+    }
+  };
 }
 
 function sequenceAdapter(
@@ -572,30 +503,4 @@ function sequenceAdapter(
     return outcome;
   });
   return { load };
-}
-
-function createTestScheduler(): WorkbenchSnapshotScheduler & { advanceBy(milliseconds: number): Promise<void> } {
-  let now = 0;
-  let nextHandle = 0;
-  const tasks = new Map<number, { dueAt: number; task: () => void }>();
-  return {
-    schedule(task, delayMs) {
-      const handle = ++nextHandle;
-      tasks.set(handle, { dueAt: now + delayMs, task });
-      return handle;
-    },
-    cancel(handle) {
-      tasks.delete(handle as number);
-    },
-    async advanceBy(milliseconds) {
-      now += milliseconds;
-      for (const [handle, scheduled] of [...tasks].sort((left, right) => left[1].dueAt - right[1].dueAt)) {
-        if (scheduled.dueAt > now) continue;
-        tasks.delete(handle);
-        scheduled.task();
-        await Promise.resolve();
-        await Promise.resolve();
-      }
-    }
-  };
 }

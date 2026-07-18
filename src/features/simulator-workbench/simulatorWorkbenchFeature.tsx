@@ -1,68 +1,30 @@
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { SimulatorWorkbenchSurface, type SimulationHealthPanelModel } from "../../components/simulator-workbench";
+import { SimulatorWorkbenchSurface } from "../../components/simulator-workbench";
 import type { ComputeJob } from "../../domain/types";
 import {
   createBrowserWorkbenchSnapshotSession,
-  createHealthTickDriver,
-  projectHealthCards,
   workbenchReadLabel,
-  type WorkbenchHealthRunState,
   type WorkbenchSelection,
   type WorkbenchProjection,
   type WorkbenchReadState,
-  type WorkbenchSnapshotSession,
-  type WorkbenchStateView
+  type WorkbenchSnapshotSession
 } from "../../domain/simulator-workbench";
-
-const WORKBENCH_HEALTH_TICK_MS = 1250;
 
 export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelection = {}) {
   const [session] = useState<WorkbenchSnapshotSession>(() => createBrowserWorkbenchSnapshotSession(initialSelection));
-  const result = useSyncExternalStore(session.subscribe, session.getState, session.getState);
-  const { projection, readState, selection } = result;
-  const data = readState.model?.input ?? null;
-  const [healthPanelModel, setHealthPanelModel] = useState<SimulationHealthPanelModel>(() =>
-    projectHealthCards({ generatedAt: "1970-01-01T00:00:00Z", activeSimulationRuns: [] }, new Date(0))
-  );
-
-  const refresh = useCallback(() => {
-    void session.refresh();
-  }, [session]);
+  const [result, setResult] = useState(() => session.getResult());
 
   useEffect(() => {
+    const unsubscribe = session.subscribe(setResult);
     void session.start();
-    return () => session.dispose();
+    return () => {
+      unsubscribe();
+      session.dispose();
+    };
   }, [session]);
 
-  useEffect(() => {
-    if (!data) return;
-    const driver = createHealthTickDriver({
-      intervalMs: WORKBENCH_HEALTH_TICK_MS,
-      fixtures: buildHealthPanelSequence(data.state),
-      initialNow: new Date(data.state.generatedAt),
-      onTick: setHealthPanelModel
-    });
-    return () => driver.stop();
-  }, [data]);
-
-  function selectUnit(unitId: string) {
-    session.selectUnit(unitId);
-  }
-
-  function selectValue(valueId: string) {
-    session.selectValue(valueId);
-  }
-
-  return {
-    projection,
-    readState,
-    refresh,
-    healthPanelModel,
-    selection,
-    selectUnit,
-    selectValue
-  };
+  return result;
 }
 
 export function StatusWorkbenchTab({
@@ -105,6 +67,7 @@ export function StatusWorkbenchTab({
     <SimulatorWorkbenchSurface
       projection={projection}
       readState={readState}
+      healthPanelModel={readState.model!.healthPanelModel}
       onRefresh={onRefresh}
       onSelectUnit={onSelectUnit}
       onSelectValue={onSelectValue}
@@ -116,81 +79,4 @@ export function StatusWorkbenchTab({
       orchestrationPanel={orchestrationPanel}
     />
   );
-}
-
-function buildHealthPanelSequence(state: {
-  generatedAt: string;
-  activeSimulationRuns: Array<WorkbenchHealthRunState>;
-}): Array<WorkbenchStateView> {
-  const base = stateViewFromWorkbenchState(state);
-  return [base, withRunningRun(base, "RUN-KAL-01-SCHED-DRIFT"), withMissingArtifact(base), withCriticalWorker(base)];
-}
-
-function stateViewFromWorkbenchState(state: {
-  generatedAt: string;
-  activeSimulationRuns: Array<WorkbenchHealthRunState>;
-}): WorkbenchStateView {
-  return {
-    generatedAt: state.generatedAt,
-    activeSimulationRuns: [...state.activeSimulationRuns]
-  };
-}
-
-function withRunningRun(base: WorkbenchStateView, runId: string): WorkbenchStateView {
-  const selected = base.activeSimulationRuns.find((run) => run.runId === runId);
-  const replacement: WorkbenchHealthRunState = selected
-    ? { ...selected, lifecycle: "running", health: selected.health }
-    : {
-        runId,
-        lifecycle: "running",
-        health: "nominal",
-        artifactStatus: "fixture-reference",
-        scenarioId: "simulator-ws"
-      };
-
-  return {
-    ...base,
-    activeSimulationRuns: updateRuns(base.activeSimulationRuns, runId, replacement)
-  };
-}
-
-function withMissingArtifact(base: WorkbenchStateView): WorkbenchStateView {
-  const [first, ...rest] = base.activeSimulationRuns;
-  if (!first) return base;
-  return {
-    ...base,
-    activeSimulationRuns: [
-      {
-        ...first,
-        artifactStatus: "missing"
-      },
-      ...rest
-    ]
-  };
-}
-
-function withCriticalWorker(base: WorkbenchStateView): WorkbenchStateView {
-  const [first, ...rest] = base.activeSimulationRuns;
-  if (!first) return base;
-  return {
-    ...base,
-    activeSimulationRuns: [
-      {
-        ...first,
-        health: "critical"
-      },
-      ...rest
-    ]
-  };
-}
-
-function updateRuns(
-  runs: Array<WorkbenchHealthRunState>,
-  runId: string,
-  replacement: WorkbenchHealthRunState
-): Array<WorkbenchHealthRunState> {
-  if (!runs.some((run) => run.runId === runId)) {
-    return [...runs, replacement];
-  }
-  return runs.map((run) => (run.runId === runId ? replacement : run));
 }

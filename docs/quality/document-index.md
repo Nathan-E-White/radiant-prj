@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Document ID | QP-011 |
-| Revision | 3.0 |
+| Revision | 3.1 |
 | Status | Draft for v3.0 review |
 | Owner | Quality |
 | Effective Baseline | v3.0 candidate |
@@ -36,6 +36,8 @@
 | Interface Control Document | Software | Draft for v3.0 review |
 | Simulation Ops Telemetry Contract | Software | Contract draft |
 | Simulator Workbench Backend Dataflow Slice | Software | Implemented backend slice |
+| Browser Workbench Snapshot Session (WORKBENCH-SNAPSHOT-SESSION-001) | Software | Implemented Issue #88 design |
+| Issue 88 Workbench Snapshot Session Verification Record | Quality | Completed |
 | Docker/OrbStack Storage Policy (DOP-001) | Software | Draft for v3.0 review |
 | Verification Plan | Quality | Draft for v3.0 review |
 | Test Report Template | Quality | Template |

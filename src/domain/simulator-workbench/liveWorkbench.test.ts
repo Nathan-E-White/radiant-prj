@@ -1,11 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
-import { loadFixtureWorkbenchData } from "./fixtureAdapter";
 import { buildWorkbenchProjection } from "./projection";
 import {
-  WorkbenchReadError,
   createHttpWorkbenchDataAdapter,
-  initialWorkbenchReadState,
-  refreshWorkbenchReadState,
   type LiveWorkbenchSnapshot
 } from "./liveWorkbench";
 
@@ -70,77 +66,60 @@ describe("live Workbench read boundary", () => {
     await expect(createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(noReactorIdentity))).load()).rejects.toMatchObject({
       kind: "partial"
     });
+
+    const invalidGeneration = liveSnapshot(7);
+    invalidGeneration.generation = -1;
+    await expect(createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(invalidGeneration))).load()).rejects.toMatchObject({ kind: "schema" });
+
+    const invalidState = liveSnapshot(7);
+    invalidState.state.schemaVersion = "simulator-workbench.state.v2" as "simulator-workbench.state.v1";
+    await expect(createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(invalidState))).load()).rejects.toMatchObject({ kind: "schema" });
+
+    const invalidTwinBasis = liveSnapshot(7);
+    invalidTwinBasis.twin.entities[0]!.values[0]!.valueBasis = "unknown" as "measured";
+    await expect(createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(invalidTwinBasis))).load()).rejects.toMatchObject({ kind: "schema" });
+
+    const invalidMeasured = liveSnapshot(7);
+    invalidMeasured.measured[0]!.valueBasis = "simulated" as "measured";
+    await expect(createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(invalidMeasured))).load()).rejects.toMatchObject({ kind: "schema" });
+
+    const invalidResult = liveSnapshot(7);
+    invalidResult.results[0]!.valueBasis = "measured" as "simulated";
+    await expect(createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(invalidResult))).load()).rejects.toMatchObject({ kind: "schema" });
+
+    const invalidLineage = liveSnapshot(7);
+    invalidLineage.lineage[0]!.schemaVersion = "digital-twin.lineage.v2" as "digital-twin.lineage.v1";
+    await expect(createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(invalidLineage))).load()).rejects.toMatchObject({ kind: "schema" });
+
+    const empty = liveSnapshot(7);
+    empty.measured = [];
+    empty.results = [];
+    empty.lineage = [];
+    empty.twin.entities = [];
+    await expect(createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(empty))).load()).rejects.toMatchObject({ kind: "empty" });
   });
 
-  it("uses fixtures only for an allowed initial unavailable or empty local-demo read", async () => {
-    const unavailable = { load: async () => Promise.reject(new WorkbenchReadError("unavailable", "offline")) };
-    const fixture = loadFixtureWorkbenchData();
-    const state = await refreshWorkbenchReadState(initialWorkbenchReadState(), unavailable, {
-      allowFixtureFallback: true,
-      fixtureInput: fixture,
-      now: () => new Date("2026-07-14T12:00:00Z")
+  it("classifies transport and HTTP failures for the session policy", async () => {
+    await expect(createHttpWorkbenchDataAdapter(async () => Promise.reject(new Error("offline"))).load()).rejects.toMatchObject({
+      kind: "unavailable",
+      message: "offline"
     });
-    expect(state.phase).toBe("fixture");
-    expect(state.model?.source).toBe("fixture");
-    expect(state.model?.input).toBe(fixture);
 
-    const denied = await refreshWorkbenchReadState(initialWorkbenchReadState(), unavailable, {
-      allowFixtureFallback: false,
-      fixtureInput: fixture
-    });
-    expect(denied.phase).toBe("error");
+    for (const [status, kind] of [
+      [401, "auth"],
+      [403, "auth"],
+      [204, "empty"],
+      [404, "empty"],
+      [502, "unavailable"],
+      [503, "unavailable"],
+      [504, "unavailable"],
+      [500, "partial"]
+    ] as const) {
+      await expect(createHttpWorkbenchDataAdapter(async () => new Response(status === 204 ? null : "failure", { status })).load())
+        .rejects.toMatchObject({ kind });
+    }
 
-    const auth = { load: async () => Promise.reject(new WorkbenchReadError("auth", "denied")) };
-    const authState = await refreshWorkbenchReadState(initialWorkbenchReadState(), auth, {
-      allowFixtureFallback: true,
-      fixtureInput: fixture
-    });
-    expect(authState.phase).toBe("error");
-    expect(authState.model).toBeNull();
-  });
-
-  it("retains the last coherent live snapshot as stale, then replaces it on recovery", async () => {
-    const fixture = loadFixtureWorkbenchData();
-    const live = createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(liveSnapshot(9))));
-    const accepted = await refreshWorkbenchReadState(initialWorkbenchReadState(), live, {
-      allowFixtureFallback: true,
-      fixtureInput: fixture
-    });
-    expect(accepted.phase).toBe("live");
-
-    const failed = await refreshWorkbenchReadState(
-      accepted,
-      { load: async () => Promise.reject(new WorkbenchReadError("partial", "truncated")) },
-      { allowFixtureFallback: true, fixtureInput: fixture }
-    );
-    expect(failed.phase).toBe("stale");
-    expect(failed.model).toBe(accepted.model);
-
-    const recovered = await refreshWorkbenchReadState(
-      failed,
-      createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(liveSnapshot(10)))),
-      { allowFixtureFallback: true, fixtureInput: fixture }
-    );
-    expect(recovered.phase).toBe("live");
-    expect(recovered.model?.generation).toBe(10);
-    expect(recovered.model).not.toBe(accepted.model);
-  });
-
-  it("keeps a newer live generation when a delayed older refresh arrives", async () => {
-    const fixture = loadFixtureWorkbenchData();
-    const accepted = await refreshWorkbenchReadState(
-      initialWorkbenchReadState(),
-      createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(liveSnapshot(12)))),
-      { allowFixtureFallback: false, fixtureInput: fixture }
-    );
-    const older = await refreshWorkbenchReadState(
-      accepted,
-      createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(liveSnapshot(11)))),
-      { allowFixtureFallback: false, fixtureInput: fixture }
-    );
-    expect(older.phase).toBe("stale");
-    expect(older.errorKind).toBe("generation");
-    expect(older.model?.generation).toBe(12);
+    await expect(createHttpWorkbenchDataAdapter(async () => new Response("{")).load()).rejects.toMatchObject({ kind: "partial" });
   });
 
 });

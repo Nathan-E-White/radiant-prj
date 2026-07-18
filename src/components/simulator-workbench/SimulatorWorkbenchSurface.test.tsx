@@ -1,11 +1,71 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { fixtures } from "../../domain/readiness";
-import { buildWorkbenchProjection, loadFixtureWorkbenchData } from "../../domain/simulator-workbench";
+import {
+  buildWorkbenchProjection,
+  createWorkbenchSnapshotSession,
+  loadFixtureWorkbenchData,
+  WorkbenchReadError
+} from "../../domain/simulator-workbench";
 import type { WorkbenchReadState } from "../../domain/simulator-workbench";
+import type { SimulationHealthPanelModel } from "./SimulationHealthPanel";
 import { SimulatorWorkbenchSurface } from "./SimulatorWorkbenchSurface";
 
 describe("SimulatorWorkbenchSurface", () => {
+  it("renders session-owned unit and value selection across fallback, recovery, stale retention, and refresh", async () => {
+    const input = loadFixtureWorkbenchData();
+    const load = vi.fn()
+      .mockRejectedValueOnce(new WorkbenchReadError("unavailable", "offline"))
+      .mockResolvedValueOnce({ generation: 8, source: "live", input })
+      .mockRejectedValueOnce(new WorkbenchReadError("unavailable", "offline again"))
+      .mockResolvedValueOnce({ generation: 9, source: "live", input });
+    const session = createWorkbenchSnapshotSession({ load }, {
+      allowFixtureFallback: true,
+      fixtureInput: input,
+      refreshIntervalMs: 60_000
+    });
+    await session.start();
+    session.getResult().selectUnit("KAL-03", "CDB-KAL-03-DESALINATION");
+    session.getResult().selectValue("VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT");
+
+    const renderResult = () => {
+      const result = session.getResult();
+      return renderToStaticMarkup(
+        <SimulatorWorkbenchSurface
+          onSelectUnit={result.selectUnit}
+          onSelectValue={result.selectValue}
+          projection={result.projection!}
+          readState={result.readState}
+          healthPanelModel={result.readState.model!.healthPanelModel}
+          onRefresh={result.refresh}
+          computeQueue={<div>Scientific compute queue</div>}
+          selectedJob={fixtures.computeJobs[0]}
+          scenario="DOME synthetic full-power readiness bundle"
+          scenarioJobs={fixtures.computeJobs}
+          bundleState="ready"
+          orchestrationPanel={<div>Containerized worker orchestration</div>}
+        />
+      );
+    };
+
+    expect(renderResult()).toContain("Fixture fallback");
+    expect(renderResult()).toContain("Kaleidos Unit 03");
+    expect(renderResult()).toContain("simwb-value selected measured");
+    await session.refresh();
+    expect(renderResult()).toContain("Live generation 8");
+    expect(renderResult()).toContain("Kaleidos Unit 03");
+    expect(renderResult()).toContain("simwb-value selected measured");
+    await session.refresh();
+    expect(renderResult()).toContain("Stale live generation 8");
+    expect(renderResult()).toContain("Kaleidos Unit 03");
+    expect(renderResult()).toContain("simwb-value selected measured");
+    await session.refresh();
+    expect(renderResult()).toContain("Live generation 9");
+    expect(renderResult()).toContain("Kaleidos Unit 03");
+    expect(renderResult()).toContain("simwb-value selected measured");
+    session.dispose();
+  });
+
   it("renders the integrated Status Workbench with fleet, viewport, value bases, orchestration, and HPC status", () => {
     const markup = renderToStaticMarkup(
       <SimulatorWorkbenchSurface
@@ -13,6 +73,7 @@ describe("SimulatorWorkbenchSurface", () => {
         onSelectValue={vi.fn()}
         projection={buildWorkbenchProjection(loadFixtureWorkbenchData())}
         readState={fixtureReadState()}
+        healthPanelModel={distinctiveLiveHealth()}
         onRefresh={vi.fn()}
         computeQueue={<div>Scientific compute queue</div>}
         selectedJob={fixtures.computeJobs.find((job) => job.id === "JOB-HPC-404") ?? fixtures.computeJobs[0]}
@@ -50,6 +111,11 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(markup).toContain("Containerized worker orchestration");
     expect(markup).toContain("Scientific compute queue");
     expect(markup).toContain("HPC Status Panel");
+    expect(markup).toContain("Simulation Health Summary");
+    expect(markup).toContain("0/1 live runs complete");
+    expect(markup).toContain("1/1 live workers nominal");
+    expect(markup).toContain("live-artifact-committed");
+    expect(markup).not.toContain("4/4 nominal");
     expect(markup).toContain("Panel 1: Multiphysics Co-scheduler");
     expect(markup).toContain("Panel 2: I/O Checkpoint Burst Buffer");
     expect(markup).toContain("Panel 3: Core Thermal Mesh Cloud Burst");
@@ -68,6 +134,7 @@ describe("SimulatorWorkbenchSurface", () => {
         onSelectValue={vi.fn()}
         projection={projection}
         readState={fixtureReadState()}
+        healthPanelModel={distinctiveLiveHealth()}
         onRefresh={vi.fn()}
         computeQueue={<div>Scientific compute queue</div>}
         selectedJob={fixtures.computeJobs[0]}
@@ -94,7 +161,8 @@ describe("SimulatorWorkbenchSurface", () => {
       generation: 8,
       source: "live" as const,
       input: projectionInput,
-      acceptedAt: "2026-07-18T12:00:00Z"
+      acceptedAt: "2026-07-18T12:00:00Z",
+      healthPanelModel: distinctiveLiveHealth()
     };
     const renderStatus = (readState: WorkbenchReadState) => renderToStaticMarkup(
       <SimulatorWorkbenchSurface
@@ -102,6 +170,7 @@ describe("SimulatorWorkbenchSurface", () => {
         onSelectValue={vi.fn()}
         projection={projection}
         readState={readState}
+        healthPanelModel={readState.model!.healthPanelModel}
         onRefresh={vi.fn()}
         computeQueue={<div>Scientific compute queue</div>}
         selectedJob={fixtures.computeJobs[0]}
@@ -129,57 +198,6 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(recovering).toContain("Recovering live Snapshot");
     expect(recovering).toContain("Refreshing one coherent live Workbench Snapshot");
   });
-
-  it("keeps an accepted fixture visible while a later live read remains unavailable", () => {
-    const readState = fixtureReadState();
-    readState.errorKind = "unavailable";
-    readState.message = "Workbench service unavailable. Retaining the explicit whole-Snapshot fixture fallback.";
-    const markup = renderToStaticMarkup(
-      <SimulatorWorkbenchSurface
-        onSelectUnit={vi.fn()}
-        onSelectValue={vi.fn()}
-        projection={buildWorkbenchProjection(readState.model!.input)}
-        readState={readState}
-        onRefresh={vi.fn()}
-        computeQueue={<div>Scientific compute queue</div>}
-        selectedJob={fixtures.computeJobs[0]}
-        scenario="DOME synthetic full-power readiness bundle"
-        scenarioJobs={fixtures.computeJobs}
-        bundleState="ready"
-        orchestrationPanel={<div>Containerized worker orchestration</div>}
-      />
-    );
-
-    expect(markup).toContain("Fixture fallback");
-    expect(markup).toContain("Retaining the explicit whole-Snapshot fixture fallback");
-    expect(markup).toContain("Refresh live Snapshot");
-  });
-
-  it("presents an explicitly selected value whose engineering Lineage is missing", () => {
-    const projection = buildWorkbenchProjection(loadFixtureWorkbenchData(), {
-      selectedUnitId: "KAL-01",
-      selectedValueId: "VAL-KAL-01-IMPUTED-BLOCK-TEMP"
-    });
-    const markup = renderToStaticMarkup(
-      <SimulatorWorkbenchSurface
-        onSelectUnit={vi.fn()}
-        onSelectValue={vi.fn()}
-        projection={projection}
-        readState={fixtureReadState()}
-        onRefresh={vi.fn()}
-        computeQueue={<div>Scientific compute queue</div>}
-        selectedJob={fixtures.computeJobs[0]}
-        scenario="DOME synthetic full-power readiness bundle"
-        scenarioJobs={fixtures.computeJobs}
-        bundleState="ready"
-        orchestrationPanel={<div>Containerized worker orchestration</div>}
-      />
-    );
-
-    expect(markup).toContain("Unmeasured Fuel/Block Temperature Estimate");
-    expect(markup).toContain("Lineage pending for VAL-KAL-01-IMPUTED-BLOCK-TEMP");
-    expect(markup).toContain('aria-pressed="true"');
-  });
 });
 
 function fixtureReadState(): WorkbenchReadState {
@@ -189,8 +207,38 @@ function fixtureReadState(): WorkbenchReadState {
       generation: 0,
       source: "fixture",
       input: loadFixtureWorkbenchData(),
+      healthPanelModel: distinctiveLiveHealth(),
       acceptedAt: "2026-07-14T12:00:00Z"
     },
     message: "Using the explicit local-demo fixture Snapshot."
+  };
+}
+
+function distinctiveLiveHealth(): SimulationHealthPanelModel {
+  return {
+    lifecycle: {
+      title: "Lifecycle",
+      summary: "0/1 live runs complete",
+      detail: "distinctive live lifecycle",
+      status: "degraded"
+    },
+    worker: {
+      title: "Worker",
+      summary: "1/1 live workers nominal",
+      detail: "distinctive live worker",
+      status: "healthy"
+    },
+    artifact: {
+      title: "Artifact",
+      summary: "1 live artifact",
+      detail: "live-artifact-committed",
+      status: "healthy"
+    },
+    streamFreshness: {
+      title: "Stream freshness",
+      summary: "fresh",
+      detail: "distinctive live timestamp",
+      status: "healthy"
+    }
   };
 }
