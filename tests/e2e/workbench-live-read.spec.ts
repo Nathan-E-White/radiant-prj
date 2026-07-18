@@ -101,6 +101,11 @@ test("Workbench retains stale live data, rejects generation regression, and reco
   await expect(page.getByText("Stale live generation 8")).toBeVisible();
   await expect(page.getByText(/generation regressed from 8 to 7/)).toBeVisible();
 
+  generation = 8;
+  await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await expect(page.getByText("Live generation 8")).toBeVisible();
+  await expect(page.getByText(/generation 8 accepted atomically/)).toBeVisible();
+
   generation = 9;
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
   await expect(page.getByText("Live generation 9")).toBeVisible();
