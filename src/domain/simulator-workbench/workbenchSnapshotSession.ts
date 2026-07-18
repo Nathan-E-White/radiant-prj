@@ -34,7 +34,7 @@ export function createWorkbenchSnapshotSession(
   adapter: WorkbenchSnapshotAdapter,
   options: WorkbenchSnapshotSessionOptions
 ): WorkbenchSnapshotSession {
-  let state = initialWorkbenchReadState();
+  let state = immutableSnapshot(initialWorkbenchReadState());
   let settledState = state;
   let active: AbortController | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
@@ -43,13 +43,14 @@ export function createWorkbenchSnapshotSession(
   const listeners = new Set<(state: WorkbenchReadState) => void>();
 
   function publish(next: WorkbenchReadState): void {
-    state = next;
+    state = immutableSnapshot(next);
     listeners.forEach((listener) => listener(state));
   }
 
   function settle(next: WorkbenchReadState): void {
-    settledState = next;
-    publish(next);
+    state = immutableSnapshot(next);
+    settledState = state;
+    listeners.forEach((listener) => listener(state));
   }
 
   function clearScheduledRefresh(): void {
@@ -117,4 +118,18 @@ export function createWorkbenchSnapshotSession(
       state = settledState;
     }
   };
+}
+
+function immutableSnapshot(state: WorkbenchReadState): WorkbenchReadState {
+  const snapshot = structuredClone(state);
+  if (state.model && Object.isFrozen(state.model)) snapshot.model = state.model;
+  return deepFreeze(snapshot);
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    Object.values(value).forEach(deepFreeze);
+  }
+  return value;
 }

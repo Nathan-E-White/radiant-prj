@@ -187,6 +187,32 @@ describe("Workbench Snapshot session", () => {
     expect(listener).toHaveBeenCalledTimes(1);
     session.dispose();
   });
+
+  it("publishes owned immutable Snapshots that consumers cannot corrupt", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(8, fixtureInput), accepted(9, fixtureInput)]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
+
+    await session.start();
+    const exposed = session.getState();
+    expect(() => {
+      if (!exposed.model) throw new Error("missing accepted model");
+      exposed.model.generation = 2;
+    }).toThrow(TypeError);
+    expect(() => {
+      if (!exposed.model) throw new Error("missing accepted model");
+      exposed.model.input.state.schemaVersion = "corrupted" as typeof exposed.model.input.state.schemaVersion;
+    }).toThrow(TypeError);
+    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 8 } });
+    expect(Object.isFrozen(fixtureInput)).toBe(false);
+
+    await session.refresh();
+    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 9 } });
+    session.dispose();
+  });
 });
 
 function accepted(generation: number, input: ReturnType<typeof loadFixtureWorkbenchData>): AcceptedWorkbenchSnapshot {
