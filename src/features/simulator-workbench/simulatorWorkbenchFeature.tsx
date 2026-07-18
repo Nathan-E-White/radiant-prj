@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { SimulatorWorkbenchSurface, type SimulationHealthPanelModel } from "../../components/simulator-workbench";
 import type { ComputeJob } from "../../domain/types";
 import {
-  buildWorkbenchProjection,
   createBrowserWorkbenchSnapshotSession,
   createHealthTickDriver,
   projectHealthCards,
@@ -19,11 +18,10 @@ import {
 const WORKBENCH_HEALTH_TICK_MS = 1250;
 
 export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelection = {}) {
-  const [session] = useState<WorkbenchSnapshotSession>(() => createBrowserWorkbenchSnapshotSession());
-  const [readState, setReadState] = useState<WorkbenchReadState>(() => session.getState());
-  const [selection, setSelection] = useState<WorkbenchSelection>(initialSelection);
+  const [session] = useState<WorkbenchSnapshotSession>(() => createBrowserWorkbenchSnapshotSession(initialSelection));
+  const result = useSyncExternalStore(session.subscribe, session.getState, session.getState);
+  const { projection, readState, selection } = result;
   const data = readState.model?.input ?? null;
-  const projection = useMemo(() => (data ? buildWorkbenchProjection(data, selection) : null), [data, selection]);
   const [healthPanelModel, setHealthPanelModel] = useState<SimulationHealthPanelModel>(() =>
     projectHealthCards({ generatedAt: "1970-01-01T00:00:00Z", activeSimulationRuns: [] }, new Date(0))
   );
@@ -33,12 +31,8 @@ export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelectio
   }, [session]);
 
   useEffect(() => {
-    const unsubscribe = session.subscribe(setReadState);
     void session.start();
-    return () => {
-      unsubscribe();
-      session.dispose();
-    };
+    return () => session.dispose();
   }, [session]);
 
   useEffect(() => {
@@ -52,19 +46,12 @@ export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelectio
     return () => driver.stop();
   }, [data]);
 
-  function selectUnit(unitId: string, commercialBasisId: string) {
-    setSelection((current) => ({
-      ...current,
-      selectedUnitId: unitId,
-      selectedCommercialBasisId: commercialBasisId
-    }));
+  function selectUnit(unitId: string) {
+    session.selectUnit(unitId);
   }
 
   function selectValue(valueId: string) {
-    setSelection((current) => ({
-      ...current,
-      selectedValueId: valueId
-    }));
+    session.selectValue(valueId);
   }
 
   return {
@@ -94,7 +81,7 @@ export function StatusWorkbenchTab({
   projection: WorkbenchProjection | null;
   readState: WorkbenchReadState;
   onRefresh: () => void;
-  onSelectUnit: (unitId: string, commercialBasisId: string) => void;
+  onSelectUnit: (unitId: string) => void;
   onSelectValue: (valueId: string) => void;
   computeQueue: ReactNode;
   selectedJob: ComputeJob;

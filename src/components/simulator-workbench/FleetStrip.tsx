@@ -6,7 +6,7 @@ export function FleetStrip({
   onSelectUnit
 }: {
   units: ProjectedFleetUnit[];
-  onSelectUnit: (unitId: string, commercialBasisId: string) => void;
+  onSelectUnit: (unitId: string) => void;
 }) {
   return (
     <section className="simwb-fleet-strip" aria-label="Commercial Kaleidos Fleet Strip">
@@ -14,10 +14,9 @@ export function FleetStrip({
         <button
           aria-pressed={unit.selected}
           className={unit.selected ? "simwb-fleet-card selected" : "simwb-fleet-card"}
-          data-commercial-basis-id={unit.commercialBasisId}
           data-unit-id={unit.unitId}
           key={unit.unitId}
-          onClick={() => onSelectUnit(unit.unitId, unit.commercialBasisId)}
+          onClick={() => onSelectUnit(unit.unitId)}
           type="button"
         >
           <span className="simwb-fleet-title">
