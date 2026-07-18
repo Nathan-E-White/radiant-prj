@@ -9,6 +9,71 @@ import (
 	"time"
 )
 
+func TestArtifactForgeManagerDependsOnlyOnEligibilityRead(t *testing.T) {
+	eligibility := &focusedArtifactForgeEligibilityStore{}
+	manager := NewArtifactForgeManager(NewInMemoryArtifactForgeStore(), nil, eligibility)
+	if manager.eligibility != eligibility {
+		t.Fatal("Artifact Forge did not retain the focused eligibility store")
+	}
+}
+
+func TestInMemoryArtifactForgeEligibilityStoreContract(t *testing.T) {
+	assertArtifactForgeEligibilityStoreContract(t, NewInMemoryWorkbenchStore())
+}
+
+type artifactForgeEligibilityContractStore interface {
+	ArtifactForgeEligibilityStore
+	artifactForgeResultArtifactReader
+	SaveResultProjection(string, SimopsResultProjection) (bool, error)
+	SaveTwinStateProjection(string, TwinStateProjection) (bool, error)
+}
+
+func assertArtifactForgeEligibilityStoreContract(t *testing.T, store artifactForgeEligibilityContractStore) {
+	t.Helper()
+	run := SimopsRunRecord{RunID: "run-forge-contract", ScenarioID: ArtifactForgeSchedulerDriftRecipe, Lifecycle: SimopsComplete}
+	request := artifactForgeRequestFixture()
+	record := ArtifactForgeRecord{RunID: run.RunID, ReactorID: request.ReactorID, GameSessionID: request.GameSessionID, SimulationRecipe: request.SimulationRecipe}
+	result := artifactForgeResultFrame(run.RunID, run.ScenarioID)
+	projection := SimopsResultProjection{Frame: result, RedpandaTopic: "artifact-forge-contract-results", RedpandaOffset: 1}
+	written, err := store.SaveResultProjection("artifact-forge-contract", projection)
+	if err != nil || !written {
+		t.Fatalf("save eligible result written=%v err=%v", written, err)
+	}
+	seedArtifactForgeEligibilityLineage(t, store, record, request, result, 2)
+	evidence, err := store.ReadArtifactForgeEligibility(run)
+	if err != nil || evidence.Result == nil || evidence.ExpectedValue == nil || evidence.Lineage == nil || evidence.ExpectedValue.ValueID != WorkbenchSimulatedMarginValue || evidence.Lineage.ValueBasis != WorkbenchValueSimulated {
+		t.Fatalf("eligible evidence=%#v err=%v", evidence, err)
+	}
+	written, err = store.SaveResultProjection("artifact-forge-contract", projection)
+	if err != nil || written {
+		t.Fatalf("duplicate eligible result written=%v err=%v", written, err)
+	}
+	afterDuplicate, err := store.ReadArtifactForgeEligibility(run)
+	if err != nil || afterDuplicate.Artifact.ArtifactID != evidence.Artifact.ArtifactID || afterDuplicate.Lineage.LineageID != evidence.Lineage.LineageID {
+		t.Fatalf("duplicate changed evidence=%#v err=%v", afterDuplicate, err)
+	}
+
+	for index, basis := range []WorkbenchValueBasis{WorkbenchValueMeasured, WorkbenchValueImputed} {
+		ineligibleRun := SimopsRunRecord{RunID: "run-forge-contract-" + string(basis), ScenarioID: ArtifactForgeSchedulerDriftRecipe, Lifecycle: SimopsComplete}
+		ineligibleFrame := artifactForgeResultFrame(ineligibleRun.RunID, ineligibleRun.ScenarioID)
+		ineligibleFrame.ValueBasis = basis
+		written, err = store.SaveResultProjection("artifact-forge-contract", SimopsResultProjection{Frame: ineligibleFrame, RedpandaTopic: "artifact-forge-contract-results", RedpandaOffset: int64(index + 3)})
+		if err != nil || !written {
+			t.Fatalf("save %s result written=%v err=%v", basis, written, err)
+		}
+		ineligible, err := store.ReadArtifactForgeEligibility(ineligibleRun)
+		if err != nil || ineligible.Result != nil || ineligible.ExpectedValue != nil || ineligible.Lineage != nil || ineligible.Artifact.Integrity == ArtifactForgeIntegrityVerified {
+			t.Fatalf("%s state escaped eligibility boundary: evidence=%#v err=%v", basis, ineligible, err)
+		}
+	}
+}
+
+type focusedArtifactForgeEligibilityStore struct{}
+
+func (*focusedArtifactForgeEligibilityStore) ReadArtifactForgeEligibility(SimopsRunRecord) (ArtifactForgeEligibilityEvidence, error) {
+	return ArtifactForgeEligibilityEvidence{}, nil
+}
+
 func TestArtifactForgeCreatesDistinctRunAndAppliesOneEligibleOutcome(t *testing.T) {
 	forge, simops, workbench := newArtifactForgeTestRig(t)
 	request := artifactForgeRequestFixture()
@@ -85,6 +150,32 @@ func TestArtifactForgeAssociationFlowsThroughResultIngestAndTwinLineage(t *testi
 	}
 	if applied.Outcome.ValueID != WorkbenchSimulatedMarginValue {
 		t.Fatalf("outcome selected the wrong reordered result value: %#v", applied.Outcome)
+	}
+}
+
+func TestArtifactForgeEligibilityReadFailureRecoversWithoutParallelOutcome(t *testing.T) {
+	forge, simops, workbench := newArtifactForgeTestRig(t)
+	request := artifactForgeRequestFixture()
+	record, _, err := forge.Request(context.Background(), request, "fleet-board-client")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := simops.UpdateRunLifecycle(record.RunID, SimopsComplete); err != nil {
+		t.Fatal(err)
+	}
+	seedEligibleArtifactForgeProjection(t, workbench, record, request)
+	forge.eligibility = failingArtifactForgeEligibilityStore{err: errors.New("eligibility read unavailable")}
+	if _, _, err := forge.Request(context.Background(), request, "fleet-board-client"); err == nil {
+		t.Fatal("expected eligibility read failure")
+	}
+	pending, err := forge.store.Find(request.GameSessionID, request.IdempotencyKey)
+	if err != nil || pending.Outcome != nil || pending.Decision != ArtifactForgeAwaitingRun {
+		t.Fatalf("eligibility failure consumed outcome: record=%#v err=%v", pending, err)
+	}
+	forge.eligibility = workbench
+	recovered, _, err := forge.Request(context.Background(), request, "fleet-board-client")
+	if err != nil || recovered.Outcome == nil || recovered.Decision != ArtifactForgeOutcomeApplied || artifactForgeEventCount(recovered, ArtifactForgeEventOutcomeApplied) != 1 {
+		t.Fatalf("eligibility recovery outcome=%#v err=%v", recovered, err)
 	}
 }
 
@@ -343,6 +434,14 @@ type failArtifactForgeAssociationSaveOnce struct {
 	failed bool
 }
 
+type failingArtifactForgeEligibilityStore struct {
+	err error
+}
+
+func (s failingArtifactForgeEligibilityStore) ReadArtifactForgeEligibility(SimopsRunRecord) (ArtifactForgeEligibilityEvidence, error) {
+	return ArtifactForgeEligibilityEvidence{}, s.err
+}
+
 func (s *failArtifactForgeAssociationSaveOnce) Save(record ArtifactForgeRecord) error {
 	if record.RunID != "" && !s.failed {
 		s.failed = true
@@ -382,7 +481,12 @@ func seedEligibleArtifactForgeProjection(t *testing.T, workbench *InMemoryWorkbe
 	if _, err := workbench.SaveResultProjection("artifact-forge-test", SimopsResultProjection{Frame: result, RedpandaTopic: "simops.results.v1", RedpandaOffset: 1}); err != nil {
 		t.Fatalf("save simulated result: %v", err)
 	}
-	artifact, err := workbench.ArtifactForgeResultArtifact(record.RunID)
+	seedArtifactForgeEligibilityLineage(t, workbench, record, request, result, 2)
+}
+
+func seedArtifactForgeEligibilityLineage(t *testing.T, store artifactForgeEligibilityContractStore, record ArtifactForgeRecord, request ArtifactForgeRequest, result SimopsResultFrame, offset int64) {
+	t.Helper()
+	artifact, err := store.ArtifactForgeResultArtifact(record.RunID)
 	if err != nil {
 		t.Fatalf("read durable result artifact: %v", err)
 	}
@@ -401,7 +505,7 @@ func seedEligibleArtifactForgeProjection(t *testing.T, workbench *InMemoryWorkbe
 		Artifacts:       []TwinLineageArtifact{{ArtifactID: artifact.ArtifactID, Path: "simops://results/run_id=" + record.RunID, MediaType: artifact.MediaType}},
 	}
 	state := DigitalTwinState{SchemaVersion: WorkbenchTwinStateSchemaVersion, TwinID: WorkbenchDefaultTwinID, AsOf: time.Now().UTC(), Entities: []DigitalTwinEntity{{EntityID: request.ReactorID, DisplayName: "Reactor", Values: []DigitalTwinValue{{ValueID: result.Values[0].ValueID, Label: result.Values[0].Label, ValueBasis: WorkbenchValueSimulated, Unit: result.Values[0].Unit, Value: map[string]any{"scalar": 16.1}, Confidence: 0.71, LineageID: lineage.LineageID, SourceIDs: []string{record.RunID}}}}}}
-	if _, err := workbench.SaveTwinStateProjection("artifact-forge-test", TwinStateProjection{State: state, Lineage: []DigitalTwinValueLineage{lineage}, LineagePresent: true, RedpandaTopic: "digital-twin.state.v1", RedpandaOffset: 2}); err != nil {
+	if _, err := store.SaveTwinStateProjection("artifact-forge-test", TwinStateProjection{State: state, Lineage: []DigitalTwinValueLineage{lineage}, LineagePresent: true, RedpandaTopic: "digital-twin.state.v1", RedpandaOffset: offset}); err != nil {
 		t.Fatalf("save Twin State and Lineage: %v", err)
 	}
 }

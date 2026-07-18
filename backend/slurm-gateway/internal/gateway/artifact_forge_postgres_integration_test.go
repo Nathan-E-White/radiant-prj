@@ -85,3 +85,7 @@ func TestPostgresArtifactForgeResultArtifactCommitsWithProjection(t *testing.T) 
 		t.Fatalf("durable projection omitted verified artifact metadata: artifact=%#v err=%v", artifact, err)
 	}
 }
+
+func TestPostgresArtifactForgeEligibilityStoreContract(t *testing.T) {
+	assertArtifactForgeEligibilityStoreContract(t, openPostgresSnapshotTestStore(t))
+}

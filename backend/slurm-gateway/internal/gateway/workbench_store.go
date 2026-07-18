@@ -147,6 +147,33 @@ func (s *InMemoryWorkbenchStore) ArtifactForgeResultArtifact(runID string) (Arti
 	return artifact, nil
 }
 
+func (s *InMemoryWorkbenchStore) ReadArtifactForgeEligibility(run SimopsRunRecord) (ArtifactForgeEligibilityEvidence, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	artifact, ok := s.forgeArtifacts[run.RunID]
+	if !ok {
+		return ArtifactForgeEligibilityEvidence{}, ErrArtifactForgeResultArtifactNotFound
+	}
+	results := make([]SimopsResultFrame, 0, len(s.resultsByValue))
+	seen := make(map[string]struct{})
+	for _, frame := range s.resultsByValue {
+		key := fmt.Sprintf("%s/%s/%d", frame.RunID, frame.WorkerID, frame.Sequence)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		results = append(results, frame)
+	}
+	sort.Slice(results, func(i, j int) bool { return results[i].ProducedAt > results[j].ProducedAt })
+	return buildArtifactForgeEligibilityEvidence(run, artifact, trimResults(results, 100), func(valueID string) (DigitalTwinValueLineage, error) {
+		lineage, ok := s.lineageByValue[valueID]
+		if !ok {
+			return DigitalTwinValueLineage{}, ErrWorkbenchNotFound
+		}
+		return lineage, nil
+	})
+}
+
 func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -594,8 +621,12 @@ func (s *PostgresWorkbenchStore) SaveResultProjection(consumerName string, proje
 func (s *PostgresWorkbenchStore) ArtifactForgeResultArtifact(runID string) (ArtifactForgeResultArtifact, error) {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
+	return artifactForgeResultArtifact(ctx, s.db, runID)
+}
+
+func artifactForgeResultArtifact(ctx context.Context, queryer workbenchSQLQueryer, runID string) (ArtifactForgeResultArtifact, error) {
 	var raw []byte
-	if err := s.db.QueryRowContext(ctx, `SELECT artifact FROM artifact_forge_result_artifacts WHERE run_id = $1`, runID).Scan(&raw); err != nil {
+	if err := queryer.QueryRowContext(ctx, `SELECT artifact FROM artifact_forge_result_artifacts WHERE run_id = $1`, runID).Scan(&raw); err != nil {
 		if err == sql.ErrNoRows {
 			return ArtifactForgeResultArtifact{}, ErrArtifactForgeResultArtifactNotFound
 		}
@@ -606,6 +637,67 @@ func (s *PostgresWorkbenchStore) ArtifactForgeResultArtifact(runID string) (Arti
 		return ArtifactForgeResultArtifact{}, err
 	}
 	return artifact, nil
+}
+
+func (s *PostgresWorkbenchStore) ReadArtifactForgeEligibility(run SimopsRunRecord) (ArtifactForgeEligibilityEvidence, error) {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	tx, err := s.db.BeginTx(ctx, workbenchSnapshotTxOptions())
+	if err != nil {
+		return ArtifactForgeEligibilityEvidence{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	artifact, err := artifactForgeResultArtifact(ctx, tx, run.RunID)
+	if err != nil {
+		return ArtifactForgeEligibilityEvidence{}, err
+	}
+	results, err := latestResultFrames(ctx, tx, 100)
+	if err != nil {
+		return ArtifactForgeEligibilityEvidence{}, err
+	}
+	evidence, err := buildArtifactForgeEligibilityEvidence(run, artifact, results, func(valueID string) (DigitalTwinValueLineage, error) {
+		return lineageForValue(ctx, tx, valueID)
+	})
+	if err != nil {
+		return ArtifactForgeEligibilityEvidence{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return ArtifactForgeEligibilityEvidence{}, err
+	}
+	return evidence, nil
+}
+
+func buildArtifactForgeEligibilityEvidence(
+	run SimopsRunRecord,
+	artifact ArtifactForgeResultArtifact,
+	results []SimopsResultFrame,
+	lineageForValue func(string) (DigitalTwinValueLineage, error),
+) (ArtifactForgeEligibilityEvidence, error) {
+	evidence := ArtifactForgeEligibilityEvidence{Artifact: artifact}
+	for index := range results {
+		if validateSimopsResultFrame(run, results[index]) == nil {
+			result := results[index]
+			evidence.Result = &result
+			break
+		}
+	}
+	if evidence.Result == nil {
+		return cloneWorkbenchValue(evidence)
+	}
+	expectedValue, ok := simopsResultValueByID(evidence.Result.Values, artifact.ExpectedValue)
+	if !ok {
+		return cloneWorkbenchValue(evidence)
+	}
+	evidence.ExpectedValue = &expectedValue
+	lineage, err := lineageForValue(expectedValue.ValueID)
+	if errors.Is(err, ErrWorkbenchNotFound) {
+		return cloneWorkbenchValue(evidence)
+	}
+	if err != nil {
+		return ArtifactForgeEligibilityEvidence{}, err
+	}
+	evidence.Lineage = &lineage
+	return cloneWorkbenchValue(evidence)
 }
 
 func (s *PostgresWorkbenchStore) SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error) {
