@@ -2,19 +2,8 @@ package gateway
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 )
-
-type fleetBoardIntentRequest struct {
-	Intent             string `json:"intent"`
-	GameSessionID      string `json:"gameSessionId"`
-	ReactorID          string `json:"reactorId"`
-	SimulationJobID    string `json:"simulationJobId,omitempty"`
-	SimulationJobState string `json:"simulationJobState,omitempty"`
-	SimulationRecipe   string `json:"simulationRecipe,omitempty"`
-	IdempotencyKey     string `json:"idempotencyKey"`
-}
 
 func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request) {
 	if g.reactorTelemetry == nil && g.artifactForge == nil {
@@ -29,61 +18,19 @@ func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	if g.reactorTelemetry != nil {
-		if err := g.reactorTelemetry.ReconcileExpired(r.Context()); err != nil {
-			writeJSON(w, http.StatusBadGateway, ErrorResponse{Error: err.Error(), Code: "reactor_telemetry_expiry_cleanup_failed"})
-			return
-		}
-	}
 	defer r.Body.Close()
-	var request fleetBoardIntentRequest
+	var request FleetBoardIntentRequest
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxSubmitBodyBytes))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&request); err != nil {
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Invalid JSON payload", Code: "bad_json"})
 		return
 	}
+	if result, handled := NewFleetBoardIntentModule(g.reactorTelemetry).ExecuteDynamicReactor(r.Context(), request); handled {
+		writeJSON(w, result.Status, result.Body)
+		return
+	}
 	switch request.Intent {
-	case "registerDynamicReactor":
-		if g.reactorTelemetry == nil {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Reactor Telemetry backend disabled", Code: "reactor_telemetry_disabled"})
-			return
-		}
-		set, created, err := g.reactorTelemetry.RegisterDynamicReactor(r.Context(), RegisterDynamicReactorRequest{
-			GameSessionID: request.GameSessionID, ReactorID: request.ReactorID, IdempotencyKey: request.IdempotencyKey,
-		})
-		if err != nil {
-			status := http.StatusBadGateway
-			code := "reactor_telemetry_failed"
-			if errors.Is(err, ErrReactorTelemetrySessionCap) {
-				status = http.StatusConflict
-				code = "reactor_telemetry_cap"
-			}
-			writeJSON(w, status, ErrorResponse{Error: err.Error(), Code: code})
-			return
-		}
-		status := http.StatusOK
-		if created {
-			status = http.StatusAccepted
-		}
-		writeJSON(w, status, map[string]any{"created": created, "workerSet": set})
-	case "removeDynamicReactor":
-		if g.reactorTelemetry == nil {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Reactor Telemetry backend disabled", Code: "reactor_telemetry_disabled"})
-			return
-		}
-		set, err := g.reactorTelemetry.RemoveDynamicReactor(r.Context(), RemoveDynamicReactorRequest{
-			GameSessionID: request.GameSessionID, ReactorID: request.ReactorID, IdempotencyKey: request.IdempotencyKey,
-		})
-		if err != nil {
-			status := http.StatusBadGateway
-			if errors.Is(err, ErrReactorTelemetryNotFound) {
-				status = http.StatusNotFound
-			}
-			writeJSON(w, status, map[string]any{"error": err.Error(), "code": "reactor_telemetry_cleanup_failed", "workerSet": set})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"workerSet": set})
 	case "requestArtifactForge":
 		if g.artifactForge == nil {
 			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Artifact Forge backend disabled", Code: "artifact_forge_disabled"})
