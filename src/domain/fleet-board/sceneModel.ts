@@ -97,9 +97,9 @@ export function buildFleetBoardSceneModel(
     routes: buildFleetBoardRoutes(facilities, gameState.config.routeRange),
     reactorSlotRails: buildReactorSlotRails(gameState, facilities),
     insightTokenBadges: buildInsightTokenBadges(gameState, facilities),
-    resources: gameState.resources,
-    score: gameState.score,
-    valueBasisCounts: projection.valueBasisSummary
+    resources: { ...gameState.resources },
+    score: { ...gameState.score },
+    valueBasisCounts: { ...projection.valueBasisSummary }
   };
 }
 

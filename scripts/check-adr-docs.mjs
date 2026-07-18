@@ -73,6 +73,7 @@ if (backendGameBoundary) {
   }
 
   for (const term of [
+    "local game-session interface",
     "Simulation Job",
     "SimOps Run",
     "Resident Source",
@@ -102,6 +103,8 @@ if (backendGameBoundary) {
 const phaserDecisionPath = join(adrDir, "adr-0006.md");
 const phaserDecision = readFileSync(phaserDecisionPath, "utf8");
 requireText(phaserDecisionPath, phaserDecision, "ADR-0007", "revision link to the backend game boundary");
+requireText(phaserDecisionPath, phaserDecision, "React owns the immutable game session", "React game-session ownership");
+requireText(phaserDecisionPath, phaserDecision, "render-ready scene model", "narrow Phaser scene input");
 
 const glossaryPath = "CONTEXT.md";
 const glossary = readFileSync(glossaryPath, "utf8");

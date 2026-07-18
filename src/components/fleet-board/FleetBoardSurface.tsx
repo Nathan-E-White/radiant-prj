@@ -2,14 +2,11 @@ import { BatteryCharging, CalendarClock, Cpu, Droplets, Factory, Fuel, Gauge, Sh
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { WorkbenchProjection } from "../../domain/simulator-workbench";
 import {
-  applyFleetBoardAction,
-  buildFleetBoardSceneModel,
   buildFleetBoardWorkbenchModifiers,
-  createInitialFleetBoardState,
-  summarizeReactorSimulation,
-  summarizeFleetBoard,
+  createFleetBoardGameSession,
   type FleetBoardFacilityKind,
-  type FleetBoardState
+  type FleetBoardGameSession,
+  type FleetBoardPlayState
 } from "../../domain/fleet-board";
 import { FleetBoardCanvas } from "./FleetBoardCanvas";
 
@@ -35,45 +32,39 @@ const buildOptions: Array<{
 
 export function FleetBoardSurface({ projection }: { projection: WorkbenchProjection }) {
   const modifiers = useMemo(() => buildFleetBoardWorkbenchModifiers(projection), [projection]);
-  const [gameState, setGameState] = useState(() => createStarterState(modifiers));
+  const [gameSession, setGameSession] = useState(() => createStarterSession(modifiers));
   const [selectedReactorId, setSelectedReactorId] = useState<string | null>(null);
 
   useEffect(() => {
-    setGameState((current) => ({ ...current, modifiers }));
+    setGameSession((current) => current.acceptModifiers(modifiers));
   }, [modifiers]);
 
   const scene = useMemo(
-    () => buildFleetBoardSceneModel(projection, gameState, selectedReactorId),
-    [gameState, projection, selectedReactorId]
+    () => gameSession.sceneModel(projection, selectedReactorId),
+    [gameSession, projection, selectedReactorId]
   );
-  const summary = summarizeFleetBoard(gameState);
-  const reactors = Object.values(gameState.facilities).filter((facility) => facility.kind === "reactor");
+  const playState = gameSession.playState();
+  const summary = playState.summary;
+  const reactors = playState.facilities.filter((facility) => facility.kind === "reactor");
   const selectedReactorTokenCount = selectedReactorId
     ? (summary.simulationContainerTokensByReactorId[selectedReactorId] ?? 0)
     : 0;
   const selectedReactorSimulation = selectedReactorId
-    ? summarizeReactorSimulation(gameState, selectedReactorId)
+    ? playState.reactorSimulation(selectedReactorId)
     : null;
 
   const placeFacility = useCallback((facilityKind: FleetBoardFacilityKind, x: number, y: number) => {
-    setGameState((current) =>
-      applyFleetBoardAction(current, {
-        type: "placeFacility",
-        facilityId: `${facilityKind}-${Object.keys(current.facilities).length + 1}`,
-        facilityKind,
-        position: { x, y }
-      })
-    );
+    setGameSession((current) => current.placeFacility(facilityKind, { x, y }));
   }, []);
 
   const tickDay = useCallback(() => {
-    setGameState((current) => applyFleetBoardAction(current, { type: "tickDay" }));
+    setGameSession((current) => current.advanceDay());
   }, []);
 
   const refuelFirstReactor = useCallback(() => {
-    setGameState((current) => {
-      const reactor = Object.values(current.facilities).find((facility) => facility.kind === "reactor");
-      return reactor ? applyFleetBoardAction(current, { type: "refuelFacility", facilityId: reactor.id }) : current;
+    setGameSession((current) => {
+      const reactor = current.playState().facilities.find((facility) => facility.kind === "reactor");
+      return reactor ? current.refuelReactor(reactor.id) : current;
     });
   }, []);
 
@@ -81,18 +72,14 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
     if (!selectedReactorId) {
       return;
     }
-    setGameState((current) =>
-      applyFleetBoardAction(current, { type: "buySimulationContainerToken", reactorId: selectedReactorId })
-    );
+    setGameSession((current) => current.buySimulationContainerToken(selectedReactorId));
   }, [selectedReactorId]);
 
   const queueSimulationJob = useCallback(() => {
     if (!selectedReactorId) {
       return;
     }
-    setGameState((current) =>
-      applyFleetBoardAction(current, { type: "queueSimulationJob", reactorId: selectedReactorId })
-    );
+    setGameSession((current) => current.queueSimulationJob(selectedReactorId));
   }, [selectedReactorId]);
 
   return (
@@ -104,7 +91,7 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
         </div>
         <div className="fleet-board-score" aria-label="Fleet Board score">
           <span>
-            <CalendarClock size={16} /> Day {summary.day}/30
+            <CalendarClock size={16} /> Day {summary.day}/{playState.scenarioDays}
           </span>
           <strong>{summary.score} pts</strong>
         </div>
@@ -125,7 +112,7 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
           <Shield size={15} /> {summary.resilienceCredits} resilience
         </span>
         <span className={summary.cash < 0 ? "fleet-board-negative" : ""}>${summary.cash}</span>
-        <span data-testid="fleet-board-facility-count">{Object.keys(gameState.facilities).length} facilities</span>
+        <span data-testid="fleet-board-facility-count">{playState.facilities.length} facilities</span>
         <span data-testid="fleet-board-simulation-budget" aria-live="polite">
           <Cpu size={15} /> {summary.simulationBudget} Simulation Budget
         </span>
@@ -219,7 +206,7 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
 
         <aside className="fleet-board-events" aria-label="Fleet Board event log">
           <h4>Event Log</h4>
-          {gameState.events.slice(-8).map((event) => (
+          {playState.events.slice(-8).map((event) => (
             <article key={event.id}>
               <span>Day {event.day}</span>
               <strong>{event.kind}</strong>
@@ -233,7 +220,7 @@ export function FleetBoardSurface({ projection }: { projection: WorkbenchProject
 }
 
 function formatReactorSimulationSummary(
-  simulation: ReturnType<typeof summarizeReactorSimulation>
+  simulation: ReturnType<FleetBoardPlayState["reactorSimulation"]>
 ): string {
   const idle = simulation.slots.filter((slot) => slot.status === "idle").length;
   const queued = simulation.slots.filter((slot) => slot.status === "queued").length;
@@ -259,15 +246,12 @@ function formatReactorSimulationSummary(
   return parts.join(" · ");
 }
 
-function createStarterState(modifiers: ReturnType<typeof buildFleetBoardWorkbenchModifiers>): FleetBoardState {
-  let state = createInitialFleetBoardState({ seed: `fleet-board-${modifiers.selectedUnitId}`, modifiers });
+function createStarterSession(
+  modifiers: ReturnType<typeof buildFleetBoardWorkbenchModifiers>
+): FleetBoardGameSession {
+  let session = createFleetBoardGameSession({ seed: `fleet-board-${modifiers.selectedUnitId}`, modifiers });
   for (const facility of starterFacilities) {
-    state = applyFleetBoardAction(state, {
-      type: "placeFacility",
-      facilityId: `${facility.kind}-${Object.keys(state.facilities).length + 1}`,
-      facilityKind: facility.kind,
-      position: { x: facility.x, y: facility.y }
-    });
+    session = session.placeFacility(facility.kind, { x: facility.x, y: facility.y });
   }
-  return state;
+  return session;
 }
