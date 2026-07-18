@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"testing"
 )
@@ -72,6 +73,69 @@ func TestFleetBoardDynamicReactorIntentModuleTreatsTypedNilManagerAsUnavailable(
 	result, handled := module.ExecuteDynamicReactor(context.Background(), validDynamicReactorIntent("registerDynamicReactor"))
 	if !handled || result.Status != http.StatusNotFound {
 		t.Fatalf("typed nil manager was not classified as unavailable: handled=%t result=%#v", handled, result)
+	}
+}
+
+func TestFleetBoardDynamicReactorIntentModuleRecoversRegistrationAfterManagerRestart(t *testing.T) {
+	store := NewInMemoryReactorTelemetryStore()
+	failedRuntime := &recordingReactorTelemetryRuntime{startErr: errors.New("runtime unavailable")}
+	failedManager := NewReactorTelemetryManager(DefaultReactorTelemetryConfig(), store, failedRuntime, nil)
+	request := validDynamicReactorIntent("registerDynamicReactor")
+
+	failed, handled := NewFleetBoardIntentModule(failedManager).ExecuteDynamicReactor(context.Background(), request)
+	if !handled || failed.Status != http.StatusBadGateway {
+		t.Fatalf("expected visible failed registration, handled=%t result=%#v", handled, failed)
+	}
+	failedSet, err := store.GetWorkerSet(request.GameSessionID, request.ReactorID)
+	if err != nil || failedSet.Lifecycle != ReactorTelemetryLaunchFailed {
+		t.Fatalf("failed registration was not recoverable: set=%#v err=%v", failedSet, err)
+	}
+
+	restartedRuntime := &recordingReactorTelemetryRuntime{}
+	restartedManager := NewReactorTelemetryManager(DefaultReactorTelemetryConfig(), store, restartedRuntime, nil)
+	recovered, handled := NewFleetBoardIntentModule(restartedManager).ExecuteDynamicReactor(context.Background(), request)
+	if !handled || recovered.Status != http.StatusOK {
+		t.Fatalf("expected recovered registration, handled=%t result=%#v", handled, recovered)
+	}
+	outcome := recovered.Body.(RegisterDynamicReactorOutcome)
+	if outcome.Created || outcome.WorkerSet.SetID != failedSet.SetID || outcome.WorkerSet.Lifecycle != ReactorTelemetryActive {
+		t.Fatalf("restart created a parallel registration lifecycle: %#v", outcome)
+	}
+}
+
+func TestFleetBoardDynamicReactorIntentModuleRecoversRemovalAfterManagerRestart(t *testing.T) {
+	store := NewInMemoryReactorTelemetryStore()
+	failedRuntime := &recordingReactorTelemetryRuntime{stopErr: context.DeadlineExceeded}
+	manager := NewReactorTelemetryManager(DefaultReactorTelemetryConfig(), store, failedRuntime, nil)
+	module := NewFleetBoardIntentModule(manager)
+	registered, _ := module.ExecuteDynamicReactor(context.Background(), validDynamicReactorIntent("registerDynamicReactor"))
+	set := registered.Body.(RegisterDynamicReactorOutcome).WorkerSet
+	remove := FleetBoardIntentRequest{
+		Intent: "removeDynamicReactor", GameSessionID: set.GameSessionID, ReactorID: set.ReactorID, IdempotencyKey: "remove-after-restart",
+	}
+
+	failed, handled := module.ExecuteDynamicReactor(context.Background(), remove)
+	if !handled || failed.Status != http.StatusBadGateway {
+		t.Fatalf("expected visible failed cleanup, handled=%t result=%#v", handled, failed)
+	}
+	failedSet, err := store.GetWorkerSet(set.GameSessionID, set.ReactorID)
+	if err != nil || !failedSet.CredentialsRevoked || failedSet.Lifecycle != ReactorTelemetryCleanupFailed {
+		t.Fatalf("failed cleanup lost retry state: set=%#v err=%v", failedSet, err)
+	}
+
+	restartedRuntime := &recordingReactorTelemetryRuntime{}
+	restartedManager := NewReactorTelemetryManager(DefaultReactorTelemetryConfig(), store, restartedRuntime, nil)
+	restartedModule := NewFleetBoardIntentModule(restartedManager)
+	if result := restartedModule.ReconcileDynamicReactors(context.Background()); result != nil {
+		t.Fatalf("restart cleanup reconciliation failed: %#v", result)
+	}
+	recovered, handled := restartedModule.ExecuteDynamicReactor(context.Background(), remove)
+	if !handled || recovered.Status != http.StatusOK {
+		t.Fatalf("expected recovered removal, handled=%t result=%#v", handled, recovered)
+	}
+	outcome := recovered.Body.(RemoveDynamicReactorOutcome)
+	if outcome.WorkerSet.SetID != set.SetID || outcome.WorkerSet.Lifecycle != ReactorTelemetryRemoved || len(restartedRuntime.stops) != 1 {
+		t.Fatalf("restart created a parallel removal lifecycle: outcome=%#v stops=%#v", outcome, restartedRuntime.stops)
 	}
 }
 
