@@ -9,6 +9,111 @@ import (
 	"time"
 )
 
+func TestTwinStatePublisherDependsOnlyOnPublicationPersistence(t *testing.T) {
+	store := &focusedTwinStatePublicationStore{}
+	events := &twinPublicationEventLog{}
+	publisher := NewTwinStatePublisher(store, events)
+	publication := twinPublicationFixture("scada.telemetry.v1", 0, 5)
+
+	outcome, err := publisher.Publish(context.Background(), publication)
+	if err != nil || !outcome.Persisted || !outcome.Delivered || store.saved.PublicationID != publication.PublicationID {
+		t.Fatalf("focused persistence outcome=%#v saved=%#v err=%v", outcome, store.saved, err)
+	}
+	if err := publisher.Acknowledge(publication.Source); err != nil || !store.saved.Acknowledged {
+		t.Fatalf("focused acknowledgement saved=%#v err=%v", store.saved, err)
+	}
+}
+
+func TestInMemoryTwinStatePublicationStoreContract(t *testing.T) {
+	assertTwinStatePublicationStoreContract(t, NewInMemoryWorkbenchStore())
+}
+
+type twinStatePublicationContractStore interface {
+	TwinStatePublicationStore
+	Snapshot() (WorkbenchSnapshot, error)
+}
+
+type failingTwinStatePublicationStore struct {
+	TwinStatePublicationStore
+	err error
+}
+
+func (s failingTwinStatePublicationStore) SaveTwinStatePublication(TwinStatePublication) (bool, error) {
+	return false, s.err
+}
+
+func assertTwinStatePublicationStoreContract(t *testing.T, store twinStatePublicationContractStore) {
+	t.Helper()
+	persistenceFailure := errors.New("publication persistence unavailable")
+	failedEvents := &twinPublicationEventLog{}
+	failedPublication := twinPublicationFixture("simops.results.v1", 2, 40)
+	failedPublisher := NewTwinStatePublisher(
+		failingTwinStatePublicationStore{TwinStatePublicationStore: store, err: persistenceFailure},
+		failedEvents,
+	)
+	if _, err := failedPublisher.Publish(context.Background(), failedPublication); !errors.Is(err, persistenceFailure) {
+		t.Fatalf("persistence failure err=%v", err)
+	}
+	assertTwinStatePublicationGeneration(t, store, 0)
+	if failedEvents.calls != 0 {
+		t.Fatalf("persistence failure delivered %d events", failedEvents.calls)
+	}
+
+	successEvents := &twinPublicationEventLog{}
+	successPublication := twinPublicationFixture("simops.results.v1", 2, 41)
+	successPublisher := NewTwinStatePublisher(store, successEvents)
+	outcome, err := successPublisher.Publish(context.Background(), successPublication)
+	if err != nil || !outcome.Persisted || !outcome.Delivered || outcome.Duplicate {
+		t.Fatalf("successful publication outcome=%#v err=%v", outcome, err)
+	}
+	assertTwinStatePublicationGeneration(t, store, 1)
+	outcome, err = successPublisher.Publish(context.Background(), successPublication)
+	if err != nil || outcome.Persisted || !outcome.Delivered || !outcome.Duplicate {
+		t.Fatalf("duplicate publication outcome=%#v err=%v", outcome, err)
+	}
+	assertTwinStatePublicationGeneration(t, store, 1)
+
+	recoveryEvents := &twinPublicationEventLog{err: errors.New("ambiguous event delivery")}
+	recoveryPublication := twinPublicationFixture("simops.results.v1", 2, 42)
+	wantAsOf := recoveryPublication.State.AsOf
+	wantStep := recoveryPublication.Lineage[0].ProcessingSteps[0]
+	recoveryPublisher := NewTwinStatePublisher(store, recoveryEvents)
+	outcome, err = recoveryPublisher.Publish(context.Background(), recoveryPublication)
+	var publicationErr *TwinStatePublicationError
+	if !errors.As(err, &publicationErr) || publicationErr.Stage != TwinStatePublicationEventDelivery || !outcome.Persisted || outcome.Delivered {
+		t.Fatalf("event failure outcome=%#v err=%v", outcome, err)
+	}
+	assertTwinStatePublicationGeneration(t, store, 2)
+	recoveryPublication.State.AsOf = recoveryPublication.State.AsOf.Add(time.Hour)
+	recoveryPublication.Lineage[0].ProcessingSteps[0] = "caller mutation"
+	recoveryEvents.err = nil
+	outcome, found, err := NewTwinStatePublisher(store, recoveryEvents).Resume(context.Background(), recoveryPublication.Source)
+	if err != nil || !found || !outcome.Duplicate || !outcome.Delivered {
+		t.Fatalf("resume outcome=%#v found=%v err=%v", outcome, found, err)
+	}
+	assertTwinStatePublicationGeneration(t, store, 2)
+	canonical, err := store.GetTwinStatePublication(recoveryPublication.PublicationID)
+	if err != nil || !canonical.State.AsOf.Equal(wantAsOf) || canonical.Lineage[0].ProcessingSteps[0] != wantStep {
+		t.Fatalf("load canonical publication=%#v err=%v", canonical, err)
+	}
+	if err := store.AcknowledgeTwinStatePublication(recoveryPublication.PublicationID); err != nil {
+		t.Fatalf("acknowledge publication: %v", err)
+	}
+	assertTwinStatePublicationGeneration(t, store, 2)
+	tombstone, err := store.GetTwinStatePublication(recoveryPublication.PublicationID)
+	if err != nil || !tombstone.Acknowledged || tombstone.State.SchemaVersion != "" || len(tombstone.Lineage) != 0 {
+		t.Fatalf("load acknowledged publication=%#v err=%v", tombstone, err)
+	}
+}
+
+func assertTwinStatePublicationGeneration(t *testing.T, store twinStatePublicationContractStore, want uint64) {
+	t.Helper()
+	snapshot, err := store.Snapshot()
+	if err != nil || snapshot.Generation != want || snapshot.State.SnapshotGeneration != snapshot.Generation {
+		t.Fatalf("Snapshot generation=%d stateGeneration=%d want=%d err=%v", snapshot.Generation, snapshot.State.SnapshotGeneration, want, err)
+	}
+}
+
 func TestTwinStatePublisherPersistsBeforeEventDelivery(t *testing.T) {
 	steps := []string{}
 	store := &twinPublicationStore{WorkbenchStore: NewInMemoryWorkbenchStore(), steps: &steps}
@@ -418,12 +523,57 @@ type twinPublicationStore struct {
 	ackErr     error
 }
 
-func (s *twinPublicationStore) SaveTwinStateProjection(_ string, projection TwinStateProjection) (bool, error) {
+type focusedTwinStatePublicationStore struct {
+	saved TwinStatePublication
+}
+
+func (s *focusedTwinStatePublicationStore) SaveTwinStatePublication(publication TwinStatePublication) (bool, error) {
+	if s.saved.PublicationID == publication.PublicationID {
+		return false, nil
+	}
+	owned, err := cloneWorkbenchValue(publication)
+	if err != nil {
+		return false, err
+	}
+	s.saved = owned
+	return true, nil
+}
+
+func (s *focusedTwinStatePublicationStore) GetTwinStatePublication(publicationID string) (TwinStatePublication, error) {
+	if s.saved.PublicationID != publicationID {
+		return TwinStatePublication{}, ErrWorkbenchNotFound
+	}
+	return cloneWorkbenchValue(s.saved)
+}
+
+func (s *focusedTwinStatePublicationStore) AcknowledgeTwinStatePublication(publicationID string) error {
+	if s.saved.PublicationID != publicationID {
+		return ErrWorkbenchNotFound
+	}
+	s.saved = TwinStatePublication{
+		PublicationID:  s.saved.PublicationID,
+		Source:         s.saved.Source,
+		TwinStateTopic: s.saved.TwinStateTopic,
+		Acknowledged:   true,
+	}
+	return nil
+}
+
+func (s *twinPublicationStore) SaveTwinStatePublication(publication TwinStatePublication) (bool, error) {
 	if s.steps != nil {
 		*s.steps = append(*s.steps, "persist")
 	}
 	if s.err != nil {
 		return false, s.err
+	}
+	projection, err := ProjectTwinStatePublication(
+		publication.TwinStateTopic,
+		publication.Source.Partition,
+		publication.Source.Offset,
+		publication,
+	)
+	if err != nil {
+		return false, err
 	}
 	if s.seen == nil {
 		s.seen = make(map[string]struct{})

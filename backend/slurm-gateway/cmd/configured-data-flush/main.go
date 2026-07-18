@@ -40,7 +40,9 @@ func run(args []string, output io.Writer) error {
 	defer repository.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return execute(ctx, gateway.NewConfiguredDataFlushService(repository), *applyPlan, output)
+	service := gateway.NewConfiguredDataFlushService(repository)
+	sessions := gateway.NewFleetBoardIntentModuleWithSessionLifecycle(nil, nil, gateway.FleetBoardSessionLifecycle{ConfiguredFlush: service})
+	return execute(ctx, sessions, *applyPlan, output)
 }
 
 type configuredDataFlushExecutor interface {

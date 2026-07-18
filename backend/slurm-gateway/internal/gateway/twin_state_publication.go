@@ -67,17 +67,39 @@ type TwinStatePublisher interface {
 	Acknowledge(WorkbenchProjectionPosition) error
 }
 
-type orderedTwinStatePublisher struct {
-	store    WorkbenchStore
-	eventLog WorkbenchEventLog
+type TwinStatePublicationStore interface {
+	SaveTwinStatePublication(TwinStatePublication) (bool, error)
+	GetTwinStatePublication(string) (TwinStatePublication, error)
+	AcknowledgeTwinStatePublication(string) error
 }
 
-func NewTwinStatePublisher(store WorkbenchStore, eventLog WorkbenchEventLog) TwinStatePublisher {
+type TwinStatePublicationEventLog interface {
+	PublishTwinState(context.Context, TwinStatePublication) error
+}
+
+type localTwinStatePublicationEventLog struct {
+	store TwinStatePublicationStore
+}
+
+func (l localTwinStatePublicationEventLog) PublishTwinState(ctx context.Context, publication TwinStatePublication) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	_, err := l.store.SaveTwinStatePublication(publication)
+	return err
+}
+
+type orderedTwinStatePublisher struct {
+	store    TwinStatePublicationStore
+	eventLog TwinStatePublicationEventLog
+}
+
+func NewTwinStatePublisher(store TwinStatePublicationStore, eventLog TwinStatePublicationEventLog) TwinStatePublisher {
 	if store == nil {
 		store = NewInMemoryWorkbenchStore()
 	}
 	if eventLog == nil {
-		eventLog = &MemoryWorkbenchEventLog{Store: store}
+		eventLog = localTwinStatePublicationEventLog{store: store}
 	}
 	return &orderedTwinStatePublisher{store: store, eventLog: eventLog}
 }
@@ -133,11 +155,7 @@ func (p *orderedTwinStatePublisher) Publish(ctx context.Context, publication Twi
 	if err := validateTwinStatePublication(publication); err != nil {
 		return outcome, &TwinStatePublicationError{Stage: TwinStatePublicationPersistence, Outcome: outcome, Cause: err}
 	}
-	projection, err := ProjectTwinStatePublication(publication.TwinStateTopic, publication.Source.Partition, publication.Source.Offset, publication)
-	if err != nil {
-		return outcome, &TwinStatePublicationError{Stage: TwinStatePublicationPersistence, Outcome: outcome, Cause: err}
-	}
-	written, err := p.store.SaveTwinStateProjection("", projection)
+	written, err := p.store.SaveTwinStatePublication(publication)
 	if err != nil {
 		return outcome, &TwinStatePublicationError{Stage: TwinStatePublicationPersistence, Outcome: outcome, Cause: err}
 	}

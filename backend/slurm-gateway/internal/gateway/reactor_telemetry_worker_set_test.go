@@ -410,7 +410,7 @@ func TestReactorTelemetryPeriodicReconcilePrunesMeasuredStateWithoutRead(t *test
 	}
 	app := NewGateway(DefaultConfig(), nil, nil, nil)
 	app.workbench = controller
-	if err := app.ReconcileExpiredReactorTelemetry(context.Background()); err != nil {
+	if err := app.ReconcileFleetBoardSessions(context.Background()); err != nil {
 		t.Fatalf("periodic retention reconcile: %v", err)
 	}
 	frames, err := store.LatestMeasuredFrames(100)

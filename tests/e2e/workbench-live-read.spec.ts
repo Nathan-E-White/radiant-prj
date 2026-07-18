@@ -1,20 +1,22 @@
 import { expect, test } from "@playwright/test";
 
-test("Workbench fallback is explicit and recovers by replacing the whole Snapshot", async ({ page }) => {
+test("Workbench cadence recovers fixture and stale states by replacing the whole Snapshot", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-07-18T12:00:00Z") });
   const requestHeaders: Array<Record<string, string>> = [];
   let serveLive = false;
+  let generation = 4;
   await page.route("**/api/simulator-workbench/snapshot", async (route) => {
     requestHeaders.push(route.request().headers());
     if (!serveLive) {
       await route.fulfill({ status: 503, body: "unavailable" });
       return;
     }
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(liveSnapshot()) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(liveSnapshot(generation)) });
   });
 
   await page.goto("/");
   await page.getByRole("button", { name: "Status Workbench" }).click();
-  await expect(page.getByText("Fixture fallback")).toBeVisible();
+  await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();
   await expect(page.getByText(/explicit local-demo fixture Snapshot/)).toBeVisible();
   const health = page.getByRole("region", { name: "Simulation health cards" });
   await expect(health.getByText("2/2 complete", { exact: true })).toBeVisible();
@@ -24,8 +26,34 @@ test("Workbench fallback is explicit and recovers by replacing the whole Snapsho
   await fixtureMeasured.getByRole("button", { name: /Electric Output/ }).click();
   await expect(fixtureMeasured.getByRole("button", { name: /Electric Output/ })).toHaveAttribute("aria-pressed", "true");
 
-  serveLive = true;
+  const measuredValue = page.getByRole("button", { name: /Flux Axial Low/ });
+  await measuredValue.click();
+  await expect(measuredValue).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Bottom Explanation Rail").locator(".simwb-count")).toContainText("measured");
+
+  const simulatedValue = page.getByRole("button", { name: /Simulated Forecast Margin/ });
+  await simulatedValue.click();
+  await expect(simulatedValue).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Bottom Explanation Rail").locator(".simwb-count")).toContainText("simulated");
+
+  const missingLineageValue = page.getByRole("button", { name: /Unmeasured Fuel\/Block Temperature Estimate/ });
+  await missingLineageValue.click();
+  await expect(missingLineageValue).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText(/Lineage pending for VAL-KAL-01-IMPUTED-BLOCK-TEMP/)).toBeVisible();
+
+  const unit01 = page.locator('button[data-unit-id="KAL-01"]');
+  const unit02 = page.locator('button[data-unit-id="KAL-02"]');
+  await unit02.click();
+  await expect(unit02).toHaveAttribute("aria-pressed", "true");
+  await expect(unit01).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("Commercial Display Basis")).toBeVisible();
+
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Retaining the explicit whole-Snapshot fixture fallback/)).toBeVisible();
+
+  serveLive = true;
+  await page.clock.fastForward(10_000);
   await expect(page.getByText("Live generation 4")).toBeVisible();
   await expect(page.getByText(/accepted atomically/)).toBeVisible();
   await expect(page.getByText("Measured State").first()).toBeVisible();

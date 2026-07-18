@@ -43,7 +43,7 @@ export function StatusWorkbenchTab({
   projection: WorkbenchProjection | null;
   readState: WorkbenchReadState;
   onRefresh: () => void;
-  onSelectUnit: (unitId: string, commercialBasisId: string) => void;
+  onSelectUnit: (unitId: string) => void;
   onSelectValue: (valueId: string) => void;
   computeQueue: ReactNode;
   selectedJob: ComputeJob;

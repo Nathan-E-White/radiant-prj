@@ -89,6 +89,8 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(markup).toContain("Refresh live Snapshot");
     expect(markup).toContain("KAL-01");
     expect(markup).toContain("KAL-05");
+    expect(markup).toMatch(/aria-pressed="true"[^>]*data-unit-id="KAL-01"/);
+    expect(markup).toMatch(/aria-pressed="false"[^>]*data-unit-id="KAL-02"/);
     expect(markup).toContain("Fleet Board");
     expect(markup).toContain("30-day contract sprint");
     expect(markup).toContain("TRISO Supply");
