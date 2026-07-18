@@ -47,5 +47,6 @@ export {
   createBrowserWorkbenchSnapshotSession,
   createWorkbenchSnapshotSession,
   type WorkbenchSnapshotSession,
+  type WorkbenchSnapshotSessionResult,
   type WorkbenchSnapshotSessionOptions
 } from "./workbenchSnapshotSession";

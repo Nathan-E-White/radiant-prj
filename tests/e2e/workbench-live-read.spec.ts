@@ -18,6 +18,11 @@ test("Workbench fallback is explicit and recovers by replacing the whole Snapsho
   await expect(page.getByText(/explicit local-demo fixture Snapshot/)).toBeVisible();
   const health = page.getByRole("region", { name: "Simulation health cards" });
   await expect(health.getByText("2/2 complete", { exact: true })).toBeVisible();
+  await page.locator('button[data-unit-id="KAL-03"]').click();
+  await expect(page.getByRole("heading", { name: "Kaleidos Unit 03" })).toBeVisible();
+  const fixtureMeasured = page.getByRole("region", { name: "Measured State" });
+  await fixtureMeasured.getByRole("button", { name: /Electric Output/ }).click();
+  await expect(fixtureMeasured.getByRole("button", { name: /Electric Output/ })).toHaveAttribute("aria-pressed", "true");
 
   serveLive = true;
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
@@ -26,6 +31,11 @@ test("Workbench fallback is explicit and recovers by replacing the whole Snapsho
   await expect(page.getByText("Measured State").first()).toBeVisible();
   await expect(page.getByText("Imputed State").first()).toBeVisible();
   await expect(page.getByText("Simulated Result State").first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "reactor-01" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Imputed State" })
+    .getByText("Retained generation projection marker", { exact: true })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Imputed State" })
+    .getByRole("button", { name: /Retained generation projection marker/ })).toHaveAttribute("aria-pressed", "true");
   await expect(health.getByText("0/1 complete", { exact: true })).toBeVisible();
   await expect(health.getByText("1/1 nominal", { exact: true })).toBeVisible();
   await expect(health.getByText("committed", { exact: true })).toBeVisible();
@@ -56,6 +66,14 @@ test("Workbench retains stale live data, rejects generation regression, and reco
   const imputedState = page.getByRole("region", { name: "Imputed State" });
   const retainedProjection = imputedState.getByText("Retained generation projection marker", { exact: true });
   await expect(retainedProjection).toBeVisible();
+  const selectedUnit = page.locator('button[data-unit-id="reactor-01"]');
+  await selectedUnit.click();
+  await expect(selectedUnit).toHaveAttribute("aria-pressed", "true");
+  const simulatedState = page.getByRole("region", { name: "Simulated Result State" });
+  const selectedForecast = simulatedState.getByRole("button", { name: /Forecast margin/ });
+  await selectedForecast.click();
+  await expect(selectedForecast).toHaveAttribute("aria-pressed", "true");
+  await expect(selectedUnit).toHaveAttribute("aria-pressed", "true");
   const health = page.getByRole("region", { name: "Simulation health cards" });
   await expect(health.getByText("0/1 complete", { exact: true })).toBeVisible();
   await expect(health.getByText("committed", { exact: true })).toBeVisible();
@@ -67,6 +85,7 @@ test("Workbench retains stale live data, rejects generation regression, and reco
   await expect(health.getByText("0/1 complete", { exact: true })).toBeVisible();
   await expect(health.getByText("committed", { exact: true })).toBeVisible();
   await expect(retainedProjection).toBeVisible();
+  await expect(selectedForecast).toHaveAttribute("aria-pressed", "true");
 
   unavailable = false;
   generation = 7;
@@ -84,6 +103,8 @@ test("Workbench retains stale live data, rejects generation regression, and reco
   await expect(retainedProjection).not.toBeVisible();
   await expect(health.getByText("0/1 complete", { exact: true })).not.toBeVisible();
   await expect(health.getByText("committed", { exact: true })).not.toBeVisible();
+  await expect(simulatedState.getByRole("button", { name: /Forecast margin/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(selectedUnit).toHaveAttribute("aria-pressed", "true");
 });
 
 test("Workbench unmount cancels its pending Snapshot request", async ({ page }) => {

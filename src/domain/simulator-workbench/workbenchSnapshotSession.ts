@@ -1,5 +1,11 @@
 import { loadFixtureWorkbenchData } from "./fixtureAdapter";
 import {
+  buildWorkbenchProjection,
+  type WorkbenchProjection,
+  type WorkbenchProjectionInput,
+  type WorkbenchSelection
+} from "./projection";
+import {
   createHttpWorkbenchDataAdapter,
   initialWorkbenchReadState,
   refreshWorkbenchReadState,
@@ -9,23 +15,37 @@ import {
 } from "./liveWorkbench";
 
 export type WorkbenchSnapshotSession = {
-  getState(): WorkbenchReadState;
-  subscribe(listener: (state: WorkbenchReadState) => void): () => void;
+  getResult(): WorkbenchSnapshotSessionResult;
+  subscribe(listener: (result: WorkbenchSnapshotSessionResult) => void): () => void;
   start(): Promise<void>;
   refresh(): Promise<void>;
   dispose(): void;
 };
 
+export type WorkbenchSnapshotSessionResult = {
+  readState: WorkbenchReadState;
+  projection: WorkbenchProjection | null;
+  selection: WorkbenchSelection;
+  refresh(): Promise<void>;
+  selectUnit(unitId: string, commercialBasisId?: string): void;
+  selectValue(valueId: string): void;
+  selectCommercialBasis(commercialBasisId?: string): void;
+};
+
 export type WorkbenchSnapshotSessionOptions = Omit<WorkbenchRefreshOptions, "signal"> & {
+  initialSelection?: WorkbenchSelection;
   refreshIntervalMs: number;
 };
 
 const DEFAULT_REFRESH_INTERVAL_MS = 10_000;
 
-export function createBrowserWorkbenchSnapshotSession(): WorkbenchSnapshotSession {
+export function createBrowserWorkbenchSnapshotSession(
+  initialSelection: WorkbenchSelection = {}
+): WorkbenchSnapshotSession {
   return createWorkbenchSnapshotSession(createHttpWorkbenchDataAdapter(), {
     allowFixtureFallback: import.meta.env.VITE_WORKBENCH_ALLOW_FIXTURE_FALLBACK === "true",
     fixtureInput: loadFixtureWorkbenchData(),
+    initialSelection,
     refreshIntervalMs: DEFAULT_REFRESH_INTERVAL_MS
   });
 }
@@ -40,16 +60,67 @@ export function createWorkbenchSnapshotSession(
   let timer: ReturnType<typeof setTimeout> | null = null;
   let running = false;
   let hasSettledRead = false;
-  const listeners = new Set<(state: WorkbenchReadState) => void>();
+  let selection = options.initialSelection ?? {};
+  let projection: WorkbenchProjection | null = null;
+  let result: WorkbenchSnapshotSessionResult;
+  const listeners = new Set<(result: WorkbenchSnapshotSessionResult) => void>();
+
+  function updateResult(): void {
+    result = {
+      readState: state,
+      projection,
+      selection,
+      refresh,
+      selectUnit,
+      selectValue,
+      selectCommercialBasis
+    };
+  }
 
   function publish(next: WorkbenchReadState): void {
     state = next;
-    listeners.forEach((listener) => listener(state));
+    updateResult();
+    listeners.forEach((listener) => listener(result));
   }
 
   function settle(next: WorkbenchReadState): void {
+    if (next.model) {
+      projection = buildWorkbenchProjection(next.model.input, selection);
+      selection = reconcileSelection(next.model.input, selection, projection);
+    }
     settledState = next;
     publish(next);
+  }
+
+  function applySelection(next: WorkbenchSelection): void {
+    selection = next;
+    if (state.model) {
+      projection = buildWorkbenchProjection(state.model.input, selection);
+      selection = reconcileSelection(state.model.input, selection, projection);
+    }
+    publish(state);
+  }
+
+  function selectUnit(unitId: string, commercialBasisId?: string): void {
+    applySelection({
+      selectedUnitId: unitId,
+      ...(commercialBasisId ? { selectedCommercialBasisId: commercialBasisId } : {})
+    });
+  }
+
+  function selectValue(valueId: string): void {
+    applySelection({ ...selection, selectedValueId: valueId });
+  }
+
+  function selectCommercialBasis(commercialBasisId?: string): void {
+    const next = { ...selection };
+    if (commercialBasisId) next.selectedCommercialBasisId = commercialBasisId;
+    else delete next.selectedCommercialBasisId;
+    applySelection(next);
+  }
+
+  function getResult(): WorkbenchSnapshotSessionResult {
+    return result;
   }
 
   function clearScheduledRefresh(): void {
@@ -94,13 +165,13 @@ export function createWorkbenchSnapshotSession(
     scheduleRefresh();
   }
 
+  updateResult();
+
   return {
-    getState() {
-      return state;
-    },
+    getResult,
     subscribe(listener) {
       listeners.add(listener);
-      listener(state);
+      listener(result);
       return () => listeners.delete(listener);
     },
     async start() {
@@ -115,6 +186,27 @@ export function createWorkbenchSnapshotSession(
       active?.abort();
       active = null;
       state = settledState;
+      updateResult();
     }
+  };
+}
+
+function reconcileSelection(
+  input: WorkbenchProjectionInput,
+  requested: WorkbenchSelection,
+  projection: WorkbenchProjection
+): WorkbenchSelection {
+  const selectedUnitId = projection.selectedUnit.unitId;
+  const selectedValueId = projection.selectedValue?.valueId;
+  const commercialBasisIsValid = requested.selectedCommercialBasisId
+    ? input.commercialDisplayBasis.some(
+        (basis) => basis.basisId === requested.selectedCommercialBasisId && basis.unitId === selectedUnitId
+      )
+    : false;
+
+  return {
+    selectedUnitId,
+    ...(selectedValueId ? { selectedValueId } : {}),
+    ...(commercialBasisIsValid ? { selectedCommercialBasisId: requested.selectedCommercialBasisId } : {})
   };
 }

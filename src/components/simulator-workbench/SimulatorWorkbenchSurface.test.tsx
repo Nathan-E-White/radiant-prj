@@ -1,12 +1,71 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { fixtures } from "../../domain/readiness";
-import { buildWorkbenchProjection, loadFixtureWorkbenchData } from "../../domain/simulator-workbench";
+import {
+  buildWorkbenchProjection,
+  createWorkbenchSnapshotSession,
+  loadFixtureWorkbenchData,
+  WorkbenchReadError
+} from "../../domain/simulator-workbench";
 import type { WorkbenchReadState } from "../../domain/simulator-workbench";
 import type { SimulationHealthPanelModel } from "./SimulationHealthPanel";
 import { SimulatorWorkbenchSurface } from "./SimulatorWorkbenchSurface";
 
 describe("SimulatorWorkbenchSurface", () => {
+  it("renders session-owned unit and value selection across fallback, recovery, stale retention, and refresh", async () => {
+    const input = loadFixtureWorkbenchData();
+    const load = vi.fn()
+      .mockRejectedValueOnce(new WorkbenchReadError("unavailable", "offline"))
+      .mockResolvedValueOnce({ generation: 8, source: "live", input })
+      .mockRejectedValueOnce(new WorkbenchReadError("unavailable", "offline again"))
+      .mockResolvedValueOnce({ generation: 9, source: "live", input });
+    const session = createWorkbenchSnapshotSession({ load }, {
+      allowFixtureFallback: true,
+      fixtureInput: input,
+      refreshIntervalMs: 60_000
+    });
+    await session.start();
+    session.getResult().selectUnit("KAL-03", "CDB-KAL-03-DESALINATION");
+    session.getResult().selectValue("VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT");
+
+    const renderResult = () => {
+      const result = session.getResult();
+      return renderToStaticMarkup(
+        <SimulatorWorkbenchSurface
+          onSelectUnit={result.selectUnit}
+          onSelectValue={result.selectValue}
+          projection={result.projection!}
+          readState={result.readState}
+          healthPanelModel={result.readState.model!.healthPanelModel}
+          onRefresh={result.refresh}
+          computeQueue={<div>Scientific compute queue</div>}
+          selectedJob={fixtures.computeJobs[0]}
+          scenario="DOME synthetic full-power readiness bundle"
+          scenarioJobs={fixtures.computeJobs}
+          bundleState="ready"
+          orchestrationPanel={<div>Containerized worker orchestration</div>}
+        />
+      );
+    };
+
+    expect(renderResult()).toContain("Fixture fallback");
+    expect(renderResult()).toContain("Kaleidos Unit 03");
+    expect(renderResult()).toContain("simwb-value selected measured");
+    await session.refresh();
+    expect(renderResult()).toContain("Live generation 8");
+    expect(renderResult()).toContain("Kaleidos Unit 03");
+    expect(renderResult()).toContain("simwb-value selected measured");
+    await session.refresh();
+    expect(renderResult()).toContain("Stale live generation 8");
+    expect(renderResult()).toContain("Kaleidos Unit 03");
+    expect(renderResult()).toContain("simwb-value selected measured");
+    await session.refresh();
+    expect(renderResult()).toContain("Live generation 9");
+    expect(renderResult()).toContain("Kaleidos Unit 03");
+    expect(renderResult()).toContain("simwb-value selected measured");
+    session.dispose();
+  });
+
   it("renders the integrated Status Workbench with fleet, viewport, value bases, orchestration, and HPC status", () => {
     const markup = renderToStaticMarkup(
       <SimulatorWorkbenchSurface

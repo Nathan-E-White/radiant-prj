@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { SimulatorWorkbenchSurface } from "../../components/simulator-workbench";
 import type { ComputeJob } from "../../domain/types";
 import {
-  buildWorkbenchProjection,
   createBrowserWorkbenchSnapshotSession,
   workbenchReadLabel,
   type WorkbenchSelection,
@@ -13,18 +12,11 @@ import {
 } from "../../domain/simulator-workbench";
 
 export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelection = {}) {
-  const [session] = useState<WorkbenchSnapshotSession>(() => createBrowserWorkbenchSnapshotSession());
-  const [readState, setReadState] = useState<WorkbenchReadState>(() => session.getState());
-  const [selection, setSelection] = useState<WorkbenchSelection>(initialSelection);
-  const data = readState.model?.input ?? null;
-  const projection = useMemo(() => (data ? buildWorkbenchProjection(data, selection) : null), [data, selection]);
-
-  const refresh = useCallback(() => {
-    void session.refresh();
-  }, [session]);
+  const [session] = useState<WorkbenchSnapshotSession>(() => createBrowserWorkbenchSnapshotSession(initialSelection));
+  const [result, setResult] = useState(() => session.getResult());
 
   useEffect(() => {
-    const unsubscribe = session.subscribe(setReadState);
+    const unsubscribe = session.subscribe(setResult);
     void session.start();
     return () => {
       unsubscribe();
@@ -32,29 +24,7 @@ export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelectio
     };
   }, [session]);
 
-  function selectUnit(unitId: string, commercialBasisId: string) {
-    setSelection((current) => ({
-      ...current,
-      selectedUnitId: unitId,
-      selectedCommercialBasisId: commercialBasisId
-    }));
-  }
-
-  function selectValue(valueId: string) {
-    setSelection((current) => ({
-      ...current,
-      selectedValueId: valueId
-    }));
-  }
-
-  return {
-    projection,
-    readState,
-    refresh,
-    selection,
-    selectUnit,
-    selectValue
-  };
+  return result;
 }
 
 export function StatusWorkbenchTab({
