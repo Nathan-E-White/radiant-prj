@@ -90,10 +90,10 @@ type artifactForgeResultArtifactReader interface {
 }
 
 type ArtifactForgeEligibilityEvidence struct {
-	Artifact      ArtifactForgeResultArtifact
-	Result        *SimopsResultFrame
-	ExpectedValue *SimopsResultValue
-	Lineage       *DigitalTwinValueLineage
+	Artifact      ArtifactForgeResultArtifact `json:"artifact"`
+	Result        *SimopsResultFrame          `json:"result,omitempty"`
+	ExpectedValue *SimopsResultValue          `json:"expectedValue,omitempty"`
+	Lineage       *DigitalTwinValueLineage    `json:"lineage,omitempty"`
 }
 
 type ArtifactForgeEligibilityStore interface {

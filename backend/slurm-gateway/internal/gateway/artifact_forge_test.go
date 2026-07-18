@@ -52,12 +52,25 @@ func assertArtifactForgeEligibilityStoreContract(t *testing.T, store artifactFor
 	if err != nil || afterDuplicate.Artifact.ArtifactID != evidence.Artifact.ArtifactID || afterDuplicate.Lineage.LineageID != evidence.Lineage.LineageID {
 		t.Fatalf("duplicate changed evidence=%#v err=%v", afterDuplicate, err)
 	}
+	laterRun := SimopsRunRecord{RunID: "run-forge-contract-later", ScenarioID: ArtifactForgeSchedulerDriftRecipe, Lifecycle: SimopsComplete}
+	laterRecord := record
+	laterRecord.RunID = laterRun.RunID
+	laterResult := artifactForgeResultFrame(laterRun.RunID, laterRun.ScenarioID)
+	written, err = store.SaveResultProjection("artifact-forge-contract", SimopsResultProjection{Frame: laterResult, RedpandaTopic: "artifact-forge-contract-results", RedpandaOffset: 3})
+	if err != nil || !written {
+		t.Fatalf("save later result written=%v err=%v", written, err)
+	}
+	seedArtifactForgeEligibilityLineage(t, store, laterRecord, request, laterResult, 4)
+	recovered, err := store.ReadArtifactForgeEligibility(run)
+	if err != nil || recovered.Result == nil || recovered.Result.RunID != run.RunID || recovered.Lineage == nil || !artifactForgeLineageHasInput(*recovered.Lineage, "simulation-run", run.RunID) {
+		t.Fatalf("later Run replaced recoverable evidence=%#v err=%v", recovered, err)
+	}
 
 	for index, basis := range []WorkbenchValueBasis{WorkbenchValueMeasured, WorkbenchValueImputed} {
 		ineligibleRun := SimopsRunRecord{RunID: "run-forge-contract-" + string(basis), ScenarioID: ArtifactForgeSchedulerDriftRecipe, Lifecycle: SimopsComplete}
 		ineligibleFrame := artifactForgeResultFrame(ineligibleRun.RunID, ineligibleRun.ScenarioID)
 		ineligibleFrame.ValueBasis = basis
-		written, err = store.SaveResultProjection("artifact-forge-contract", SimopsResultProjection{Frame: ineligibleFrame, RedpandaTopic: "artifact-forge-contract-results", RedpandaOffset: int64(index + 3)})
+		written, err = store.SaveResultProjection("artifact-forge-contract", SimopsResultProjection{Frame: ineligibleFrame, RedpandaTopic: "artifact-forge-contract-results", RedpandaOffset: int64(index + 5)})
 		if err != nil || !written {
 			t.Fatalf("save %s result written=%v err=%v", basis, written, err)
 		}
@@ -66,6 +79,15 @@ func assertArtifactForgeEligibilityStoreContract(t *testing.T, store artifactFor
 			t.Fatalf("%s state escaped eligibility boundary: evidence=%#v err=%v", basis, ineligible, err)
 		}
 	}
+}
+
+func artifactForgeLineageHasInput(lineage DigitalTwinValueLineage, kind, identity string) bool {
+	for _, input := range lineage.Inputs {
+		if input.SourceKind == kind && input.SourceID == identity {
+			return true
+		}
+	}
+	return false
 }
 
 type focusedArtifactForgeEligibilityStore struct{}
@@ -527,6 +549,9 @@ func setArtifactForgeTestArtifact(store *InMemoryWorkbenchStore, runID string, m
 	artifact := store.forgeArtifacts[runID]
 	mutate(&artifact)
 	store.forgeArtifacts[runID] = artifact
+	evidence := store.forgeEligibility[runID]
+	evidence.Artifact = artifact
+	store.forgeEligibility[runID] = evidence
 }
 
 func mustArtifacts(t *testing.T, store *InMemorySimopsStore, runID string) []SimopsArtifactRecord {

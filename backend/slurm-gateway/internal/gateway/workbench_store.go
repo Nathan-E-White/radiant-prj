@@ -34,33 +34,35 @@ type workbenchDynamicMeasuredRetentionStore interface {
 }
 
 type InMemoryWorkbenchStore struct {
-	mu              sync.RWMutex
-	sources         map[string]ScadaResidentSourceDeclaration
-	tags            map[string]ScadaSourceTag
-	measuredByTag   map[string]ScadaTelemetryFrame
-	ingestedAtByTag map[string]time.Time
-	resultsByValue  map[string]SimopsResultFrame
-	twin            DigitalTwinState
-	lineageByValue  map[string]DigitalTwinValueLineage
-	processed       map[string]struct{}
-	publications    map[string]TwinStatePublication
-	forgeArtifacts  map[string]ArtifactForgeResultArtifact
-	generation      uint64
-	now             func() time.Time
+	mu               sync.RWMutex
+	sources          map[string]ScadaResidentSourceDeclaration
+	tags             map[string]ScadaSourceTag
+	measuredByTag    map[string]ScadaTelemetryFrame
+	ingestedAtByTag  map[string]time.Time
+	resultsByValue   map[string]SimopsResultFrame
+	twin             DigitalTwinState
+	lineageByValue   map[string]DigitalTwinValueLineage
+	processed        map[string]struct{}
+	publications     map[string]TwinStatePublication
+	forgeArtifacts   map[string]ArtifactForgeResultArtifact
+	forgeEligibility map[string]ArtifactForgeEligibilityEvidence
+	generation       uint64
+	now              func() time.Time
 }
 
 func NewInMemoryWorkbenchStore() *InMemoryWorkbenchStore {
 	return &InMemoryWorkbenchStore{
-		sources:         make(map[string]ScadaResidentSourceDeclaration),
-		tags:            make(map[string]ScadaSourceTag),
-		measuredByTag:   make(map[string]ScadaTelemetryFrame),
-		ingestedAtByTag: make(map[string]time.Time),
-		resultsByValue:  make(map[string]SimopsResultFrame),
-		lineageByValue:  make(map[string]DigitalTwinValueLineage),
-		processed:       make(map[string]struct{}),
-		publications:    make(map[string]TwinStatePublication),
-		forgeArtifacts:  make(map[string]ArtifactForgeResultArtifact),
-		now:             time.Now,
+		sources:          make(map[string]ScadaResidentSourceDeclaration),
+		tags:             make(map[string]ScadaSourceTag),
+		measuredByTag:    make(map[string]ScadaTelemetryFrame),
+		ingestedAtByTag:  make(map[string]time.Time),
+		resultsByValue:   make(map[string]SimopsResultFrame),
+		lineageByValue:   make(map[string]DigitalTwinValueLineage),
+		processed:        make(map[string]struct{}),
+		publications:     make(map[string]TwinStatePublication),
+		forgeArtifacts:   make(map[string]ArtifactForgeResultArtifact),
+		forgeEligibility: make(map[string]ArtifactForgeEligibilityEvidence),
+		now:              time.Now,
 	}
 }
 
@@ -132,7 +134,13 @@ func (s *InMemoryWorkbenchStore) SaveResultProjection(consumerName string, proje
 	if s.now == nil {
 		s.now = time.Now
 	}
-	s.forgeArtifacts[frame.RunID] = buildArtifactForgeResultArtifact(frame, s.now().UTC())
+	artifact := buildArtifactForgeResultArtifact(frame, s.now().UTC())
+	s.forgeArtifacts[frame.RunID] = artifact
+	evidence := ArtifactForgeEligibilityEvidence{Artifact: artifact, Result: &frame}
+	if expectedValue, ok := simopsResultValueByID(frame.Values, artifact.ExpectedValue); ok {
+		evidence.ExpectedValue = &expectedValue
+	}
+	s.forgeEligibility[frame.RunID] = evidence
 	s.generation++
 	return true, nil
 }
@@ -150,28 +158,16 @@ func (s *InMemoryWorkbenchStore) ArtifactForgeResultArtifact(runID string) (Arti
 func (s *InMemoryWorkbenchStore) ReadArtifactForgeEligibility(run SimopsRunRecord) (ArtifactForgeEligibilityEvidence, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	artifact, ok := s.forgeArtifacts[run.RunID]
+	evidence, ok := s.forgeEligibility[run.RunID]
 	if !ok {
 		return ArtifactForgeEligibilityEvidence{}, ErrArtifactForgeResultArtifactNotFound
 	}
-	results := make([]SimopsResultFrame, 0, len(s.resultsByValue))
-	seen := make(map[string]struct{})
-	for _, frame := range s.resultsByValue {
-		key := fmt.Sprintf("%s/%s/%d", frame.RunID, frame.WorkerID, frame.Sequence)
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		results = append(results, frame)
+	if evidence.Result == nil || validateSimopsResultFrame(run, *evidence.Result) != nil {
+		evidence.Result = nil
+		evidence.ExpectedValue = nil
+		evidence.Lineage = nil
 	}
-	sort.Slice(results, func(i, j int) bool { return results[i].ProducedAt > results[j].ProducedAt })
-	return buildArtifactForgeEligibilityEvidence(run, artifact, trimResults(results, 100), func(valueID string) (DigitalTwinValueLineage, error) {
-		lineage, ok := s.lineageByValue[valueID]
-		if !ok {
-			return DigitalTwinValueLineage{}, ErrWorkbenchNotFound
-		}
-		return lineage, nil
-	})
+	return cloneWorkbenchValue(evidence)
 }
 
 func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error) {
@@ -211,6 +207,7 @@ func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 		s.lineageByValue = make(map[string]DigitalTwinValueLineage, len(transition.Lineage))
 		for _, lineage := range transition.Lineage {
 			s.lineageByValue[lineage.ValueID] = lineage
+			s.attachArtifactForgeLineage(lineage)
 		}
 	}
 	if projection.PublicationID != "" && consumerName == "" {
@@ -221,6 +218,31 @@ func (s *InMemoryWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 	}
 	s.generation++
 	return true, nil
+}
+
+func (s *InMemoryWorkbenchStore) attachArtifactForgeLineage(lineage DigitalTwinValueLineage) {
+	runIDs := make(map[string]struct{})
+	for _, input := range lineage.Inputs {
+		if input.SourceKind == "simulation-run" && input.SourceID != "" {
+			runIDs[input.SourceID] = struct{}{}
+		}
+	}
+	for _, linked := range lineage.Artifacts {
+		for runID, artifact := range s.forgeArtifacts {
+			if linked.ArtifactID == artifact.ArtifactID {
+				runIDs[runID] = struct{}{}
+			}
+		}
+	}
+	for runID := range runIDs {
+		evidence, ok := s.forgeEligibility[runID]
+		if !ok || evidence.ExpectedValue == nil || evidence.ExpectedValue.ValueID != lineage.ValueID {
+			continue
+		}
+		lineageCopy := lineage
+		evidence.Lineage = &lineageCopy
+		s.forgeEligibility[runID] = evidence
+	}
 }
 
 func (s *InMemoryWorkbenchStore) SaveTwinStatePublication(publication TwinStatePublication) (bool, error) {
@@ -443,8 +465,11 @@ func ensureWorkbenchSnapshotSchema(ctx context.Context, db *sql.DB) error {
 			artifact_id TEXT PRIMARY KEY,
 			run_id TEXT NOT NULL UNIQUE,
 			artifact JSONB NOT NULL,
-			persisted_at TIMESTAMPTZ NOT NULL
-		)
+			persisted_at TIMESTAMPTZ NOT NULL,
+			eligibility_evidence JSONB
+		);
+		ALTER TABLE artifact_forge_result_artifacts
+		ADD COLUMN IF NOT EXISTS eligibility_evidence JSONB
 	`)
 	return err
 }
@@ -601,12 +626,23 @@ func (s *PostgresWorkbenchStore) SaveResultProjection(consumerName string, proje
 	if err != nil {
 		return false, err
 	}
+	evidence := ArtifactForgeEligibilityEvidence{Artifact: artifact, Result: &projection.Frame}
+	if expectedValue, ok := simopsResultValueByID(projection.Frame.Values, artifact.ExpectedValue); ok {
+		evidence.ExpectedValue = &expectedValue
+	}
+	evidenceRaw, err := json.Marshal(evidence)
+	if err != nil {
+		return false, err
+	}
 	if _, err := tx.ExecContext(ctx, `
-		INSERT INTO artifact_forge_result_artifacts (artifact_id, run_id, artifact, persisted_at)
-		VALUES ($1,$2,$3::jsonb,$4)
+		INSERT INTO artifact_forge_result_artifacts (artifact_id, run_id, artifact, eligibility_evidence, persisted_at)
+		VALUES ($1,$2,$3::jsonb,$4::jsonb,$5)
 		ON CONFLICT (run_id) DO UPDATE
-		SET artifact_id = EXCLUDED.artifact_id, artifact = EXCLUDED.artifact, persisted_at = EXCLUDED.persisted_at
-	`, artifact.ArtifactID, artifact.RunID, artifactRaw, artifact.PersistedAt); err != nil {
+		SET artifact_id = EXCLUDED.artifact_id,
+		    artifact = EXCLUDED.artifact,
+		    eligibility_evidence = EXCLUDED.eligibility_evidence,
+		    persisted_at = EXCLUDED.persisted_at
+	`, artifact.ArtifactID, artifact.RunID, artifactRaw, evidenceRaw, artifact.PersistedAt); err != nil {
 		return false, err
 	}
 	if err := upsertWorkbenchOffset(ctx, tx, consumerName, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset); err != nil {
@@ -647,57 +683,54 @@ func (s *PostgresWorkbenchStore) ReadArtifactForgeEligibility(run SimopsRunRecor
 		return ArtifactForgeEligibilityEvidence{}, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	artifact, err := artifactForgeResultArtifact(ctx, tx, run.RunID)
-	if err != nil {
+	var raw []byte
+	if err := tx.QueryRowContext(ctx, `SELECT eligibility_evidence FROM artifact_forge_result_artifacts WHERE run_id = $1`, run.RunID).Scan(&raw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ArtifactForgeEligibilityEvidence{}, ErrArtifactForgeResultArtifactNotFound
+		}
 		return ArtifactForgeEligibilityEvidence{}, err
 	}
-	results, err := latestResultFrames(ctx, tx, 100)
-	if err != nil {
+	var evidence ArtifactForgeEligibilityEvidence
+	if err := json.Unmarshal(raw, &evidence); err != nil {
 		return ArtifactForgeEligibilityEvidence{}, err
 	}
-	evidence, err := buildArtifactForgeEligibilityEvidence(run, artifact, results, func(valueID string) (DigitalTwinValueLineage, error) {
-		return lineageForValue(ctx, tx, valueID)
-	})
-	if err != nil {
-		return ArtifactForgeEligibilityEvidence{}, err
+	if evidence.Result == nil || validateSimopsResultFrame(run, *evidence.Result) != nil {
+		evidence.Result = nil
+		evidence.ExpectedValue = nil
+		evidence.Lineage = nil
 	}
 	if err := tx.Commit(); err != nil {
 		return ArtifactForgeEligibilityEvidence{}, err
 	}
-	return evidence, nil
+	return cloneWorkbenchValue(evidence)
 }
 
-func buildArtifactForgeEligibilityEvidence(
-	run SimopsRunRecord,
-	artifact ArtifactForgeResultArtifact,
-	results []SimopsResultFrame,
-	lineageForValue func(string) (DigitalTwinValueLineage, error),
-) (ArtifactForgeEligibilityEvidence, error) {
-	evidence := ArtifactForgeEligibilityEvidence{Artifact: artifact}
-	for index := range results {
-		if validateSimopsResultFrame(run, results[index]) == nil {
-			result := results[index]
-			evidence.Result = &result
-			break
+func attachPostgresArtifactForgeLineage(ctx context.Context, tx *sql.Tx, lineage DigitalTwinValueLineage, lineageRaw []byte) error {
+	for _, input := range lineage.Inputs {
+		if input.SourceKind == "simulation-run" && input.SourceID != "" {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE artifact_forge_result_artifacts
+				SET eligibility_evidence = jsonb_set(eligibility_evidence, '{lineage}', $1::jsonb, true)
+				WHERE run_id = $2
+				  AND eligibility_evidence->'expectedValue'->>'valueId' = $3
+			`, lineageRaw, input.SourceID, lineage.ValueID); err != nil {
+				return err
+			}
 		}
 	}
-	if evidence.Result == nil {
-		return cloneWorkbenchValue(evidence)
+	for _, linked := range lineage.Artifacts {
+		if linked.ArtifactID != "" {
+			if _, err := tx.ExecContext(ctx, `
+				UPDATE artifact_forge_result_artifacts
+				SET eligibility_evidence = jsonb_set(eligibility_evidence, '{lineage}', $1::jsonb, true)
+				WHERE artifact_id = $2
+				  AND eligibility_evidence->'expectedValue'->>'valueId' = $3
+			`, lineageRaw, linked.ArtifactID, lineage.ValueID); err != nil {
+				return err
+			}
+		}
 	}
-	expectedValue, ok := simopsResultValueByID(evidence.Result.Values, artifact.ExpectedValue)
-	if !ok {
-		return cloneWorkbenchValue(evidence)
-	}
-	evidence.ExpectedValue = &expectedValue
-	lineage, err := lineageForValue(expectedValue.ValueID)
-	if errors.Is(err, ErrWorkbenchNotFound) {
-		return cloneWorkbenchValue(evidence)
-	}
-	if err != nil {
-		return ArtifactForgeEligibilityEvidence{}, err
-	}
-	evidence.Lineage = &lineage
-	return cloneWorkbenchValue(evidence)
+	return nil
 }
 
 func (s *PostgresWorkbenchStore) SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error) {
@@ -738,6 +771,9 @@ func (s *PostgresWorkbenchStore) SaveTwinStateProjection(consumerName string, pr
 			    lineage = EXCLUDED.lineage,
 			    updated_at = now()
 			`, lineage.LineageID, lineage.ValueID, string(lineage.ValueBasis), lineageRaw); err != nil {
+				return false, err
+			}
+			if err := attachPostgresArtifactForgeLineage(ctx, tx, lineage, lineageRaw); err != nil {
 				return false, err
 			}
 		}
