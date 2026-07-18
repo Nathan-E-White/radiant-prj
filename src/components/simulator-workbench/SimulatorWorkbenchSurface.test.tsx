@@ -28,6 +28,8 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(markup).toContain("Refresh live Snapshot");
     expect(markup).toContain("KAL-01");
     expect(markup).toContain("KAL-05");
+    expect(markup).toMatch(/aria-pressed="true"[^>]*data-unit-id="KAL-01"/);
+    expect(markup).toMatch(/aria-pressed="false"[^>]*data-unit-id="KAL-02"/);
     expect(markup).toContain("Fleet Board");
     expect(markup).toContain("30-day contract sprint");
     expect(markup).toContain("TRISO Supply");
@@ -126,6 +128,57 @@ describe("SimulatorWorkbenchSurface", () => {
     });
     expect(recovering).toContain("Recovering live Snapshot");
     expect(recovering).toContain("Refreshing one coherent live Workbench Snapshot");
+  });
+
+  it("keeps an accepted fixture visible while a later live read remains unavailable", () => {
+    const readState = fixtureReadState();
+    readState.errorKind = "unavailable";
+    readState.message = "Workbench service unavailable. Retaining the explicit whole-Snapshot fixture fallback.";
+    const markup = renderToStaticMarkup(
+      <SimulatorWorkbenchSurface
+        onSelectUnit={vi.fn()}
+        onSelectValue={vi.fn()}
+        projection={buildWorkbenchProjection(readState.model!.input)}
+        readState={readState}
+        onRefresh={vi.fn()}
+        computeQueue={<div>Scientific compute queue</div>}
+        selectedJob={fixtures.computeJobs[0]}
+        scenario="DOME synthetic full-power readiness bundle"
+        scenarioJobs={fixtures.computeJobs}
+        bundleState="ready"
+        orchestrationPanel={<div>Containerized worker orchestration</div>}
+      />
+    );
+
+    expect(markup).toContain("Fixture fallback");
+    expect(markup).toContain("Retaining the explicit whole-Snapshot fixture fallback");
+    expect(markup).toContain("Refresh live Snapshot");
+  });
+
+  it("presents an explicitly selected value whose engineering Lineage is missing", () => {
+    const projection = buildWorkbenchProjection(loadFixtureWorkbenchData(), {
+      selectedUnitId: "KAL-01",
+      selectedValueId: "VAL-KAL-01-IMPUTED-BLOCK-TEMP"
+    });
+    const markup = renderToStaticMarkup(
+      <SimulatorWorkbenchSurface
+        onSelectUnit={vi.fn()}
+        onSelectValue={vi.fn()}
+        projection={projection}
+        readState={fixtureReadState()}
+        onRefresh={vi.fn()}
+        computeQueue={<div>Scientific compute queue</div>}
+        selectedJob={fixtures.computeJobs[0]}
+        scenario="DOME synthetic full-power readiness bundle"
+        scenarioJobs={fixtures.computeJobs}
+        bundleState="ready"
+        orchestrationPanel={<div>Containerized worker orchestration</div>}
+      />
+    );
+
+    expect(markup).toContain("Unmeasured Fuel/Block Temperature Estimate");
+    expect(markup).toContain("Lineage pending for VAL-KAL-01-IMPUTED-BLOCK-TEMP");
+    expect(markup).toContain('aria-pressed="true"');
   });
 });
 

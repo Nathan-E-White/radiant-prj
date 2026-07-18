@@ -1,31 +1,117 @@
 import { expect, test } from "@playwright/test";
 
-test("Workbench fallback is explicit and recovers by replacing the whole Snapshot", async ({ page }) => {
+test("Workbench cadence recovers fixture and stale states by replacing the whole Snapshot", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-07-18T12:00:00Z") });
   const requestHeaders: Array<Record<string, string>> = [];
   let serveLive = false;
+  let generation = 4;
   await page.route("**/api/simulator-workbench/snapshot", async (route) => {
     requestHeaders.push(route.request().headers());
     if (!serveLive) {
       await route.fulfill({ status: 503, body: "unavailable" });
       return;
     }
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(liveSnapshot()) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(liveSnapshot(generation)) });
   });
 
   await page.goto("/");
   await page.getByRole("button", { name: "Status Workbench" }).click();
-  await expect(page.getByText("Fixture fallback")).toBeVisible();
+  await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();
   await expect(page.getByText(/explicit local-demo fixture Snapshot/)).toBeVisible();
 
-  serveLive = true;
+  const measuredValue = page.getByRole("button", { name: /Flux Axial Low/ });
+  await measuredValue.click();
+  await expect(measuredValue).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Bottom Explanation Rail").locator(".simwb-count")).toContainText("measured");
+
+  const simulatedValue = page.getByRole("button", { name: /Simulated Forecast Margin/ });
+  await simulatedValue.click();
+  await expect(simulatedValue).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Bottom Explanation Rail").locator(".simwb-count")).toContainText("simulated");
+
+  const missingLineageValue = page.getByRole("button", { name: /Unmeasured Fuel\/Block Temperature Estimate/ });
+  await missingLineageValue.click();
+  await expect(missingLineageValue).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText(/Lineage pending for VAL-KAL-01-IMPUTED-BLOCK-TEMP/)).toBeVisible();
+
+  const unit01 = page.locator('button[data-unit-id="KAL-01"]');
+  const unit02 = page.locator('button[data-unit-id="KAL-02"]');
+  await unit02.click();
+  await expect(unit02).toHaveAttribute("aria-pressed", "true");
+  await expect(unit01).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("Commercial Display Basis")).toBeVisible();
+
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Retaining the explicit whole-Snapshot fixture fallback/)).toBeVisible();
+
+  serveLive = true;
+  await page.clock.fastForward(10_000);
   await expect(page.getByText("Live generation 4")).toBeVisible();
   await expect(page.getByText(/accepted atomically/)).toBeVisible();
   await expect(page.getByText("Measured State").first()).toBeVisible();
   await expect(page.getByText("Imputed State").first()).toBeVisible();
   await expect(page.getByText("Simulated Result State").first()).toBeVisible();
+  await expect(page.locator('button[data-unit-id="KAL-01"]')).toHaveCount(0);
+  await expect(page.locator('button[data-unit-id="KAL-02"]')).toHaveCount(0);
+  const liveUnit = page.locator('button[data-unit-id="reactor-01"]');
+  await expect(liveUnit).toHaveAttribute("aria-pressed", "true");
+  const liveSimulatedValue = page.getByRole("button", { name: /Forecast margin/ });
+  await liveSimulatedValue.click();
+  await expect(liveSimulatedValue).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Bottom Explanation Rail").locator(".simwb-count")).toContainText("simulated");
+
+  serveLive = false;
+  await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await expect(page.getByText("Stale live generation 4")).toBeVisible();
+  await expect(liveSimulatedValue).toHaveAttribute("aria-pressed", "true");
+
+  serveLive = true;
+  generation = 5;
+  await page.clock.fastForward(10_000);
+  await expect(page.getByText("Live generation 5")).toBeVisible();
+  await expect(liveUnit).toHaveAttribute("aria-pressed", "true");
+  await expect(liveSimulatedValue).toHaveAttribute("aria-pressed", "true");
 
   expect(requestHeaders.length).toBeGreaterThanOrEqual(2);
+  for (const headers of requestHeaders) {
+    expect(headers["x-workbench-ingest-token"]).toBeUndefined();
+    expect(headers["x-simops-ingest-token"]).toBeUndefined();
+    expect(headers.authorization).toBeUndefined();
+  }
+});
+
+test("Workbench session exposes initial live success and typed terminal errors without credentials", async ({ page }) => {
+  const requestHeaders: Array<Record<string, string>> = [];
+  let outcome: "live" | "auth" | "schema" = "live";
+  await page.route("**/api/simulator-workbench/snapshot", async (route) => {
+    requestHeaders.push(route.request().headers());
+    if (outcome === "auth") {
+      await route.fulfill({ status: 401, body: "denied" });
+      return;
+    }
+    const snapshot = liveSnapshot(6);
+    if (outcome === "schema") snapshot.state.schemaVersion = "simulator-workbench.state.v2";
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Status Workbench" }).click();
+  await expect(page.getByText("Live generation 6")).toBeVisible();
+
+  outcome = "auth";
+  await page.reload();
+  await page.getByRole("button", { name: "Status Workbench" }).click();
+  await expect(page.getByText("Live Snapshot error")).toBeVisible();
+  await expect(page.getByText("Workbench authorization failed (401).")).toBeVisible();
+
+  outcome = "schema";
+  await page.reload();
+  await page.getByRole("button", { name: "Status Workbench" }).click();
+  await expect(page.getByText("Live Snapshot error")).toBeVisible();
+  await expect(page.getByText("Workbench state schema is not supported.")).toBeVisible();
+
+  expect(requestHeaders.length).toBeGreaterThanOrEqual(3);
   for (const headers of requestHeaders) {
     expect(headers["x-workbench-ingest-token"]).toBeUndefined();
     expect(headers["x-simops-ingest-token"]).toBeUndefined();
@@ -58,6 +144,11 @@ test("Workbench retains stale live data, rejects generation regression, and reco
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
   await expect(page.getByText("Stale live generation 8")).toBeVisible();
   await expect(page.getByText(/generation regressed from 8 to 7/)).toBeVisible();
+
+  generation = 8;
+  await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await expect(page.getByText("Live generation 8")).toBeVisible();
+  await expect(page.getByText(/generation 8 accepted atomically/)).toBeVisible();
 
   generation = 9;
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();

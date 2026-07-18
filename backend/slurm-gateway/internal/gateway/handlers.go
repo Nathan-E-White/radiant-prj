@@ -24,6 +24,7 @@ type Gateway struct {
 	workbench        *WorkbenchController
 	reactorTelemetry *ReactorTelemetryManager
 	artifactForge    *ArtifactForgeManager
+	fleetBoard       *FleetBoardIntentModule
 	now              func() time.Time
 }
 
@@ -70,7 +71,7 @@ func NewDefaultGatewayWithRuntimes(cfg Config, simopsSpooler SimopsSpooler, reac
 			}
 			forgeStore = postgresForgeStore
 		}
-		app.artifactForge = NewArtifactForgeManager(forgeStore, simops, workbench.store)
+		app.artifactForge = NewArtifactForgeManager(forgeStore, simops, workbench.artifactForgeEligibility)
 		workbench.resultLineageContext = app.artifactForge.ResultLineageContext
 	}
 	if cfg.ReactorTelemetry.Enabled {
@@ -98,6 +99,7 @@ func NewDefaultGatewayWithRuntimes(cfg Config, simopsSpooler SimopsSpooler, reac
 			return nil, fmt.Errorf("reconcile Reactor Telemetry Worker Sets: %w", err)
 		}
 	}
+	app.fleetBoard = app.newFleetBoardIntentModule()
 	return app, nil
 }
 
@@ -142,19 +144,8 @@ func (g *Gateway) Handler() http.Handler {
 	return mux
 }
 
-func (g *Gateway) ReconcileExpiredReactorTelemetry(ctx context.Context) error {
-	var reconcileErr error
-	if g.artifactForge != nil {
-		_, err := g.artifactForge.ReconcileExpired()
-		reconcileErr = errors.Join(reconcileErr, err)
-	}
-	if g.reactorTelemetry != nil {
-		reconcileErr = errors.Join(reconcileErr, g.reactorTelemetry.ReconcileExpired(ctx))
-	}
-	if g.workbench != nil {
-		reconcileErr = errors.Join(reconcileErr, g.workbench.ReconcileDynamicMeasuredRetention())
-	}
-	return reconcileErr
+func (g *Gateway) ReconcileFleetBoardSessions(ctx context.Context) error {
+	return g.fleetBoardIntentModule().ReconcileSessions(ctx)
 }
 
 func (g *Gateway) handleHealth(w http.ResponseWriter, r *http.Request) {

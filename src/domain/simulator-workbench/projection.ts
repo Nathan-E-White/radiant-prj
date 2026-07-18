@@ -123,6 +123,11 @@ export type WorkbenchProjection = {
   valueBasisSummary: Record<WorkbenchValueBasis, number>;
 };
 
+export type WorkbenchProjectionResult = {
+  projection: WorkbenchProjection;
+  selection: WorkbenchSelection;
+};
+
 const viewportEntityIds: TwinViewportEntity[] = [
   "core",
   "controlDrums",
@@ -146,6 +151,13 @@ export function buildWorkbenchProjection(
   input: WorkbenchProjectionInput,
   selection: string | WorkbenchSelection = {}
 ): WorkbenchProjection {
+  return buildWorkbenchProjectionResult(input, selection).projection;
+}
+
+export function buildWorkbenchProjectionResult(
+  input: WorkbenchProjectionInput,
+  selection: string | WorkbenchSelection = {}
+): WorkbenchProjectionResult {
   const normalizedSelection = normalizeSelection(selection);
   const selectedUnitId = selectUnitId(input, normalizedSelection.selectedUnitId);
   const selectedMeasuredFrames = input.measured.filter((frame) =>
@@ -174,7 +186,7 @@ export function buildWorkbenchProjection(
     : undefined;
   const valueBasisSummary = summarizeProjectedValues(selectedUnitValues);
 
-  return {
+  const projection: WorkbenchProjection = {
     generatedAt: input.state.generatedAt,
     scenarioId: input.state.scenarioId,
     twinId: input.twin.twinId,
@@ -194,6 +206,14 @@ export function buildWorkbenchProjection(
       : buildEngineeringExplanation(selectedValue, selectedLineage, lineageSteps, selectedLineageMissing),
     defaultSelectedValueId: defaultSelectedValue?.valueId ?? null,
     valueBasisSummary
+  };
+  return {
+    projection,
+    selection: {
+      selectedUnitId,
+      ...(selectedValue ? { selectedValueId: selectedValue.valueId } : {}),
+      ...(selectedCommercialBasis ? { selectedCommercialBasisId: selectedCommercialBasis.basisId } : {})
+    }
   };
 }
 
