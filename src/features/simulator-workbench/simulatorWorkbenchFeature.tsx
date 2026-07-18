@@ -46,8 +46,8 @@ export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelectio
     return () => driver.stop();
   }, [data]);
 
-  function selectUnit(unitId: string, commercialBasisId: string) {
-    session.selectUnit(unitId, commercialBasisId);
+  function selectUnit(unitId: string) {
+    session.selectUnit(unitId);
   }
 
   function selectValue(valueId: string) {
@@ -81,7 +81,7 @@ export function StatusWorkbenchTab({
   projection: WorkbenchProjection | null;
   readState: WorkbenchReadState;
   onRefresh: () => void;
-  onSelectUnit: (unitId: string, commercialBasisId: string) => void;
+  onSelectUnit: (unitId: string) => void;
   onSelectValue: (valueId: string) => void;
   computeQueue: ReactNode;
   selectedJob: ComputeJob;

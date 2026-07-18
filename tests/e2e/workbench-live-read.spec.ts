@@ -19,6 +19,13 @@ test("Workbench cadence recovers fixture and stale states by replacing the whole
   await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();
   await expect(page.getByText(/explicit local-demo fixture Snapshot/)).toBeVisible();
 
+  const unit01 = page.locator('button[data-unit-id="KAL-01"]');
+  const unit02 = page.locator('button[data-unit-id="KAL-02"]');
+  await unit02.click();
+  await expect(unit02).toHaveAttribute("aria-pressed", "true");
+  await expect(unit01).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("Commercial Display Basis")).toBeVisible();
+
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
   await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();
   await expect(page.getByText(/Retaining the explicit whole-Snapshot fixture fallback/)).toBeVisible();

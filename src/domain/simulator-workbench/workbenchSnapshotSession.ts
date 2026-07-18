@@ -18,7 +18,7 @@ export type WorkbenchSnapshotSession = {
   subscribe(listener: (state: WorkbenchSnapshotResult) => void): () => void;
   start(): Promise<void>;
   refresh(): Promise<void>;
-  selectUnit(unitId: string, commercialBasisId?: string): void;
+  selectUnit(unitId: string): void;
   selectValue(valueId: string): void;
   dispose(): void;
 };
@@ -142,11 +142,16 @@ export function createWorkbenchSnapshotSession(
       await refresh();
     },
     refresh,
-    selectUnit(unitId, commercialBasisId) {
+    selectUnit(unitId) {
+      const selectedUnit = state.projection?.fleetUnits.find((unit) => unit.unitId === unitId);
+      const input = state.readState.model?.input;
+      if (!selectedUnit || !input) return;
+      const commercialBasis = input.commercialDisplayBasis.find(
+        (basis) => basis.unitId === unitId && basis.basisId === selectedUnit.commercialBasisId
+      );
       requestedSelection = {
-        ...requestedSelection,
         selectedUnitId: unitId,
-        ...(commercialBasisId ? { selectedCommercialBasisId: commercialBasisId } : {})
+        ...(commercialBasis ? { selectedCommercialBasisId: commercialBasis.basisId } : {})
       };
       publish(state.readState);
     },

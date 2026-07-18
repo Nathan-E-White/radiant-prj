@@ -372,14 +372,44 @@ describe("Workbench Snapshot session", () => {
     expect(Object.isFrozen(initial.projection)).toBe(true);
     expect(Object.isFrozen(initial.selection)).toBe(true);
 
+    const beforeInvalidUnit = session.getState();
     session.selectUnit("missing-unit");
-    const normalizedUnit = session.getState();
-    expect(normalizedUnit.selection.selectedUnitId).toBe(fixtureInput.state.selectedUnitId);
-    expect(normalizedUnit.projection?.selectedUnit.unitId).toBe(normalizedUnit.selection.selectedUnitId);
+    expect(session.getState()).toBe(beforeInvalidUnit);
+
+    const oldUnitValueId = initial.selection.selectedValueId;
+    session.selectUnit("KAL-02");
+    const commercialUnit = session.getState();
+    expect(commercialUnit.selection).toMatchObject({
+      selectedUnitId: "KAL-02",
+      selectedCommercialBasisId: "CDB-KAL-02-FACILITY-HEAT"
+    });
+    expect(commercialUnit.selection.selectedValueId).not.toBe(oldUnitValueId);
+    expect(commercialUnit.selection.selectedValueId).toBe(commercialUnit.projection?.selectedValue?.valueId);
+    expect(commercialUnit.projection?.explanation.kind).toBe("commercial");
+    expect(commercialUnit.projection?.fleetUnits.find((unit) => unit.unitId === "KAL-02")?.selected).toBe(true);
 
     session.selectValue("missing-value");
     const normalizedValue = session.getState();
     expect(normalizedValue.selection.selectedValueId).toBe(normalizedValue.projection?.selectedValue?.valueId);
+    session.dispose();
+  });
+
+  it("uses an engineering explanation when the selected unit has no owned commercial basis", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    fixtureInput.commercialDisplayBasis = fixtureInput.commercialDisplayBasis.filter((basis) => basis.unitId !== "KAL-02");
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(3, fixtureInput)]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
+
+    await session.start();
+    session.selectUnit("KAL-02");
+    expect(session.getState()).toMatchObject({
+      selection: { selectedUnitId: "KAL-02" },
+      projection: { explanation: { kind: "engineering" } }
+    });
+    expect(session.getState().selection.selectedCommercialBasisId).toBeUndefined();
     session.dispose();
   });
 });
