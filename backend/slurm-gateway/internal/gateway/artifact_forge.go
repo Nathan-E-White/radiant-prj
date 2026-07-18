@@ -89,6 +89,17 @@ type artifactForgeResultArtifactReader interface {
 	ArtifactForgeResultArtifact(runID string) (ArtifactForgeResultArtifact, error)
 }
 
+type ArtifactForgeEligibilityEvidence struct {
+	Artifact      ArtifactForgeResultArtifact `json:"artifact"`
+	Result        *SimopsResultFrame          `json:"result,omitempty"`
+	ExpectedValue *SimopsResultValue          `json:"expectedValue,omitempty"`
+	Lineage       *DigitalTwinValueLineage    `json:"lineage,omitempty"`
+}
+
+type ArtifactForgeEligibilityStore interface {
+	ReadArtifactForgeEligibility(SimopsRunRecord) (ArtifactForgeEligibilityEvidence, error)
+}
+
 type ArtifactForgeTrace struct {
 	SimulationJobID string `json:"simulationJobId"`
 	RunID           string `json:"runId,omitempty"`
@@ -222,18 +233,18 @@ func (s *InMemoryArtifactForgeStore) PruneExpired(now time.Time) (int64, error) 
 }
 
 type ArtifactForgeManager struct {
-	mu        sync.Mutex
-	store     ArtifactForgeStore
-	simops    *SimopsController
-	workbench WorkbenchStore
-	now       func() time.Time
+	mu          sync.Mutex
+	store       ArtifactForgeStore
+	simops      *SimopsController
+	eligibility ArtifactForgeEligibilityStore
+	now         func() time.Time
 }
 
-func NewArtifactForgeManager(store ArtifactForgeStore, simops *SimopsController, workbench WorkbenchStore) *ArtifactForgeManager {
+func NewArtifactForgeManager(store ArtifactForgeStore, simops *SimopsController, eligibility ArtifactForgeEligibilityStore) *ArtifactForgeManager {
 	if store == nil {
 		store = NewInMemoryArtifactForgeStore()
 	}
-	return &ArtifactForgeManager{store: store, simops: simops, workbench: workbench, now: time.Now}
+	return &ArtifactForgeManager{store: store, simops: simops, eligibility: eligibility, now: time.Now}
 }
 
 func (m *ArtifactForgeManager) ResultLineageContext(runID string) ([]TwinLineageInput, []TwinLineageArtifact, bool) {
@@ -383,17 +394,17 @@ func (m *ArtifactForgeManager) evaluate(record ArtifactForgeRecord) (ArtifactFor
 		return record, false, nil
 	}
 
-	artifactReader, ok := m.workbench.(artifactForgeResultArtifactReader)
-	if !ok {
+	if m.eligibility == nil {
 		return ArtifactForgeRecord{}, false, fmt.Errorf("Workbench store does not expose durable Artifact Forge result artifacts")
 	}
-	eligible, err := artifactReader.ArtifactForgeResultArtifact(record.RunID)
+	evidence, err := m.eligibility.ReadArtifactForgeEligibility(run)
 	if errors.Is(err, ErrArtifactForgeResultArtifactNotFound) {
 		return m.recordDecision(record, ArtifactForgeTelemetryIneligible, "operational telemetry is ineligible for Artifact Forge rewards or evidence claims; no game outcome was applied", ArtifactForgeTrace{})
 	}
 	if err != nil {
 		return ArtifactForgeRecord{}, false, err
 	}
+	eligible := evidence.Artifact
 	trace := ArtifactForgeTrace{ArtifactID: eligible.ArtifactID}
 	if eligible.Status != ArtifactForgeArtifactCommitted || !eligible.Complete {
 		return m.recordDecision(record, ArtifactForgeArtifactIncomplete, "the simulated-result artifact is not durably committed and complete; no game outcome was applied", trace)
@@ -405,32 +416,17 @@ func (m *ArtifactForgeManager) evaluate(record ArtifactForgeRecord) (ArtifactFor
 		return m.recordDecision(record, ArtifactForgeIntegrityFailed, "the simulated-result artifact failed integrity verification; no game outcome was applied", trace)
 	}
 
-	results, err := m.workbench.LatestResultFrames(100)
-	if err != nil {
-		return ArtifactForgeRecord{}, false, err
-	}
-	var result *SimopsResultFrame
-	for index := range results {
-		candidate := &results[index]
-		if candidate.ScenarioID == record.SimulationRecipe && validateSimopsResultFrame(run, *candidate) == nil {
-			result = candidate
-			break
-		}
-	}
-	if result == nil {
+	if evidence.Result == nil {
 		return m.recordDecision(record, ArtifactForgeResultMissing, "the artifact has no eligible public-safe Simulated Result State; no game outcome was applied", trace)
 	}
-	expectedValue, ok := simopsResultValueByID(result.Values, eligible.ExpectedValue)
-	if !ok {
+	if evidence.ExpectedValue == nil {
 		return m.recordDecision(record, ArtifactForgeResultMissing, "the artifact has no eligible expected Simulated Result State value; no game outcome was applied", trace)
 	}
-	lineage, err := m.workbench.LineageForValue(expectedValue.ValueID)
-	if errors.Is(err, ErrWorkbenchNotFound) {
+	if evidence.Lineage == nil {
 		return m.recordDecision(record, ArtifactForgeLineageMissing, "the Simulated Result State has no complete Lineage; no game outcome was applied", trace)
 	}
-	if err != nil {
-		return ArtifactForgeRecord{}, false, err
-	}
+	expectedValue := *evidence.ExpectedValue
+	lineage := *evidence.Lineage
 	if !artifactForgeLineageEligible(lineage, record, eligible) {
 		return m.recordDecision(record, ArtifactForgeLineageIneligible, "Lineage does not bind the game session, reactor, Run, recipe, and artifact; no game outcome was applied", ArtifactForgeTrace{ArtifactID: eligible.ArtifactID, LineageID: lineage.LineageID})
 	}
