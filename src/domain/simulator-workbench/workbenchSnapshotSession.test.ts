@@ -76,7 +76,18 @@ describe("Workbench Snapshot session", () => {
     });
 
     await session.start();
-    expect(session.getState()).toMatchObject({ phase: "fixture", errorKind: "unavailable", model: { source: "fixture" } });
+    expect(session.getState()).toMatchObject({
+      phase: "fixture",
+      errorKind: "unavailable",
+      message: "offline Using the explicit local-demo fixture Snapshot.",
+      model: {
+        source: "fixture",
+        healthPanelModel: {
+          lifecycle: { summary: "2/2 complete" },
+          worker: { summary: "2/2 nominal" }
+        }
+      }
+    });
 
     await session.refresh();
     expect(session.getState()).toMatchObject({ phase: "error", errorKind: "auth", model: { source: "fixture" } });
@@ -132,6 +143,87 @@ describe("Workbench Snapshot session", () => {
 
     await session.refresh();
     expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 9 } });
+    session.dispose();
+  });
+
+  it("publishes projection and Simulation Health from one accepted Snapshot generation", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const generationEight = withHealthState(fixtureInput, {
+      generatedAt: "2026-07-18T11:59:55Z",
+      activeSimulationRuns: [{
+        runId: "distinctive-live-run",
+        scenarioId: "live-scheduler-drift",
+        lifecycle: "streaming",
+        health: "nominal",
+        artifactStatus: "committed",
+        valueBasis: "simulated"
+      }]
+    });
+    const generationNine = withHealthState(fixtureInput, {
+      generatedAt: "2026-07-18T12:00:25Z",
+      activeSimulationRuns: [{
+        runId: "recovered-run-a",
+        scenarioId: "recovered-scenario",
+        lifecycle: "completed",
+        health: "nominal",
+        artifactStatus: "staged",
+        valueBasis: "simulated"
+      }, {
+        runId: "recovered-run-b",
+        scenarioId: "recovered-scenario",
+        lifecycle: "completed",
+        health: "nominal",
+        artifactStatus: "staged",
+        valueBasis: "simulated"
+      }]
+    });
+    const observedTimes = [
+      new Date("2026-07-18T12:00:00Z"),
+      new Date("2026-07-18T12:00:30Z")
+    ];
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([
+      accepted(8, generationEight),
+      new WorkbenchReadError("unavailable", "offline"),
+      accepted(9, generationNine)
+    ]), {
+      allowFixtureFallback: true,
+      fixtureInput,
+      refreshIntervalMs: 60_000,
+      now: () => observedTimes.shift() ?? new Date("2026-07-18T12:00:30Z")
+    });
+
+    await session.start();
+    const acceptedGenerationEight = session.getState().model;
+    expect(acceptedGenerationEight).toMatchObject({
+      generation: 8,
+      source: "live",
+      healthPanelModel: {
+        lifecycle: { summary: "0/1 complete", status: "degraded" },
+        worker: { summary: "1/1 nominal", status: "healthy" },
+        artifact: { detail: "committed", status: "healthy" },
+        streamFreshness: { summary: "fresh", status: "healthy" }
+      }
+    });
+    expect(session.getState().message).toBe("Live Workbench generation 8 accepted atomically.");
+
+    await session.refresh();
+    expect(session.getState().model).toBe(acceptedGenerationEight);
+    expect(session.getState()).toMatchObject({ phase: "stale", model: { generation: 8 } });
+
+    await session.refresh();
+    expect(session.getState().model).not.toBe(acceptedGenerationEight);
+    expect(session.getState()).toMatchObject({
+      phase: "live",
+      model: {
+        generation: 9,
+        healthPanelModel: {
+          lifecycle: { summary: "2/2 complete", status: "healthy" },
+          worker: { summary: "2/2 nominal", status: "healthy" },
+          artifact: { detail: "staged", status: "healthy" },
+          streamFreshness: { summary: "fresh", status: "healthy" }
+        }
+      }
+    });
     session.dispose();
   });
 
@@ -191,6 +283,13 @@ describe("Workbench Snapshot session", () => {
 
 function accepted(generation: number, input: ReturnType<typeof loadFixtureWorkbenchData>): AcceptedWorkbenchSnapshot {
   return { generation, source: "live", input };
+}
+
+function withHealthState(
+  input: ReturnType<typeof loadFixtureWorkbenchData>,
+  state: Pick<ReturnType<typeof loadFixtureWorkbenchData>["state"], "generatedAt" | "activeSimulationRuns">
+): ReturnType<typeof loadFixtureWorkbenchData> {
+  return { ...input, state: { ...input.state, ...state } };
 }
 
 function sequenceAdapter(

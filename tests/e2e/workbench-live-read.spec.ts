@@ -16,6 +16,8 @@ test("Workbench fallback is explicit and recovers by replacing the whole Snapsho
   await page.getByRole("button", { name: "Status Workbench" }).click();
   await expect(page.getByText("Fixture fallback")).toBeVisible();
   await expect(page.getByText(/explicit local-demo fixture Snapshot/)).toBeVisible();
+  const health = page.getByRole("region", { name: "Simulation health cards" });
+  await expect(health.getByText("2/2 complete", { exact: true })).toBeVisible();
 
   serveLive = true;
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
@@ -24,6 +26,10 @@ test("Workbench fallback is explicit and recovers by replacing the whole Snapsho
   await expect(page.getByText("Measured State").first()).toBeVisible();
   await expect(page.getByText("Imputed State").first()).toBeVisible();
   await expect(page.getByText("Simulated Result State").first()).toBeVisible();
+  await expect(health.getByText("0/1 complete", { exact: true })).toBeVisible();
+  await expect(health.getByText("1/1 nominal", { exact: true })).toBeVisible();
+  await expect(health.getByText("committed", { exact: true })).toBeVisible();
+  await expect(health.getByText("2/2 complete", { exact: true })).not.toBeVisible();
 
   expect(requestHeaders.length).toBeGreaterThanOrEqual(2);
   for (const headers of requestHeaders) {
@@ -47,11 +53,16 @@ test("Workbench retains stale live data, rejects generation regression, and reco
   await page.goto("/");
   await page.getByRole("button", { name: "Status Workbench" }).click();
   await expect(page.getByText("Live generation 8")).toBeVisible();
+  const health = page.getByRole("region", { name: "Simulation health cards" });
+  await expect(health.getByText("0/1 complete", { exact: true })).toBeVisible();
+  await expect(health.getByText("committed", { exact: true })).toBeVisible();
 
   unavailable = true;
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
   await expect(page.getByText("Stale live generation 8")).toBeVisible();
   await expect(page.getByText(/Retaining live generation 8 as stale/)).toBeVisible();
+  await expect(health.getByText("0/1 complete", { exact: true })).toBeVisible();
+  await expect(health.getByText("committed", { exact: true })).toBeVisible();
 
   unavailable = false;
   generation = 7;
@@ -62,6 +73,11 @@ test("Workbench retains stale live data, rejects generation regression, and reco
   generation = 9;
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
   await expect(page.getByText("Live generation 9")).toBeVisible();
+  await expect(health.getByText("2/2 complete", { exact: true })).toBeVisible();
+  await expect(health.getByText("2/2 nominal", { exact: true })).toBeVisible();
+  await expect(health.getByText("staged", { exact: true })).toBeVisible();
+  await expect(health.getByText("0/1 complete", { exact: true })).not.toBeVisible();
+  await expect(health.getByText("committed", { exact: true })).not.toBeVisible();
 });
 
 test("Workbench unmount cancels its pending Snapshot request", async ({ page }) => {
@@ -79,14 +95,19 @@ function liveSnapshot(generation = 4) {
     generation,
     state: {
       schemaVersion: "simulator-workbench.state.v1",
-      generatedAt: "2026-07-14T11:00:00Z",
+      generatedAt: generation >= 9 ? "2026-07-18T12:00:25Z" : "2026-07-18T11:59:55Z",
       snapshotGeneration: generation,
       scenarioId: "scheduler-drift",
       valueBasisSummary: { measured: 1, imputed: 1, simulated: 1 },
       measuredStateRefs: ["scada_measured_frames"],
       twinStateRef: "digital_twin_state_values",
       lineageRefs: ["digital_twin_lineage"],
-      activeSimulationRuns: [{ runId: "run-1", scenarioId: "scheduler-drift", lifecycle: "streaming", valueBasis: "simulated", health: "nominal", artifactStatus: "committed" }],
+      activeSimulationRuns: generation >= 9
+        ? [
+            { runId: "recovered-run-a", scenarioId: "recovered-scenario", lifecycle: "completed", valueBasis: "simulated", health: "nominal", artifactStatus: "staged" },
+            { runId: "recovered-run-b", scenarioId: "recovered-scenario", lifecycle: "completed", valueBasis: "simulated", health: "nominal", artifactStatus: "staged" }
+          ]
+        : [{ runId: "run-1", scenarioId: "scheduler-drift", lifecycle: "streaming", valueBasis: "simulated", health: "nominal", artifactStatus: "committed" }],
       panels: [
         { panelId: "measured", title: "Measured State", valueBasis: "measured" },
         { panelId: "imputed", title: "Imputed State", valueBasis: "imputed" },

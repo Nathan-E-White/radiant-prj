@@ -3,6 +3,11 @@ import { FleetStrip } from "./FleetStrip";
 import { LineagePanel } from "./LineagePanel";
 import { MeasuredStatePanel } from "./MeasuredStatePanel";
 import { SimulationResultsPanel } from "./SimulationResultsPanel";
+import {
+  SimulationHealthErrorBoundary,
+  SimulationHealthPanel,
+  type SimulationHealthPanelModel
+} from "./SimulationHealthPanel";
 import { TwinStatePanel } from "./TwinStatePanel";
 import { TwinViewport } from "./TwinViewport";
 import { FleetBoardSurface } from "../fleet-board";
@@ -13,6 +18,7 @@ import type { ComputeJob } from "../../domain/types";
 export function SimulatorWorkbenchSurface({
   projection,
   readState,
+  healthPanelModel,
   onRefresh,
   onSelectUnit,
   onSelectValue,
@@ -25,6 +31,7 @@ export function SimulatorWorkbenchSurface({
 }: {
   projection: WorkbenchProjection;
   readState: WorkbenchReadState;
+  healthPanelModel: SimulationHealthPanelModel;
   onRefresh: () => void;
   onSelectUnit: (unitId: string, commercialBasisId: string) => void;
   onSelectValue: (valueId: string) => void;
@@ -62,6 +69,10 @@ export function SimulatorWorkbenchSurface({
           <span>Generated: {formatTime(projection.generatedAt)}</span>
         </div>
       </div>
+
+      <SimulationHealthErrorBoundary>
+        <SimulationHealthPanel model={healthPanelModel} />
+      </SimulationHealthErrorBoundary>
 
       <FleetStrip units={projection.fleetUnits} onSelectUnit={onSelectUnit} />
       <FleetBoardSurface projection={projection} />

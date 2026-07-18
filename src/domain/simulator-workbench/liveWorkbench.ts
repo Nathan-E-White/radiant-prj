@@ -9,6 +9,8 @@ import type {
   WorkbenchValueBasis
 } from "../../api/simulatorWorkbench";
 import type { WorkbenchProjectionInput } from "./projection";
+import { projectHealthCards } from "./workbenchHealthPanelProjection";
+import type { SimulationHealthPanelModel } from "../../components/simulator-workbench/SimulationHealthPanel";
 
 export type LiveSimopsResultFrame = {
   schemaVersion: "simops.result.v1";
@@ -76,6 +78,7 @@ export type WorkbenchReadModel = {
   generation: number;
   source: "live" | "fixture";
   input: WorkbenchProjectionInput;
+  healthPanelModel: SimulationHealthPanelModel;
   acceptedAt: string;
 };
 
@@ -164,9 +167,14 @@ export async function refreshWorkbenchReadState(
         `Workbench generation regressed from ${current.model.generation} to ${accepted.generation}.`
       );
     }
+    const acceptedAt = now();
     return {
       phase: "live",
-      model: { ...accepted, acceptedAt: now().toISOString() },
+      model: {
+        ...accepted,
+        healthPanelModel: healthFromSnapshot(accepted.input, acceptedAt),
+        acceptedAt: acceptedAt.toISOString()
+      },
       message: `Live Workbench generation ${accepted.generation} accepted atomically.`
     };
   } catch (error) {
@@ -199,15 +207,29 @@ export async function refreshWorkbenchReadState(
       };
     }
     if (options.allowFixtureFallback && (readError.kind === "unavailable" || readError.kind === "empty")) {
+      const acceptedAt = now();
       return {
         phase: "fixture",
-        model: { generation: 0, source: "fixture", input: options.fixtureInput, acceptedAt: now().toISOString() },
+        model: {
+          generation: 0,
+          source: "fixture",
+          input: options.fixtureInput,
+          healthPanelModel: healthFromSnapshot(options.fixtureInput, acceptedAt),
+          acceptedAt: acceptedAt.toISOString()
+        },
         message: `${readError.message} Using the explicit local-demo fixture Snapshot.`,
         errorKind: readError.kind
       };
     }
     return { phase: "error", model: null, message: readError.message, errorKind: readError.kind };
   }
+}
+
+function healthFromSnapshot(input: WorkbenchProjectionInput, observedAt: Date): SimulationHealthPanelModel {
+  return projectHealthCards({
+    generatedAt: input.state.generatedAt,
+    activeSimulationRuns: input.state.activeSimulationRuns
+  }, observedAt);
 }
 
 function validateLiveWorkbenchSnapshot(snapshot: LiveWorkbenchSnapshot): void {
