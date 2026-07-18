@@ -28,32 +28,89 @@ func TestInMemoryTwinStatePublicationStoreContract(t *testing.T) {
 	assertTwinStatePublicationStoreContract(t, NewInMemoryWorkbenchStore())
 }
 
-func assertTwinStatePublicationStoreContract(t *testing.T, store TwinStatePublicationStore) {
-	t.Helper()
-	publication := twinPublicationFixture("simops.results.v1", 2, 41)
-	wantAsOf := publication.State.AsOf
-	wantStep := publication.Lineage[0].ProcessingSteps[0]
+type twinStatePublicationContractStore interface {
+	TwinStatePublicationStore
+	Snapshot() (WorkbenchSnapshot, error)
+}
 
-	written, err := store.SaveTwinStatePublication(publication)
-	if err != nil || !written {
-		t.Fatalf("save publication written=%v err=%v", written, err)
+type failingTwinStatePublicationStore struct {
+	TwinStatePublicationStore
+	err error
+}
+
+func (s failingTwinStatePublicationStore) SaveTwinStatePublication(TwinStatePublication) (bool, error) {
+	return false, s.err
+}
+
+func assertTwinStatePublicationStoreContract(t *testing.T, store twinStatePublicationContractStore) {
+	t.Helper()
+	persistenceFailure := errors.New("publication persistence unavailable")
+	failedEvents := &twinPublicationEventLog{}
+	failedPublication := twinPublicationFixture("simops.results.v1", 2, 40)
+	failedPublisher := NewTwinStatePublisher(
+		failingTwinStatePublicationStore{TwinStatePublicationStore: store, err: persistenceFailure},
+		failedEvents,
+	)
+	if _, err := failedPublisher.Publish(context.Background(), failedPublication); !errors.Is(err, persistenceFailure) {
+		t.Fatalf("persistence failure err=%v", err)
 	}
-	publication.State.AsOf = publication.State.AsOf.Add(time.Hour)
-	publication.Lineage[0].ProcessingSteps[0] = "caller mutation"
-	written, err = store.SaveTwinStatePublication(publication)
-	if err != nil || written {
-		t.Fatalf("save duplicate publication written=%v err=%v", written, err)
+	assertTwinStatePublicationGeneration(t, store, 0)
+	if failedEvents.calls != 0 {
+		t.Fatalf("persistence failure delivered %d events", failedEvents.calls)
 	}
-	canonical, err := store.GetTwinStatePublication(publication.PublicationID)
+
+	successEvents := &twinPublicationEventLog{}
+	successPublication := twinPublicationFixture("simops.results.v1", 2, 41)
+	successPublisher := NewTwinStatePublisher(store, successEvents)
+	outcome, err := successPublisher.Publish(context.Background(), successPublication)
+	if err != nil || !outcome.Persisted || !outcome.Delivered || outcome.Duplicate {
+		t.Fatalf("successful publication outcome=%#v err=%v", outcome, err)
+	}
+	assertTwinStatePublicationGeneration(t, store, 1)
+	outcome, err = successPublisher.Publish(context.Background(), successPublication)
+	if err != nil || outcome.Persisted || !outcome.Delivered || !outcome.Duplicate {
+		t.Fatalf("duplicate publication outcome=%#v err=%v", outcome, err)
+	}
+	assertTwinStatePublicationGeneration(t, store, 1)
+
+	recoveryEvents := &twinPublicationEventLog{err: errors.New("ambiguous event delivery")}
+	recoveryPublication := twinPublicationFixture("simops.results.v1", 2, 42)
+	wantAsOf := recoveryPublication.State.AsOf
+	wantStep := recoveryPublication.Lineage[0].ProcessingSteps[0]
+	recoveryPublisher := NewTwinStatePublisher(store, recoveryEvents)
+	outcome, err = recoveryPublisher.Publish(context.Background(), recoveryPublication)
+	var publicationErr *TwinStatePublicationError
+	if !errors.As(err, &publicationErr) || publicationErr.Stage != TwinStatePublicationEventDelivery || !outcome.Persisted || outcome.Delivered {
+		t.Fatalf("event failure outcome=%#v err=%v", outcome, err)
+	}
+	assertTwinStatePublicationGeneration(t, store, 2)
+	recoveryPublication.State.AsOf = recoveryPublication.State.AsOf.Add(time.Hour)
+	recoveryPublication.Lineage[0].ProcessingSteps[0] = "caller mutation"
+	recoveryEvents.err = nil
+	outcome, found, err := NewTwinStatePublisher(store, recoveryEvents).Resume(context.Background(), recoveryPublication.Source)
+	if err != nil || !found || !outcome.Duplicate || !outcome.Delivered {
+		t.Fatalf("resume outcome=%#v found=%v err=%v", outcome, found, err)
+	}
+	assertTwinStatePublicationGeneration(t, store, 2)
+	canonical, err := store.GetTwinStatePublication(recoveryPublication.PublicationID)
 	if err != nil || !canonical.State.AsOf.Equal(wantAsOf) || canonical.Lineage[0].ProcessingSteps[0] != wantStep {
 		t.Fatalf("load canonical publication=%#v err=%v", canonical, err)
 	}
-	if err := store.AcknowledgeTwinStatePublication(publication.PublicationID); err != nil {
+	if err := store.AcknowledgeTwinStatePublication(recoveryPublication.PublicationID); err != nil {
 		t.Fatalf("acknowledge publication: %v", err)
 	}
-	tombstone, err := store.GetTwinStatePublication(publication.PublicationID)
+	assertTwinStatePublicationGeneration(t, store, 2)
+	tombstone, err := store.GetTwinStatePublication(recoveryPublication.PublicationID)
 	if err != nil || !tombstone.Acknowledged || tombstone.State.SchemaVersion != "" || len(tombstone.Lineage) != 0 {
 		t.Fatalf("load acknowledged publication=%#v err=%v", tombstone, err)
+	}
+}
+
+func assertTwinStatePublicationGeneration(t *testing.T, store twinStatePublicationContractStore, want uint64) {
+	t.Helper()
+	snapshot, err := store.Snapshot()
+	if err != nil || snapshot.Generation != want || snapshot.State.SnapshotGeneration != snapshot.Generation {
+		t.Fatalf("Snapshot generation=%d stateGeneration=%d want=%d err=%v", snapshot.Generation, snapshot.State.SnapshotGeneration, want, err)
 	}
 }
 
