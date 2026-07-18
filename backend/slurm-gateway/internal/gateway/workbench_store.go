@@ -13,15 +13,30 @@ import (
 
 var ErrWorkbenchNotFound = errors.New("workbench record not found")
 
-type WorkbenchStore interface {
+type WorkbenchResidentSourcePersistence interface {
 	SaveResidentSource(source ScadaResidentSourceDeclaration) error
 	GetResidentTag(tagID string) (ScadaSourceTag, error)
+}
+
+type WorkbenchScadaProjectionPersistence interface {
 	SaveScadaProjection(consumerName string, projection ScadaProjection) (bool, error)
+}
+
+type WorkbenchResultProjectionPersistence interface {
 	SaveResultProjection(consumerName string, projection SimopsResultProjection) (bool, error)
+}
+
+type WorkbenchTwinProjectionPersistence interface {
 	SaveTwinStateProjection(consumerName string, projection TwinStateProjection) (bool, error)
-	SaveTwinStatePublication(publication TwinStatePublication) (bool, error)
-	GetTwinStatePublication(publicationID string) (TwinStatePublication, error)
-	AcknowledgeTwinStatePublication(publicationID string) error
+}
+
+type WorkbenchProjectionPersistence interface {
+	WorkbenchScadaProjectionPersistence
+	WorkbenchResultProjectionPersistence
+	WorkbenchTwinProjectionPersistence
+}
+
+type WorkbenchSnapshotPersistence interface {
 	LatestMeasuredFrames(limit int) ([]ScadaTelemetryFrame, error)
 	LatestResultFrames(limit int) ([]SimopsResultFrame, error)
 	CurrentTwinState() (DigitalTwinState, error)
@@ -29,8 +44,23 @@ type WorkbenchStore interface {
 	Snapshot() (WorkbenchSnapshot, error)
 }
 
-type workbenchDynamicMeasuredRetentionStore interface {
+type WorkbenchDynamicMeasuredRetention interface {
 	PruneDynamicMeasured(before time.Time) error
+}
+
+type WorkbenchControllerPersistence interface {
+	WorkbenchResidentSourcePersistence
+	WorkbenchSnapshotPersistence
+	WorkbenchDynamicMeasuredRetention
+}
+
+type WorkbenchStore interface {
+	WorkbenchControllerPersistence
+	WorkbenchProjectionPersistence
+	ArtifactForgeEligibilityStore
+	SaveTwinStatePublication(publication TwinStatePublication) (bool, error)
+	GetTwinStatePublication(publicationID string) (TwinStatePublication, error)
+	AcknowledgeTwinStatePublication(publicationID string) error
 }
 
 type InMemoryWorkbenchStore struct {

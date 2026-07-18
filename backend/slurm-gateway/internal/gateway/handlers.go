@@ -70,11 +70,7 @@ func NewDefaultGatewayWithRuntimes(cfg Config, simopsSpooler SimopsSpooler, reac
 			}
 			forgeStore = postgresForgeStore
 		}
-		eligibilityStore, ok := workbench.store.(ArtifactForgeEligibilityStore)
-		if !ok {
-			return nil, fmt.Errorf("workbench store does not expose artifact forge eligibility persistence")
-		}
-		app.artifactForge = NewArtifactForgeManager(forgeStore, simops, eligibilityStore)
+		app.artifactForge = NewArtifactForgeManager(forgeStore, simops, workbench.artifactForgeEligibility)
 		workbench.resultLineageContext = app.artifactForge.ResultLineageContext
 	}
 	if cfg.ReactorTelemetry.Enabled {

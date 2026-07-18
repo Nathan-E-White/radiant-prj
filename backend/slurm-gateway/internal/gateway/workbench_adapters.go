@@ -21,7 +21,7 @@ type WorkbenchEventLog interface {
 }
 
 type MemoryWorkbenchEventLog struct {
-	Store  WorkbenchStore
+	Store  WorkbenchProjectionPersistence
 	offset atomic.Int64
 }
 
