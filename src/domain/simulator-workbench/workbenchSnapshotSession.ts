@@ -81,8 +81,13 @@ export function createWorkbenchSnapshotSession(
   }
 
   function settle(next: WorkbenchReadState): void {
-    publish(next);
+    const replacesAcceptedSnapshot = Boolean(
+      next.model && settledReadState.model && next.model !== settledReadState.model
+    );
+    state = immutableResult(projectResult(next, requestedSelection, replacesAcceptedSnapshot));
     settledReadState = state.readState;
+    requestedSelection = state.selection;
+    listeners.forEach((listener) => listener(state));
   }
 
   function clearScheduledRefresh(): void {
@@ -157,6 +162,10 @@ export function createWorkbenchSnapshotSession(
       publish(state.readState);
     },
     selectValue(valueId) {
+      const visibleValue = state.projection
+        ? Object.values(state.projection.groups).flatMap((group) => group.values).find((value) => value.valueId === valueId)
+        : undefined;
+      if (!visibleValue || state.selection.selectedValueId === valueId) return;
       requestedSelection = { ...requestedSelection, selectedValueId: valueId };
       publish(state.readState);
     },
@@ -170,9 +179,26 @@ export function createWorkbenchSnapshotSession(
   };
 }
 
-function projectResult(readState: WorkbenchReadState, selection: WorkbenchSelection): WorkbenchSnapshotResult {
+function projectResult(
+  readState: WorkbenchReadState,
+  selection: WorkbenchSelection,
+  reconcileCommercialBasis = false
+): WorkbenchSnapshotResult {
   if (!readState.model) return { readState, projection: null, selection };
-  const projected = buildWorkbenchProjectionResult(readState.model.input, selection);
+  let projected = buildWorkbenchProjectionResult(readState.model.input, selection);
+  if (reconcileCommercialBasis && !projected.selection.selectedCommercialBasisId) {
+    const unitId = projected.selection.selectedUnitId;
+    const selectedUnitBasisId = projected.projection.selectedUnit.commercialBasisId;
+    const replacementBasis = readState.model.input.commercialDisplayBasis.find(
+      (basis) => basis.unitId === unitId && basis.basisId === selectedUnitBasisId
+    ) ?? readState.model.input.commercialDisplayBasis.find((basis) => basis.unitId === unitId);
+    if (replacementBasis) {
+      projected = buildWorkbenchProjectionResult(readState.model.input, {
+        ...projected.selection,
+        selectedCommercialBasisId: replacementBasis.basisId
+      });
+    }
+  }
   return { readState, ...projected };
 }
 
