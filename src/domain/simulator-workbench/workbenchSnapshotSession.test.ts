@@ -84,6 +84,27 @@ describe("Workbench Snapshot session", () => {
     await session.refresh();
     expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 4, source: "live" } });
     session.dispose();
+
+    const emptySession = createWorkbenchSnapshotSession(
+      sequenceAdapter([new WorkbenchReadError("empty", "empty store")]),
+      { allowFixtureFallback: true, fixtureInput, refreshIntervalMs: 60_000 }
+    );
+    await emptySession.start();
+    expect(emptySession.getState()).toMatchObject({ phase: "fixture", errorKind: "empty", model: { source: "fixture" } });
+    emptySession.dispose();
+
+    const rejectedSession = createWorkbenchSnapshotSession(
+      sequenceAdapter([
+        new WorkbenchReadError("auth", "denied"),
+        new WorkbenchReadError("unavailable", "offline later")
+      ]),
+      { allowFixtureFallback: true, fixtureInput, refreshIntervalMs: 60_000 }
+    );
+    await rejectedSession.start();
+    expect(rejectedSession.getState()).toMatchObject({ phase: "error", errorKind: "auth", model: null });
+    await rejectedSession.refresh();
+    expect(rejectedSession.getState()).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
+    rejectedSession.dispose();
   });
 
   it("retains accepted live data as stale across partial failure and generation regression", async () => {

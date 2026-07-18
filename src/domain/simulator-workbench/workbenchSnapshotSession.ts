@@ -39,6 +39,7 @@ export function createWorkbenchSnapshotSession(
   let active: AbortController | null = null;
   let timer: ReturnType<typeof setTimeout> | null = null;
   let running = false;
+  let hasSettledRead = false;
   const listeners = new Set<(state: WorkbenchReadState) => void>();
 
   function publish(next: WorkbenchReadState): void {
@@ -83,10 +84,12 @@ export function createWorkbenchSnapshotSession(
 
     const next = await refreshWorkbenchReadState(acceptedState, adapter, {
       ...options,
+      allowFixtureFallback: options.allowFixtureFallback && !hasSettledRead,
       signal: controller.signal
     });
     if (!running || active !== controller) return;
     active = null;
+    hasSettledRead = true;
     settle(next);
     scheduleRefresh();
   }

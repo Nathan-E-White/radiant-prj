@@ -64,6 +64,16 @@ test("Workbench retains stale live data, rejects generation regression, and reco
   await expect(page.getByText("Live generation 9")).toBeVisible();
 });
 
+test("Workbench unmount cancels its pending Snapshot request", async ({ page }) => {
+  await page.goto("/tests/e2e/fixtures/workbench-session-unmount.html");
+  await expect(page.locator("body")).toHaveAttribute("data-request-started", "true");
+
+  await page.getByRole("button", { name: "Unmount Workbench" }).click();
+
+  await expect(page.getByText("Workbench session unmounted")).toBeVisible();
+  await expect(page.locator("body")).toHaveAttribute("data-request-aborted", "true");
+});
+
 function liveSnapshot(generation = 4) {
   return {
     generation,
