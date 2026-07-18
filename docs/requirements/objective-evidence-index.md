@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Document ID | OEI-001 |
-| Revision | 3.0 |
+| Revision | 3.1 |
 | Status | Draft for v3.0 review |
 | Owner | Quality |
 | Baseline | v3.0 candidate |
@@ -27,6 +27,7 @@ The evidence records below are synthetic and public-safe. They demonstrate trace
 | SIMOPS-RUNTIME-CLOSEOUT-001 | Issue #27 v3 runtime adapter documentation and verification closeout | SW-023 | `docs/design/simops-runtime-adapters.md`, `docs/design/interface-control.md`, `docs/verification/verification-plan.md`, `scripts/check-simops-runtime-closeout.mjs`, Docker/Kind/OpenTofu evidence commands | Local v3 runtime proof only; CRD/operator, Argo/Tekton, host-facing Redpanda, production hardening, and cloud provisioning remain deferred |
 | WORKBENCH-DATAFLOW-001 | Simulator Workbench backend dataflow slice | SW-013, SW-014, SW-015 | `docs/design/simulator-workbench-backend-dataflow-slice.md`, `backend/slurm-gateway/internal/gateway/*workbench*.go`, `backend/slurm-gateway/cmd/workbench-projection-writer/`, `backend/slurm-gateway/cmd/twin-projector/`, `backend/slurm-gateway/cmd/workbench-iceberg-writer/`, `workers/scada-standins/`, `workers/simops-generator/`, `deploy/postgres-init/001_simops.sql`, `scripts/simulator-workbench-dataflow-smoke.sh` | Backend-only local proof; public-safe stand-ins and synthetic simulated result state only |
 | DOP-001 | Docker/OrbStack storage policy | DEV-HYGIENE-001 | `docs/design/docker-orbstack-storage-policy.md`, `scripts/hygiene-size.mjs`, `scripts/docker-prune-hygiene.sh`, `scripts/check-docker-storage-policy.mjs` | Local Docker reporting and scoped cleanup guard; no live prune execution |
+| WORKBENCH-SNAPSHOT-SESSION-001 | Issue #88 browser Snapshot-session closeout | SW-024 | `docs/design/workbench-snapshot-session.md`, `docs/verification/issue-88-workbench-snapshot-session.md`, `src/domain/simulator-workbench/workbenchSnapshotSession.ts`, module/presentation/browser tests, `stryker.config.mjs` | Local public-safe browser proof only; no production authentication, network proxy, or infrastructure mutation claim |
 
 ## Generated Evidence
 

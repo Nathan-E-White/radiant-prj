@@ -1,5 +1,5 @@
 import { AlertTriangle, CloudCog, Cpu, RefreshCw } from "lucide-react";
-import type { ReactNode } from "react";
+import { Component, type ReactNode } from "react";
 
 export type SimulationHealthSeverity = "healthy" | "degraded" | "critical" | "stale";
 
@@ -21,6 +21,33 @@ export type SimulationHealthPanelProps = {
   model: SimulationHealthPanelModel;
 };
 
+export class SimulationHealthErrorBoundary extends Component<
+  { children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) {
+      return (
+        <section
+          className="simwb-card"
+          role="status"
+          aria-label="Simulation Health unavailable"
+        >
+          <strong>Simulation Health temporarily unavailable</strong>
+          <span>The remaining Workbench read state is still available.</span>
+        </section>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const iconByCard: Record<keyof SimulationHealthPanelModel, ReactNode> = {
   lifecycle: <CloudCog size={15} />,
   artifact: <AlertTriangle size={15} />,
@@ -34,7 +61,7 @@ export function SimulationHealthPanel({ model }: SimulationHealthPanelProps) {
       <div className="simwb-card-heading">
         <div>
           <p className="eyebrow">Status Workbench</p>
-          <h3>HPC Status Summary (4-card fixture)</h3>
+          <h3>Simulation Health Summary</h3>
         </div>
         <span className="simwb-count complete">4 cards</span>
       </div>

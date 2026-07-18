@@ -72,47 +72,6 @@ export class WorkbenchReadError extends Error {
   }
 }
 
-export type WorkbenchReadModel = {
-  generation: number;
-  source: "live" | "fixture";
-  input: WorkbenchProjectionInput;
-  acceptedAt: string;
-};
-
-export type WorkbenchReadState = {
-  phase: "loading" | "live" | "fixture" | "stale" | "recovering" | "error";
-  model: WorkbenchReadModel | null;
-  message: string;
-  errorKind?: WorkbenchReadErrorKind;
-};
-
-export type WorkbenchRefreshOptions = {
-  allowFixtureFallback: boolean;
-  fixtureInput: WorkbenchProjectionInput;
-  now?: () => Date;
-  signal?: AbortSignal;
-};
-
-export type WorkbenchRefreshCoordinator = {
-  refresh(current: WorkbenchReadState): Promise<WorkbenchReadState | null>;
-  dispose(): void;
-};
-
-export function initialWorkbenchReadState(): WorkbenchReadState {
-  return { phase: "loading", model: null, message: "Loading one coherent live Workbench Snapshot." };
-}
-
-export function workbenchReadLabel(state: WorkbenchReadState): string {
-  switch (state.phase) {
-    case "live": return `Live generation ${state.model?.generation ?? "?"}`;
-    case "fixture": return "Fixture fallback";
-    case "stale": return `Stale live generation ${state.model?.generation ?? "?"}`;
-    case "recovering": return "Recovering live Snapshot";
-    case "error": return "Live Snapshot error";
-    default: return "Loading live Snapshot";
-  }
-}
-
 export function createHttpWorkbenchDataAdapter(
   fetcher: typeof fetch = fetch,
   base = (import.meta.env.VITE_SIMULATOR_WORKBENCH_API_BASE ?? "").replace(/\/$/, "")
@@ -151,79 +110,6 @@ export function createHttpWorkbenchDataAdapter(
       }
       validateLiveWorkbenchSnapshot(snapshot);
       return { generation: snapshot.generation, source: "live" as const, input: projectLiveWorkbenchSnapshot(snapshot) };
-    }
-  };
-}
-
-export async function refreshWorkbenchReadState(
-  current: WorkbenchReadState,
-  adapter: WorkbenchSnapshotAdapter,
-  options: WorkbenchRefreshOptions
-): Promise<WorkbenchReadState> {
-  const now = options.now ?? (() => new Date());
-  try {
-    const accepted = await adapter.load({ signal: options.signal });
-    if (current.model?.source === "live" && accepted.generation < current.model.generation) {
-      throw new WorkbenchReadError(
-        "generation",
-        `Workbench generation regressed from ${current.model.generation} to ${accepted.generation}.`
-      );
-    }
-    return {
-      phase: "live",
-      model: { ...accepted, acceptedAt: now().toISOString() },
-      message: `Live Workbench generation ${accepted.generation} accepted atomically.`
-    };
-  } catch (error) {
-    const readError = normalizeReadError(error);
-    if (current.model?.source === "live") {
-      return {
-        phase: "stale",
-        model: current.model,
-        message: `${readError.message} Retaining live generation ${current.model.generation} as stale.`,
-        errorKind: readError.kind
-      };
-    }
-    if (current.model?.source === "fixture") {
-      return {
-        phase: "fixture",
-        model: current.model,
-        message: `${readError.message} Retaining the explicit whole-Snapshot fixture fallback.`,
-        errorKind: readError.kind
-      };
-    }
-    if (options.allowFixtureFallback && (readError.kind === "unavailable" || readError.kind === "empty")) {
-      return {
-        phase: "fixture",
-        model: { generation: 0, source: "fixture", input: options.fixtureInput, acceptedAt: now().toISOString() },
-        message: `${readError.message} Using the explicit local-demo fixture Snapshot.`,
-        errorKind: readError.kind
-      };
-    }
-    return { phase: "error", model: null, message: readError.message, errorKind: readError.kind };
-  }
-}
-
-export function createWorkbenchRefreshCoordinator(
-  adapter: WorkbenchSnapshotAdapter,
-  options: Omit<WorkbenchRefreshOptions, "signal">
-): WorkbenchRefreshCoordinator {
-  let active: AbortController | null = null;
-  let disposed = false;
-  return {
-    async refresh(current) {
-      active?.abort();
-      const controller = new AbortController();
-      active = controller;
-      const next = await refreshWorkbenchReadState(current, adapter, { ...options, signal: controller.signal });
-      if (disposed || active !== controller) return null;
-      active = null;
-      return next;
-    },
-    dispose() {
-      disposed = true;
-      active?.abort();
-      active = null;
     }
   };
 }
@@ -407,10 +293,4 @@ function liveFleetUnit(unitId: string, index: number, generatedAt: string): Kale
     commercialBasisId: `live:${index}:${unitId}`,
     emphasis: `Live Workbench Snapshot accepted at ${generatedAt}`
   };
-}
-
-function normalizeReadError(error: unknown): WorkbenchReadError {
-  return error instanceof WorkbenchReadError
-    ? error
-    : new WorkbenchReadError("partial", error instanceof Error ? error.message : "Workbench refresh failed.");
 }

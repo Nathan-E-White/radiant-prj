@@ -3,6 +3,7 @@ export { LineagePanel } from "./LineagePanel";
 export { MeasuredStatePanel } from "./MeasuredStatePanel";
 export {
   SimulationHealthPanel,
+  SimulationHealthErrorBoundary,
   type SimulationHealthPanelModel,
   type SimulationHealthPanelProps,
   type SimulationHealthCard,
