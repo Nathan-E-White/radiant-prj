@@ -157,6 +157,10 @@ export function createWorkbenchSnapshotSession(
       publish(state.readState);
     },
     selectValue(valueId) {
+      const visibleValue = state.projection
+        ? Object.values(state.projection.groups).flatMap((group) => group.values).find((value) => value.valueId === valueId)
+        : undefined;
+      if (!visibleValue || state.selection.selectedValueId === valueId) return;
       requestedSelection = { ...requestedSelection, selectedValueId: valueId };
       publish(state.readState);
     },

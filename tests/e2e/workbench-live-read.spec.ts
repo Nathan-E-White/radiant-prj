@@ -19,6 +19,21 @@ test("Workbench cadence recovers fixture and stale states by replacing the whole
   await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();
   await expect(page.getByText(/explicit local-demo fixture Snapshot/)).toBeVisible();
 
+  const measuredValue = page.getByRole("button", { name: /Flux Axial Low/ });
+  await measuredValue.click();
+  await expect(measuredValue).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Bottom Explanation Rail").locator(".simwb-count")).toContainText("measured");
+
+  const simulatedValue = page.getByRole("button", { name: /Simulated Forecast Margin/ });
+  await simulatedValue.click();
+  await expect(simulatedValue).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Bottom Explanation Rail").locator(".simwb-count")).toContainText("simulated");
+
+  const missingLineageValue = page.getByRole("button", { name: /Unmeasured Fuel\/Block Temperature Estimate/ });
+  await missingLineageValue.click();
+  await expect(missingLineageValue).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByText(/Lineage pending for VAL-KAL-01-IMPUTED-BLOCK-TEMP/)).toBeVisible();
+
   const unit01 = page.locator('button[data-unit-id="KAL-01"]');
   const unit02 = page.locator('button[data-unit-id="KAL-02"]');
   await unit02.click();
