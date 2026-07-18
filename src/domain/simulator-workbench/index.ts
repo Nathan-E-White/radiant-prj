@@ -33,7 +33,6 @@ export { createHealthTickDriver } from "./workbenchHealthTickDriver";
 export {
   WorkbenchReadError,
   createHttpWorkbenchDataAdapter,
-  createWorkbenchRefreshCoordinator,
   initialWorkbenchReadState,
   refreshWorkbenchReadState,
   workbenchReadLabel,
@@ -42,6 +41,11 @@ export {
   type WorkbenchReadErrorKind,
   type WorkbenchReadModel,
   type WorkbenchReadState,
-  type WorkbenchRefreshCoordinator,
   type WorkbenchSnapshotAdapter
 } from "./liveWorkbench";
+export {
+  createBrowserWorkbenchSnapshotSession,
+  createWorkbenchSnapshotSession,
+  type WorkbenchSnapshotSession,
+  type WorkbenchSnapshotSessionOptions
+} from "./workbenchSnapshotSession";
