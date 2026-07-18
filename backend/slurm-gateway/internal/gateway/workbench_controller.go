@@ -17,7 +17,8 @@ const maxWorkbenchBodyBytes = 256 * 1024
 
 type WorkbenchController struct {
 	cfg                      WorkbenchConfig
-	store                    WorkbenchStore
+	store                    WorkbenchControllerPersistence
+	artifactForgeEligibility ArtifactForgeEligibilityStore
 	eventLog                 WorkbenchEventLog
 	now                      func() time.Time
 	dynamicMeasuredRetention time.Duration
@@ -60,6 +61,7 @@ func NewWorkbenchController(cfg WorkbenchConfig, store WorkbenchStore, eventLog 
 	return &WorkbenchController{
 		cfg:                      cfg,
 		store:                    store,
+		artifactForgeEligibility: store,
 		eventLog:                 eventLog,
 		now:                      time.Now,
 		dynamicMeasuredRetention: 24 * time.Hour,
@@ -135,11 +137,7 @@ func (c *WorkbenchController) Measured() ([]ScadaTelemetryFrame, error) {
 }
 
 func (c *WorkbenchController) pruneExpiredDynamicMeasured() error {
-	retentionStore, ok := c.store.(workbenchDynamicMeasuredRetentionStore)
-	if !ok {
-		return nil
-	}
-	return retentionStore.PruneDynamicMeasured(c.now().UTC().Add(-c.dynamicMeasuredRetention))
+	return c.store.PruneDynamicMeasured(c.now().UTC().Add(-c.dynamicMeasuredRetention))
 }
 
 func (c *WorkbenchController) ReconcileDynamicMeasuredRetention() error {

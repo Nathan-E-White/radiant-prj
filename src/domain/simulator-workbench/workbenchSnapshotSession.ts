@@ -1,5 +1,10 @@
 import { loadFixtureWorkbenchData } from "./fixtureAdapter";
 import {
+  buildWorkbenchProjectionResult,
+  type WorkbenchProjection,
+  type WorkbenchSelection
+} from "./projection";
+import {
   createHttpWorkbenchDataAdapter,
   initialWorkbenchReadState,
   refreshWorkbenchReadState,
@@ -9,24 +14,44 @@ import {
 } from "./liveWorkbench";
 
 export type WorkbenchSnapshotSession = {
-  getState(): WorkbenchReadState;
-  subscribe(listener: (state: WorkbenchReadState) => void): () => void;
+  getState(): WorkbenchSnapshotResult;
+  subscribe(listener: (state: WorkbenchSnapshotResult) => void): () => void;
   start(): Promise<void>;
   refresh(): Promise<void>;
+  selectUnit(unitId: string): void;
+  selectValue(valueId: string): void;
   dispose(): void;
+};
+
+export type WorkbenchSnapshotResult = {
+  readState: WorkbenchReadState;
+  projection: WorkbenchProjection | null;
+  selection: WorkbenchSelection;
 };
 
 export type WorkbenchSnapshotSessionOptions = Omit<WorkbenchRefreshOptions, "signal"> & {
   refreshIntervalMs: number;
+  scheduler?: WorkbenchSnapshotScheduler;
+  initialSelection?: WorkbenchSelection;
+};
+
+export type WorkbenchSnapshotScheduler = {
+  schedule(task: () => void, delayMs: number): unknown;
+  cancel(handle: unknown): void;
 };
 
 const DEFAULT_REFRESH_INTERVAL_MS = 10_000;
+const browserScheduler: WorkbenchSnapshotScheduler = {
+  schedule: (task, delayMs) => setTimeout(task, delayMs),
+  cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>)
+};
 
-export function createBrowserWorkbenchSnapshotSession(): WorkbenchSnapshotSession {
+export function createBrowserWorkbenchSnapshotSession(initialSelection: WorkbenchSelection = {}): WorkbenchSnapshotSession {
   return createWorkbenchSnapshotSession(createHttpWorkbenchDataAdapter(), {
     allowFixtureFallback: import.meta.env.VITE_WORKBENCH_ALLOW_FIXTURE_FALLBACK === "true",
     fixtureInput: loadFixtureWorkbenchData(),
-    refreshIntervalMs: DEFAULT_REFRESH_INTERVAL_MS
+    refreshIntervalMs: DEFAULT_REFRESH_INTERVAL_MS,
+    initialSelection
   });
 }
 
@@ -34,35 +59,48 @@ export function createWorkbenchSnapshotSession(
   adapter: WorkbenchSnapshotAdapter,
   options: WorkbenchSnapshotSessionOptions
 ): WorkbenchSnapshotSession {
-  let state = initialWorkbenchReadState();
-  let settledState = state;
+  const scheduler = options.scheduler ?? browserScheduler;
+  let requestedSelection = structuredClone(options.initialSelection ?? {});
+  const configuration: WorkbenchSnapshotSessionOptions = {
+    allowFixtureFallback: options.allowFixtureFallback,
+    fixtureInput: structuredClone(options.fixtureInput),
+    refreshIntervalMs: options.refreshIntervalMs,
+    ...(options.now ? { now: options.now } : {})
+  };
+  let settledReadState = initialWorkbenchReadState();
+  let state = immutableResult(projectResult(settledReadState, requestedSelection));
   let active: AbortController | null = null;
-  let timer: ReturnType<typeof setTimeout> | null = null;
+  let timer: unknown | null = null;
   let running = false;
   let hasSettledRead = false;
-  const listeners = new Set<(state: WorkbenchReadState) => void>();
+  const listeners = new Set<(state: WorkbenchSnapshotResult) => void>();
 
   function publish(next: WorkbenchReadState): void {
-    state = next;
+    state = immutableResult(projectResult(next, requestedSelection));
     listeners.forEach((listener) => listener(state));
   }
 
   function settle(next: WorkbenchReadState): void {
-    settledState = next;
-    publish(next);
+    const replacesAcceptedSnapshot = Boolean(
+      next.model && settledReadState.model && next.model !== settledReadState.model
+    );
+    state = immutableResult(projectResult(next, requestedSelection, replacesAcceptedSnapshot));
+    settledReadState = state.readState;
+    requestedSelection = state.selection;
+    listeners.forEach((listener) => listener(state));
   }
 
   function clearScheduledRefresh(): void {
-    if (timer !== null) clearTimeout(timer);
+    if (timer !== null) scheduler.cancel(timer);
     timer = null;
   }
 
   function scheduleRefresh(): void {
     clearScheduledRefresh();
-    timer = setTimeout(() => {
+    timer = scheduler.schedule(() => {
       timer = null;
       void refresh();
-    }, options.refreshIntervalMs);
+    }, configuration.refreshIntervalMs);
   }
 
   async function refresh(): Promise<void> {
@@ -70,7 +108,7 @@ export function createWorkbenchSnapshotSession(
     clearScheduledRefresh();
     active?.abort();
     const controller = new AbortController();
-    const acceptedState = settledState;
+    const acceptedState = settledReadState;
     active = controller;
 
     const pending: WorkbenchReadState = {
@@ -83,8 +121,8 @@ export function createWorkbenchSnapshotSession(
     publish(pending);
 
     const next = await refreshWorkbenchReadState(acceptedState, adapter, {
-      ...options,
-      allowFixtureFallback: options.allowFixtureFallback && !hasSettledRead,
+      ...configuration,
+      allowFixtureFallback: configuration.allowFixtureFallback && !hasSettledRead,
       signal: controller.signal
     });
     if (!running || active !== controller) return;
@@ -109,12 +147,71 @@ export function createWorkbenchSnapshotSession(
       await refresh();
     },
     refresh,
+    selectUnit(unitId) {
+      if (state.selection.selectedUnitId === unitId) return;
+      const selectedUnit = state.projection?.fleetUnits.find((unit) => unit.unitId === unitId);
+      const input = state.readState.model?.input;
+      if (!selectedUnit || !input) return;
+      const commercialBasis = input.commercialDisplayBasis.find(
+        (basis) => basis.unitId === unitId && basis.basisId === selectedUnit.commercialBasisId
+      );
+      requestedSelection = {
+        selectedUnitId: unitId,
+        ...(commercialBasis ? { selectedCommercialBasisId: commercialBasis.basisId } : {})
+      };
+      publish(state.readState);
+    },
+    selectValue(valueId) {
+      const visibleValue = state.projection
+        ? Object.values(state.projection.groups).flatMap((group) => group.values).find((value) => value.valueId === valueId)
+        : undefined;
+      if (!visibleValue || state.selection.selectedValueId === valueId) return;
+      requestedSelection = { ...requestedSelection, selectedValueId: valueId };
+      publish(state.readState);
+    },
     dispose() {
       running = false;
       clearScheduledRefresh();
       active?.abort();
       active = null;
-      state = settledState;
+      state = immutableResult(projectResult(settledReadState, requestedSelection));
     }
   };
+}
+
+function projectResult(
+  readState: WorkbenchReadState,
+  selection: WorkbenchSelection,
+  reconcileCommercialBasis = false
+): WorkbenchSnapshotResult {
+  if (!readState.model) return { readState, projection: null, selection };
+  let projected = buildWorkbenchProjectionResult(readState.model.input, selection);
+  if (reconcileCommercialBasis && !projected.selection.selectedCommercialBasisId) {
+    const unitId = projected.selection.selectedUnitId;
+    const selectedUnitBasisId = projected.projection.selectedUnit.commercialBasisId;
+    const replacementBasis = readState.model.input.commercialDisplayBasis.find(
+      (basis) => basis.unitId === unitId && basis.basisId === selectedUnitBasisId
+    ) ?? readState.model.input.commercialDisplayBasis.find((basis) => basis.unitId === unitId);
+    if (replacementBasis) {
+      projected = buildWorkbenchProjectionResult(readState.model.input, {
+        ...projected.selection,
+        selectedCommercialBasisId: replacementBasis.basisId
+      });
+    }
+  }
+  return { readState, ...projected };
+}
+
+function immutableResult(result: WorkbenchSnapshotResult): WorkbenchSnapshotResult {
+  const snapshot = structuredClone(result);
+  if (result.readState.model && Object.isFrozen(result.readState.model)) snapshot.readState.model = result.readState.model;
+  return deepFreeze(snapshot);
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object" && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    Object.values(value).forEach(deepFreeze);
+  }
+  return value;
 }

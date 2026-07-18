@@ -48,7 +48,7 @@ export function FleetOpsGamePrototype({
   bundleState
 }: {
   projection: WorkbenchProjection;
-  onSelectUnit: (unitId: string, commercialBasisId: string) => void;
+  onSelectUnit: (unitId: string) => void;
   onSelectValue: (valueId: string) => void;
   selectedJob: ComputeJob;
   scenario: string;
@@ -80,7 +80,7 @@ export function FleetOpsGamePrototype({
   }, []);
 
   function selectUnit(unit: ProjectedFleetUnit) {
-    onSelectUnit(unit.unitId, unit.commercialBasisId);
+    onSelectUnit(unit.unitId);
   }
 
   function selectValue(value: ProjectedWorkbenchValue) {

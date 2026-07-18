@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func RunWorkbenchScadaProjectionConsumer(ctx context.Context, cfg WorkbenchConfig, reader SimopsKafkaReader, store WorkbenchStore, metrics *SimopsConsumerMetrics) error {
+func RunWorkbenchScadaProjectionConsumer(ctx context.Context, cfg WorkbenchConfig, reader SimopsKafkaReader, store WorkbenchScadaProjectionPersistence, metrics *SimopsConsumerMetrics) error {
 	if reader == nil {
 		created, err := NewWorkbenchKafkaReader(cfg, cfg.ScadaTopic, cfg.ScadaProjectionConsumerGroup)
 		if err != nil {
@@ -34,7 +34,7 @@ func RunWorkbenchScadaProjectionConsumer(ctx context.Context, cfg WorkbenchConfi
 	})
 }
 
-func RunWorkbenchResultProjectionConsumer(ctx context.Context, cfg WorkbenchConfig, reader SimopsKafkaReader, store WorkbenchStore, metrics *SimopsConsumerMetrics) error {
+func RunWorkbenchResultProjectionConsumer(ctx context.Context, cfg WorkbenchConfig, reader SimopsKafkaReader, store WorkbenchResultProjectionPersistence, metrics *SimopsConsumerMetrics) error {
 	if reader == nil {
 		created, err := NewWorkbenchKafkaReader(cfg, cfg.ResultsTopic, cfg.ResultProjectionConsumerGroup)
 		if err != nil {
@@ -57,7 +57,7 @@ func RunWorkbenchResultProjectionConsumer(ctx context.Context, cfg WorkbenchConf
 	})
 }
 
-func RunWorkbenchTwinProjectionConsumer(ctx context.Context, cfg WorkbenchConfig, reader SimopsKafkaReader, store WorkbenchStore, metrics *SimopsConsumerMetrics) error {
+func RunWorkbenchTwinProjectionConsumer(ctx context.Context, cfg WorkbenchConfig, reader SimopsKafkaReader, store WorkbenchTwinProjectionPersistence, metrics *SimopsConsumerMetrics) error {
 	if reader == nil {
 		created, err := NewWorkbenchKafkaReader(cfg, cfg.TwinStateTopic, cfg.TwinProjectionConsumerGroup)
 		if err != nil {
@@ -91,12 +91,15 @@ type TwinProjector struct {
 	result       *SimopsResultFrame
 }
 
-func NewTwinProjector(cfg WorkbenchConfig, store WorkbenchStore, eventLog WorkbenchEventLog) (*TwinProjector, error) {
+type TwinProjectorPersistence interface {
+	TwinStatePublicationStore
+	LatestMeasuredFrames(int) ([]ScadaTelemetryFrame, error)
+	LatestResultFrames(int) ([]SimopsResultFrame, error)
+}
+
+func NewTwinProjector(cfg WorkbenchConfig, store TwinProjectorPersistence, eventLog TwinStatePublicationEventLog) (*TwinProjector, error) {
 	if store == nil {
 		store = NewInMemoryWorkbenchStore()
-	}
-	if eventLog == nil {
-		eventLog = &MemoryWorkbenchEventLog{Store: store}
 	}
 	projector := &TwinProjector{
 		cfg:       cfg,
@@ -122,7 +125,7 @@ func NewTwinProjector(cfg WorkbenchConfig, store WorkbenchStore, eventLog Workbe
 	return projector, nil
 }
 
-func RunTwinProjector(ctx context.Context, cfg WorkbenchConfig, scadaReader SimopsKafkaReader, resultReader SimopsKafkaReader, store WorkbenchStore, eventLog WorkbenchEventLog, metrics *SimopsConsumerMetrics) error {
+func RunTwinProjector(ctx context.Context, cfg WorkbenchConfig, scadaReader SimopsKafkaReader, resultReader SimopsKafkaReader, store TwinProjectorPersistence, eventLog TwinStatePublicationEventLog, metrics *SimopsConsumerMetrics) error {
 	projector, err := NewTwinProjector(cfg, store, eventLog)
 	if err != nil {
 		return err

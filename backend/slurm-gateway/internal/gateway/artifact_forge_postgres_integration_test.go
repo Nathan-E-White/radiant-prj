@@ -85,3 +85,31 @@ func TestPostgresArtifactForgeResultArtifactCommitsWithProjection(t *testing.T) 
 		t.Fatalf("durable projection omitted verified artifact metadata: artifact=%#v err=%v", artifact, err)
 	}
 }
+
+func TestPostgresArtifactForgeEligibilityStoreContract(t *testing.T) {
+	assertArtifactForgeEligibilityStoreContract(t, openPostgresSnapshotTestStore(t))
+}
+
+func TestPostgresArtifactForgeEligibilityMigrationBackfillsLegacyEvidence(t *testing.T) {
+	store := openPostgresSnapshotTestStore(t)
+	run := SimopsRunRecord{RunID: "run-forge-legacy-upgrade", ScenarioID: ArtifactForgeSchedulerDriftRecipe, Lifecycle: SimopsComplete}
+	request := artifactForgeRequestFixture()
+	record := ArtifactForgeRecord{RunID: run.RunID, ReactorID: request.ReactorID, GameSessionID: request.GameSessionID, SimulationRecipe: request.SimulationRecipe}
+	result := artifactForgeResultFrame(run.RunID, run.ScenarioID)
+	if written, err := store.SaveResultProjection("artifact-forge-legacy", SimopsResultProjection{Frame: result, RedpandaTopic: "artifact-forge-legacy-results", RedpandaOffset: 1}); err != nil || !written {
+		t.Fatalf("seed legacy result written=%v err=%v", written, err)
+	}
+	seedArtifactForgeEligibilityLineage(t, store, record, request, result, 2)
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	if _, err := store.db.ExecContext(ctx, `ALTER TABLE artifact_forge_result_artifacts DROP COLUMN eligibility_evidence`); err != nil {
+		t.Fatalf("simulate legacy schema: %v", err)
+	}
+	if err := ensureWorkbenchSnapshotSchema(ctx, store.db); err != nil {
+		t.Fatalf("migrate legacy eligibility evidence: %v", err)
+	}
+	evidence, err := store.ReadArtifactForgeEligibility(run)
+	if err != nil || evidence.Result == nil || evidence.Result.RunID != run.RunID || evidence.ExpectedValue == nil || evidence.Lineage == nil || !artifactForgeLineageHasInput(*evidence.Lineage, "simulation-run", run.RunID) {
+		t.Fatalf("legacy eligibility evidence=%#v err=%v", evidence, err)
+	}
+}

@@ -60,4 +60,6 @@ func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request)
 	default:
 		writeJSON(w, http.StatusUnprocessableEntity, ErrorResponse{Error: "Unsupported Fleet Board intent", Code: "intent_not_supported"})
 	}
+	lifecycle.Activity = activity
+	return NewFleetBoardIntentModuleWithSessionLifecycle(reactorTelemetry, artifactForge, lifecycle)
 }

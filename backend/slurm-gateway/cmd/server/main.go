@@ -52,10 +52,10 @@ func main() {
 			defer ticker.Stop()
 			for range ticker.C {
 				ctx, cancel := context.WithTimeout(context.Background(), cfg.RequestTimeout)
-				err := app.ReconcileExpiredReactorTelemetry(ctx)
+				err := app.ReconcileFleetBoardSessions(ctx)
 				cancel()
 				if err != nil {
-					log.Printf("reactor telemetry expiry reconciliation failed: %v", err)
+					log.Printf("fleet board session reconciliation failed: %v", err)
 				}
 			}
 		}()
