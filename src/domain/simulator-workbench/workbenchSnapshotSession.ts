@@ -1,5 +1,10 @@
 import { loadFixtureWorkbenchData } from "./fixtureAdapter";
 import {
+  buildWorkbenchProjectionResult,
+  type WorkbenchProjection,
+  type WorkbenchSelection
+} from "./projection";
+import {
   createHttpWorkbenchDataAdapter,
   initialWorkbenchReadState,
   refreshWorkbenchReadState,
@@ -9,16 +14,25 @@ import {
 } from "./liveWorkbench";
 
 export type WorkbenchSnapshotSession = {
-  getState(): WorkbenchReadState;
-  subscribe(listener: (state: WorkbenchReadState) => void): () => void;
+  getState(): WorkbenchSnapshotResult;
+  subscribe(listener: (state: WorkbenchSnapshotResult) => void): () => void;
   start(): Promise<void>;
   refresh(): Promise<void>;
+  selectUnit(unitId: string, commercialBasisId?: string): void;
+  selectValue(valueId: string): void;
   dispose(): void;
+};
+
+export type WorkbenchSnapshotResult = {
+  readState: WorkbenchReadState;
+  projection: WorkbenchProjection | null;
+  selection: WorkbenchSelection;
 };
 
 export type WorkbenchSnapshotSessionOptions = Omit<WorkbenchRefreshOptions, "signal"> & {
   refreshIntervalMs: number;
   scheduler?: WorkbenchSnapshotScheduler;
+  initialSelection?: WorkbenchSelection;
 };
 
 export type WorkbenchSnapshotScheduler = {
@@ -32,11 +46,12 @@ const browserScheduler: WorkbenchSnapshotScheduler = {
   cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>)
 };
 
-export function createBrowserWorkbenchSnapshotSession(): WorkbenchSnapshotSession {
+export function createBrowserWorkbenchSnapshotSession(initialSelection: WorkbenchSelection = {}): WorkbenchSnapshotSession {
   return createWorkbenchSnapshotSession(createHttpWorkbenchDataAdapter(), {
     allowFixtureFallback: import.meta.env.VITE_WORKBENCH_ALLOW_FIXTURE_FALLBACK === "true",
     fixtureInput: loadFixtureWorkbenchData(),
-    refreshIntervalMs: DEFAULT_REFRESH_INTERVAL_MS
+    refreshIntervalMs: DEFAULT_REFRESH_INTERVAL_MS,
+    initialSelection
   });
 }
 
@@ -45,29 +60,29 @@ export function createWorkbenchSnapshotSession(
   options: WorkbenchSnapshotSessionOptions
 ): WorkbenchSnapshotSession {
   const scheduler = options.scheduler ?? browserScheduler;
+  let requestedSelection = structuredClone(options.initialSelection ?? {});
   const configuration: WorkbenchSnapshotSessionOptions = {
     allowFixtureFallback: options.allowFixtureFallback,
     fixtureInput: structuredClone(options.fixtureInput),
     refreshIntervalMs: options.refreshIntervalMs,
     ...(options.now ? { now: options.now } : {})
   };
-  let state = immutableSnapshot(initialWorkbenchReadState());
-  let settledState = state;
+  let settledReadState = initialWorkbenchReadState();
+  let state = immutableResult(projectResult(settledReadState, requestedSelection));
   let active: AbortController | null = null;
   let timer: unknown | null = null;
   let running = false;
   let hasSettledRead = false;
-  const listeners = new Set<(state: WorkbenchReadState) => void>();
+  const listeners = new Set<(state: WorkbenchSnapshotResult) => void>();
 
   function publish(next: WorkbenchReadState): void {
-    state = immutableSnapshot(next);
+    state = immutableResult(projectResult(next, requestedSelection));
     listeners.forEach((listener) => listener(state));
   }
 
   function settle(next: WorkbenchReadState): void {
-    state = immutableSnapshot(next);
-    settledState = state;
-    listeners.forEach((listener) => listener(state));
+    publish(next);
+    settledReadState = state.readState;
   }
 
   function clearScheduledRefresh(): void {
@@ -88,7 +103,7 @@ export function createWorkbenchSnapshotSession(
     clearScheduledRefresh();
     active?.abort();
     const controller = new AbortController();
-    const acceptedState = settledState;
+    const acceptedState = settledReadState;
     active = controller;
 
     const pending: WorkbenchReadState = {
@@ -127,19 +142,37 @@ export function createWorkbenchSnapshotSession(
       await refresh();
     },
     refresh,
+    selectUnit(unitId, commercialBasisId) {
+      requestedSelection = {
+        ...requestedSelection,
+        selectedUnitId: unitId,
+        ...(commercialBasisId ? { selectedCommercialBasisId: commercialBasisId } : {})
+      };
+      publish(state.readState);
+    },
+    selectValue(valueId) {
+      requestedSelection = { ...requestedSelection, selectedValueId: valueId };
+      publish(state.readState);
+    },
     dispose() {
       running = false;
       clearScheduledRefresh();
       active?.abort();
       active = null;
-      state = settledState;
+      state = immutableResult(projectResult(settledReadState, requestedSelection));
     }
   };
 }
 
-function immutableSnapshot(state: WorkbenchReadState): WorkbenchReadState {
-  const snapshot = structuredClone(state);
-  if (state.model && Object.isFrozen(state.model)) snapshot.model = state.model;
+function projectResult(readState: WorkbenchReadState, selection: WorkbenchSelection): WorkbenchSnapshotResult {
+  if (!readState.model) return { readState, projection: null, selection };
+  const projected = buildWorkbenchProjectionResult(readState.model.input, selection);
+  return { readState, ...projected };
+}
+
+function immutableResult(result: WorkbenchSnapshotResult): WorkbenchSnapshotResult {
+  const snapshot = structuredClone(result);
+  if (result.readState.model && Object.isFrozen(result.readState.model)) snapshot.readState.model = result.readState.model;
   return deepFreeze(snapshot);
 }
 

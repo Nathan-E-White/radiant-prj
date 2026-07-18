@@ -2,12 +2,52 @@ import { describe, expect, it, vi } from "vitest";
 import { loadFixtureWorkbenchData } from "./fixtureAdapter";
 import { WorkbenchReadError, type AcceptedWorkbenchSnapshot, type WorkbenchSnapshotAdapter } from "./liveWorkbench";
 import {
+  createBrowserWorkbenchSnapshotSession,
   createWorkbenchSnapshotSession,
   type WorkbenchSnapshotScheduler,
   type WorkbenchSnapshotSessionOptions
 } from "./workbenchSnapshotSession";
 
 describe("Workbench Snapshot session", () => {
+  it("constructs the browser session with an immutable initial projected result", () => {
+    const session = createBrowserWorkbenchSnapshotSession({ selectedUnitId: "KAL-03" });
+    expect(session.getState()).toMatchObject({
+      readState: { phase: "loading", model: null },
+      projection: null,
+      selection: { selectedUnitId: "KAL-03" }
+    });
+    session.dispose();
+  });
+
+  it("uses browser timer defaults only after a successful start and cancels them on disposal", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const schedule = vi.spyOn(globalThis, "setTimeout");
+    const cancel = vi.spyOn(globalThis, "clearTimeout");
+    try {
+      const inactive = createWorkbenchSnapshotSession(sequenceAdapter([accepted(1, fixtureInput)]), {
+        allowFixtureFallback: false,
+        fixtureInput,
+        refreshIntervalMs: 10_000
+      });
+      inactive.dispose();
+      expect(cancel).not.toHaveBeenCalled();
+
+      const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(1, fixtureInput)]), {
+        allowFixtureFallback: false,
+        fixtureInput,
+        refreshIntervalMs: 10_000
+      });
+      await session.start();
+      expect(schedule).toHaveBeenCalledWith(expect.any(Function), 10_000);
+      const handle = schedule.mock.results.at(-1)?.value;
+      session.dispose();
+      expect(cancel).toHaveBeenCalledWith(handle);
+    } finally {
+      schedule.mockRestore();
+      cancel.mockRestore();
+    }
+  });
+
   it("owns initial loading, scheduled refresh, and manual refresh", async () => {
     const scheduler = createTestScheduler();
     const fixtureInput = loadFixtureWorkbenchData();
@@ -24,28 +64,28 @@ describe("Workbench Snapshot session", () => {
       scheduler
     });
     const observations: string[] = [];
-    session.subscribe((state) => observations.push(`${state.phase}:${state.message}`));
+    session.subscribe(({ readState }) => observations.push(`${readState.phase}:${readState.message}`));
 
     await session.refresh();
     expect(adapter.load).not.toHaveBeenCalled();
 
     await session.start();
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 1 } });
+    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 1 } });
     await session.start();
     expect(adapter.load).toHaveBeenCalledTimes(1);
 
     await scheduler.advanceBy(500);
     expect(adapter.load).toHaveBeenCalledTimes(1);
     await scheduler.advanceBy(500);
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 2 } });
+    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 2 } });
 
     await scheduler.advanceBy(500);
     await session.refresh();
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 3 } });
+    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 3 } });
     await scheduler.advanceBy(500);
     expect(adapter.load).toHaveBeenCalledTimes(3);
     await scheduler.advanceBy(500);
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 4 } });
+    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 4 } });
     expect(observations.map((entry) => entry.split(":", 1)[0])).toEqual([
       "loading",
       "loading",
@@ -96,7 +136,7 @@ describe("Workbench Snapshot session", () => {
     expect(pending).toHaveLength(2);
     pending[1]?.resolve(accepted(2, fixtureInput));
     await manual;
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 2 } });
+    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 2 } });
     session.dispose();
   });
 
@@ -115,17 +155,17 @@ describe("Workbench Snapshot session", () => {
     });
 
     await session.start();
-    expect(session.getState()).toMatchObject({
+    expect(session.getState().readState).toMatchObject({
       phase: "fixture",
       errorKind: "unavailable",
       model: { source: "fixture", acceptedAt: "2026-07-18T12:00:00.000Z" }
     });
 
     await session.refresh();
-    expect(session.getState()).toMatchObject({ phase: "error", errorKind: "auth", model: { source: "fixture" } });
+    expect(session.getState().readState).toMatchObject({ phase: "error", errorKind: "auth", model: { source: "fixture" } });
 
     await session.refresh();
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 4, source: "live" } });
+    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 4, source: "live" } });
     session.dispose();
 
     const emptySession = createWorkbenchSnapshotSession(
@@ -133,7 +173,7 @@ describe("Workbench Snapshot session", () => {
       { allowFixtureFallback: true, fixtureInput, refreshIntervalMs: 60_000 }
     );
     await emptySession.start();
-    expect(emptySession.getState()).toMatchObject({ phase: "fixture", errorKind: "empty", model: { source: "fixture" } });
+    expect(emptySession.getState().readState).toMatchObject({ phase: "fixture", errorKind: "empty", model: { source: "fixture" } });
     emptySession.dispose();
 
     const rejectedSession = createWorkbenchSnapshotSession(
@@ -144,9 +184,9 @@ describe("Workbench Snapshot session", () => {
       { allowFixtureFallback: true, fixtureInput, refreshIntervalMs: 60_000 }
     );
     await rejectedSession.start();
-    expect(rejectedSession.getState()).toMatchObject({ phase: "error", errorKind: "auth", model: null });
+    expect(rejectedSession.getState().readState).toMatchObject({ phase: "error", errorKind: "auth", model: null });
     await rejectedSession.refresh();
-    expect(rejectedSession.getState()).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
+    expect(rejectedSession.getState().readState).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
     rejectedSession.dispose();
   });
 
@@ -160,7 +200,7 @@ describe("Workbench Snapshot session", () => {
       );
 
       await session.start();
-      expect(session.getState()).toMatchObject({ phase: "error", errorKind: kind, model: null });
+      expect(session.getState().readState).toMatchObject({ phase: "error", errorKind: kind, model: null });
       session.dispose();
     }
   );
@@ -179,7 +219,7 @@ describe("Workbench Snapshot session", () => {
     );
     options.allowFixtureFallback = true;
     await disabled.start();
-    expect(disabled.getState()).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
+    expect(disabled.getState().readState).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
     disabled.dispose();
 
     options.allowFixtureFallback = true;
@@ -190,7 +230,7 @@ describe("Workbench Snapshot session", () => {
     options.allowFixtureFallback = false;
     fixtureInput.state.scenarioId = "mutated-after-creation";
     await enabled.start();
-    expect(enabled.getState()).toMatchObject({
+    expect(enabled.getState().readState).toMatchObject({
       phase: "fixture",
       model: { source: "fixture", input: { state: { scenarioId: originalScenario } } }
     });
@@ -215,22 +255,22 @@ describe("Workbench Snapshot session", () => {
     });
 
     await session.start();
-    const acceptedModel = session.getState().model;
+    const acceptedModel = session.getState().readState.model;
     await session.refresh();
-    expect(session.getState()).toMatchObject({ phase: "stale", errorKind: "partial", model: { generation: 8 } });
-    expect(session.getState().model).toBe(acceptedModel);
+    expect(session.getState().readState).toMatchObject({ phase: "stale", errorKind: "partial", model: { generation: 8 } });
+    expect(session.getState().readState.model).toBe(acceptedModel);
 
     await session.refresh();
-    expect(session.getState()).toMatchObject({ phase: "stale", errorKind: "generation", model: { generation: 8 } });
+    expect(session.getState().readState).toMatchObject({ phase: "stale", errorKind: "generation", model: { generation: 8 } });
 
     await session.refresh();
-    expect(session.getState()).toMatchObject({
+    expect(session.getState().readState).toMatchObject({
       phase: "live",
       model: { generation: 8, input: { state: { scenarioId: "equal-generation-refresh" } } }
     });
 
     await session.refresh();
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 9 } });
+    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 9 } });
     session.dispose();
   });
 
@@ -257,16 +297,16 @@ describe("Workbench Snapshot session", () => {
     const second = session.refresh();
     expect(pending[0]?.signal.aborted).toBe(true);
     await first;
-    expect(session.getState().phase).toBe("loading");
+    expect(session.getState().readState.phase).toBe("loading");
     pending[1]?.resolve(accepted(12, fixtureInput));
     await second;
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 12 } });
+    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 12 } });
 
     const third = session.refresh();
     session.dispose();
     expect(pending[2]?.signal.aborted).toBe(true);
     await third;
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 12 } });
+    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 12 } });
   });
 
   it("stops publishing to unsubscribed listeners", async () => {
@@ -296,7 +336,7 @@ describe("Workbench Snapshot session", () => {
     });
 
     await session.start();
-    const exposed = session.getState();
+    const exposed = session.getState().readState;
     expect(() => {
       if (!exposed.model) throw new Error("missing accepted model");
       exposed.model.generation = 2;
@@ -305,11 +345,41 @@ describe("Workbench Snapshot session", () => {
       if (!exposed.model) throw new Error("missing accepted model");
       exposed.model.input.state.schemaVersion = "corrupted" as typeof exposed.model.input.state.schemaVersion;
     }).toThrow(TypeError);
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 8 } });
+    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 8 } });
     expect(Object.isFrozen(fixtureInput)).toBe(false);
 
     await session.refresh();
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 9 } });
+    expect(session.getState().readState).toMatchObject({ phase: "live", model: { generation: 9 } });
+    session.dispose();
+  });
+
+  it("publishes read state, effective selection, and projection as one immutable result", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(5, fixtureInput)]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000,
+      initialSelection: { selectedUnitId: "KAL-03", selectedValueId: "missing-value" }
+    });
+
+    expect(session.getState()).toMatchObject({ readState: { phase: "loading" }, projection: null });
+    await session.start();
+    const initial = session.getState();
+    expect(initial.selection.selectedUnitId).toBe("KAL-03");
+    expect(initial.selection.selectedValueId).toBe(initial.projection?.selectedValue?.valueId);
+    expect(initial.projection?.selectedValue?.valueBasis).toBe("imputed");
+    expect(Object.isFrozen(initial)).toBe(true);
+    expect(Object.isFrozen(initial.projection)).toBe(true);
+    expect(Object.isFrozen(initial.selection)).toBe(true);
+
+    session.selectUnit("missing-unit");
+    const normalizedUnit = session.getState();
+    expect(normalizedUnit.selection.selectedUnitId).toBe(fixtureInput.state.selectedUnitId);
+    expect(normalizedUnit.projection?.selectedUnit.unitId).toBe(normalizedUnit.selection.selectedUnitId);
+
+    session.selectValue("missing-value");
+    const normalizedValue = session.getState();
+    expect(normalizedValue.selection.selectedValueId).toBe(normalizedValue.projection?.selectedValue?.valueId);
     session.dispose();
   });
 });

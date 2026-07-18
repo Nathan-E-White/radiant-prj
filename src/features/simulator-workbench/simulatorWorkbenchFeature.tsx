@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { SimulatorWorkbenchSurface, type SimulationHealthPanelModel } from "../../components/simulator-workbench";
 import type { ComputeJob } from "../../domain/types";
 import {
-  buildWorkbenchProjection,
   createBrowserWorkbenchSnapshotSession,
   createHealthTickDriver,
   projectHealthCards,
@@ -19,11 +18,10 @@ import {
 const WORKBENCH_HEALTH_TICK_MS = 1250;
 
 export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelection = {}) {
-  const [session] = useState<WorkbenchSnapshotSession>(() => createBrowserWorkbenchSnapshotSession());
-  const readState = useSyncExternalStore(session.subscribe, session.getState, session.getState);
-  const [selection, setSelection] = useState<WorkbenchSelection>(initialSelection);
+  const [session] = useState<WorkbenchSnapshotSession>(() => createBrowserWorkbenchSnapshotSession(initialSelection));
+  const result = useSyncExternalStore(session.subscribe, session.getState, session.getState);
+  const { projection, readState, selection } = result;
   const data = readState.model?.input ?? null;
-  const projection = useMemo(() => (data ? buildWorkbenchProjection(data, selection) : null), [data, selection]);
   const [healthPanelModel, setHealthPanelModel] = useState<SimulationHealthPanelModel>(() =>
     projectHealthCards({ generatedAt: "1970-01-01T00:00:00Z", activeSimulationRuns: [] }, new Date(0))
   );
@@ -49,18 +47,11 @@ export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelectio
   }, [data]);
 
   function selectUnit(unitId: string, commercialBasisId: string) {
-    setSelection((current) => ({
-      ...current,
-      selectedUnitId: unitId,
-      selectedCommercialBasisId: commercialBasisId
-    }));
+    session.selectUnit(unitId, commercialBasisId);
   }
 
   function selectValue(valueId: string) {
-    setSelection((current) => ({
-      ...current,
-      selectedValueId: valueId
-    }));
+    session.selectValue(valueId);
   }
 
   return {
