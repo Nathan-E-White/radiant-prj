@@ -109,10 +109,13 @@ describe("Workbench Snapshot session", () => {
 
   it("retains accepted live data as stale across partial failure and generation regression", async () => {
     const fixtureInput = loadFixtureWorkbenchData();
+    const equalGenerationInput = structuredClone(fixtureInput);
+    equalGenerationInput.state.scenarioId = "equal-generation-refresh";
     const adapter = sequenceAdapter([
       accepted(8, fixtureInput),
       new WorkbenchReadError("partial", "truncated"),
       accepted(7, fixtureInput),
+      accepted(8, equalGenerationInput),
       accepted(9, fixtureInput)
     ]);
     const session = createWorkbenchSnapshotSession(adapter, {
@@ -129,6 +132,12 @@ describe("Workbench Snapshot session", () => {
 
     await session.refresh();
     expect(session.getState()).toMatchObject({ phase: "stale", errorKind: "generation", model: { generation: 8 } });
+
+    await session.refresh();
+    expect(session.getState()).toMatchObject({
+      phase: "live",
+      model: { generation: 8, input: { state: { scenarioId: "equal-generation-refresh" } } }
+    });
 
     await session.refresh();
     expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 9 } });
