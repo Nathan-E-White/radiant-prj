@@ -18,7 +18,7 @@ func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	intentModule := NewFleetBoardIntentModule(g.reactorTelemetry)
+	intentModule := NewFleetBoardIntentModule(g.reactorTelemetry, g.artifactForge)
 	if result := intentModule.ReconcileDynamicReactors(r.Context()); result != nil {
 		writeJSON(w, result.Status, result.Body)
 		return
@@ -35,29 +35,9 @@ func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, result.Status, result.Body)
 		return
 	}
-	switch request.Intent {
-	case "requestArtifactForge":
-		if g.artifactForge == nil {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Artifact Forge backend disabled", Code: "artifact_forge_disabled"})
-			return
-		}
-		outcome, created, err := g.artifactForge.Request(r.Context(), ArtifactForgeRequest{
-			GameSessionID: request.GameSessionID, ReactorID: request.ReactorID, SimulationJobID: request.SimulationJobID,
-			SimulationJobState: request.SimulationJobState, SimulationRecipe: request.SimulationRecipe, IdempotencyKey: request.IdempotencyKey,
-		}, identity)
-		if err != nil {
-			writeJSON(w, http.StatusUnprocessableEntity, ErrorResponse{Error: err.Error(), Code: "artifact_forge_rejected"})
-			return
-		}
-		status := http.StatusOK
-		if created {
-			status = http.StatusAccepted
-		}
-		if outcome.Decision == ArtifactForgeIntentRejected {
-			status = http.StatusUnprocessableEntity
-		}
-		writeJSON(w, status, outcome)
-	default:
-		writeJSON(w, http.StatusUnprocessableEntity, ErrorResponse{Error: "Unsupported Fleet Board intent", Code: "intent_not_supported"})
+	if result, handled := intentModule.ExecuteArtifactForge(r.Context(), request, identity); handled {
+		writeJSON(w, result.Status, result.Body)
+		return
 	}
+	writeJSON(w, http.StatusUnprocessableEntity, ErrorResponse{Error: "Unsupported Fleet Board intent", Code: "intent_not_supported"})
 }

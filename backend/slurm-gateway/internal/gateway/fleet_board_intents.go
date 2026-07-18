@@ -42,15 +42,23 @@ type DynamicReactorIntentManager interface {
 	ReconcileExpired(context.Context) error
 }
 
-type FleetBoardIntentModule struct {
-	reactorTelemetry DynamicReactorIntentManager
+type ArtifactForgeIntentManager interface {
+	Request(context.Context, ArtifactForgeRequest, string) (ArtifactForgeRecord, bool, error)
 }
 
-func NewFleetBoardIntentModule(reactorTelemetry DynamicReactorIntentManager) *FleetBoardIntentModule {
+type FleetBoardIntentModule struct {
+	reactorTelemetry DynamicReactorIntentManager
+	artifactForge    ArtifactForgeIntentManager
+}
+
+func NewFleetBoardIntentModule(reactorTelemetry DynamicReactorIntentManager, artifactForge ArtifactForgeIntentManager) *FleetBoardIntentModule {
 	if concrete, ok := reactorTelemetry.(*ReactorTelemetryManager); ok && concrete == nil {
 		reactorTelemetry = nil
 	}
-	return &FleetBoardIntentModule{reactorTelemetry: reactorTelemetry}
+	if concrete, ok := artifactForge.(*ArtifactForgeManager); ok && concrete == nil {
+		artifactForge = nil
+	}
+	return &FleetBoardIntentModule{reactorTelemetry: reactorTelemetry, artifactForge: artifactForge}
 }
 
 func (m *FleetBoardIntentModule) ReconcileDynamicReactors(ctx context.Context) *FleetBoardIntentResult {
@@ -79,6 +87,40 @@ func (m *FleetBoardIntentModule) ExecuteDynamicReactor(ctx context.Context, requ
 		return m.registerDynamicReactor(ctx, request), true
 	}
 	return m.removeDynamicReactor(ctx, request), true
+}
+
+func (m *FleetBoardIntentModule) ExecuteArtifactForge(ctx context.Context, request FleetBoardIntentRequest, identity string) (FleetBoardIntentResult, bool) {
+	if request.Intent != "requestArtifactForge" {
+		return FleetBoardIntentResult{}, false
+	}
+	if m.artifactForge == nil {
+		return fleetBoardIntentFailure(http.StatusNotFound, "Artifact Forge backend disabled", "artifact_forge_disabled", nil), true
+	}
+
+	translated := ArtifactForgeRequest{
+		GameSessionID:      request.GameSessionID,
+		ReactorID:          request.ReactorID,
+		SimulationJobID:    request.SimulationJobID,
+		SimulationJobState: request.SimulationJobState,
+		SimulationRecipe:   request.SimulationRecipe,
+		IdempotencyKey:     request.IdempotencyKey,
+	}
+	normalizeArtifactForgeRequest(&translated)
+	if err := validateArtifactForgeIdentity(translated); err != nil {
+		return fleetBoardIntentFailure(http.StatusUnprocessableEntity, err.Error(), "artifact_forge_rejected", nil), true
+	}
+	outcome, created, err := m.artifactForge.Request(ctx, translated, identity)
+	if err != nil {
+		return fleetBoardIntentFailure(http.StatusUnprocessableEntity, err.Error(), "artifact_forge_rejected", nil), true
+	}
+	status := http.StatusOK
+	if created {
+		status = http.StatusAccepted
+	}
+	if outcome.Decision == ArtifactForgeIntentRejected {
+		status = http.StatusUnprocessableEntity
+	}
+	return FleetBoardIntentResult{Status: status, Body: outcome}, true
 }
 
 func (m *FleetBoardIntentModule) registerDynamicReactor(ctx context.Context, request FleetBoardIntentRequest) FleetBoardIntentResult {

@@ -12,7 +12,7 @@ func TestFleetBoardDynamicReactorIntentModuleTranslatesRegistration(t *testing.T
 		registerSet: ReactorTelemetryWorkerSet{SetID: "set-1", ReactorID: "reactor-1", Lifecycle: ReactorTelemetryActive},
 		created:     true,
 	}
-	module := NewFleetBoardIntentModule(manager)
+	module := NewFleetBoardIntentModule(manager, nil)
 
 	result, handled := module.ExecuteDynamicReactor(context.Background(), FleetBoardIntentRequest{
 		Intent: "registerDynamicReactor", GameSessionID: "session-1", ReactorID: "reactor-1", IdempotencyKey: "register-1",
@@ -34,7 +34,7 @@ func TestFleetBoardDynamicReactorIntentModuleTranslatesRemoval(t *testing.T) {
 	manager := &recordingDynamicReactorIntentManager{
 		removeSet: ReactorTelemetryWorkerSet{SetID: "set-1", ReactorID: "reactor-1", Lifecycle: ReactorTelemetryRemoved},
 	}
-	module := NewFleetBoardIntentModule(manager)
+	module := NewFleetBoardIntentModule(manager, nil)
 
 	result, handled := module.ExecuteDynamicReactor(context.Background(), FleetBoardIntentRequest{
 		Intent: "removeDynamicReactor", GameSessionID: "session-1", ReactorID: "reactor-1", IdempotencyKey: "remove-1",
@@ -54,7 +54,7 @@ func TestFleetBoardDynamicReactorIntentModuleTranslatesRemoval(t *testing.T) {
 
 func TestFleetBoardDynamicReactorIntentModuleConcentratesExpiryReconciliation(t *testing.T) {
 	manager := &recordingDynamicReactorIntentManager{reconcileErr: context.DeadlineExceeded}
-	result := NewFleetBoardIntentModule(manager).ReconcileDynamicReactors(context.Background())
+	result := NewFleetBoardIntentModule(manager, nil).ReconcileDynamicReactors(context.Background())
 	if manager.reconcileCalls != 1 || result == nil || result.Status != http.StatusBadGateway {
 		t.Fatalf("expected stable reconciliation failure, calls=%d result=%#v", manager.reconcileCalls, result)
 	}
@@ -66,7 +66,7 @@ func TestFleetBoardDynamicReactorIntentModuleConcentratesExpiryReconciliation(t 
 
 func TestFleetBoardDynamicReactorIntentModuleTreatsTypedNilManagerAsUnavailable(t *testing.T) {
 	var manager *ReactorTelemetryManager
-	module := NewFleetBoardIntentModule(manager)
+	module := NewFleetBoardIntentModule(manager, nil)
 	if result := module.ReconcileDynamicReactors(context.Background()); result != nil {
 		t.Fatalf("typed nil manager attempted reconciliation: %#v", result)
 	}
@@ -82,7 +82,7 @@ func TestFleetBoardDynamicReactorIntentModuleRecoversRegistrationAfterManagerRes
 	failedManager := NewReactorTelemetryManager(DefaultReactorTelemetryConfig(), store, failedRuntime, nil)
 	request := validDynamicReactorIntent("registerDynamicReactor")
 
-	failed, handled := NewFleetBoardIntentModule(failedManager).ExecuteDynamicReactor(context.Background(), request)
+	failed, handled := NewFleetBoardIntentModule(failedManager, nil).ExecuteDynamicReactor(context.Background(), request)
 	if !handled || failed.Status != http.StatusBadGateway {
 		t.Fatalf("expected visible failed registration, handled=%t result=%#v", handled, failed)
 	}
@@ -93,7 +93,7 @@ func TestFleetBoardDynamicReactorIntentModuleRecoversRegistrationAfterManagerRes
 
 	restartedRuntime := &recordingReactorTelemetryRuntime{}
 	restartedManager := NewReactorTelemetryManager(DefaultReactorTelemetryConfig(), store, restartedRuntime, nil)
-	recovered, handled := NewFleetBoardIntentModule(restartedManager).ExecuteDynamicReactor(context.Background(), request)
+	recovered, handled := NewFleetBoardIntentModule(restartedManager, nil).ExecuteDynamicReactor(context.Background(), request)
 	if !handled || recovered.Status != http.StatusOK {
 		t.Fatalf("expected recovered registration, handled=%t result=%#v", handled, recovered)
 	}
@@ -107,7 +107,7 @@ func TestFleetBoardDynamicReactorIntentModuleRecoversRemovalAfterManagerRestart(
 	store := NewInMemoryReactorTelemetryStore()
 	failedRuntime := &recordingReactorTelemetryRuntime{stopErr: context.DeadlineExceeded}
 	manager := NewReactorTelemetryManager(DefaultReactorTelemetryConfig(), store, failedRuntime, nil)
-	module := NewFleetBoardIntentModule(manager)
+	module := NewFleetBoardIntentModule(manager, nil)
 	registered, _ := module.ExecuteDynamicReactor(context.Background(), validDynamicReactorIntent("registerDynamicReactor"))
 	set := registered.Body.(RegisterDynamicReactorOutcome).WorkerSet
 	remove := FleetBoardIntentRequest{
@@ -125,7 +125,7 @@ func TestFleetBoardDynamicReactorIntentModuleRecoversRemovalAfterManagerRestart(
 
 	restartedRuntime := &recordingReactorTelemetryRuntime{}
 	restartedManager := NewReactorTelemetryManager(DefaultReactorTelemetryConfig(), store, restartedRuntime, nil)
-	restartedModule := NewFleetBoardIntentModule(restartedManager)
+	restartedModule := NewFleetBoardIntentModule(restartedManager, nil)
 	if result := restartedModule.ReconcileDynamicReactors(context.Background()); result != nil {
 		t.Fatalf("restart cleanup reconciliation failed: %#v", result)
 	}
@@ -138,6 +138,139 @@ func TestFleetBoardDynamicReactorIntentModuleRecoversRemovalAfterManagerRestart(
 		t.Fatalf("restart created a parallel removal lifecycle: outcome=%#v stops=%#v", outcome, restartedRuntime.stops)
 	}
 }
+
+func TestFleetBoardArtifactForgeIntentModuleTranslatesExplicitRequest(t *testing.T) {
+	manager := &recordingArtifactForgeIntentManager{
+		record:  ArtifactForgeRecord{RequestID: "forge-1", Decision: ArtifactForgeAwaitingRun},
+		created: true,
+	}
+	module := NewFleetBoardIntentModule(nil, manager)
+	request := FleetBoardIntentRequest{
+		Intent: "requestArtifactForge", GameSessionID: "session-1", ReactorID: "reactor-1",
+		SimulationJobID: "local-job-1", SimulationJobState: "completed", SimulationRecipe: ArtifactForgeSchedulerDriftRecipe,
+		IdempotencyKey: "forge-click-1",
+	}
+
+	result, handled := module.ExecuteArtifactForge(context.Background(), request, "fleet-player")
+	body, ok := result.Body.(ArtifactForgeRecord)
+	if !handled || result.Status != http.StatusAccepted || !ok || body.RequestID != manager.record.RequestID || body.Decision != manager.record.Decision {
+		t.Fatalf("expected accepted Artifact Forge outcome, handled=%t result=%#v", handled, result)
+	}
+	want := ArtifactForgeRequest{
+		GameSessionID: "session-1", ReactorID: "reactor-1", SimulationJobID: "local-job-1",
+		SimulationJobState: "completed", SimulationRecipe: ArtifactForgeSchedulerDriftRecipe, IdempotencyKey: "forge-click-1",
+	}
+	if manager.request != want || manager.identity != "fleet-player" {
+		t.Fatalf("Artifact Forge translation changed domain identity: request=%#v identity=%q", manager.request, manager.identity)
+	}
+}
+
+func TestFleetBoardArtifactForgeIntentModuleClassifiesStableOutcomes(t *testing.T) {
+	tests := []struct {
+		name       string
+		manager    ArtifactForgeIntentManager
+		request    FleetBoardIntentRequest
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "manager unavailable", request: validArtifactForgeIntent(), wantStatus: http.StatusNotFound, wantCode: "artifact_forge_disabled"},
+		{name: "invalid identity", manager: &recordingArtifactForgeIntentManager{}, request: FleetBoardIntentRequest{Intent: "requestArtifactForge"}, wantStatus: http.StatusUnprocessableEntity, wantCode: "artifact_forge_rejected"},
+		{name: "manager error", manager: &recordingArtifactForgeIntentManager{err: errors.New("store unavailable")}, request: validArtifactForgeIntent(), wantStatus: http.StatusUnprocessableEntity, wantCode: "artifact_forge_rejected"},
+		{name: "intent rejected", manager: &recordingArtifactForgeIntentManager{record: ArtifactForgeRecord{Decision: ArtifactForgeIntentRejected}, created: true}, request: validArtifactForgeIntent(), wantStatus: http.StatusUnprocessableEntity},
+		{name: "duplicate", manager: &recordingArtifactForgeIntentManager{record: ArtifactForgeRecord{Decision: ArtifactForgeAwaitingRun}}, request: validArtifactForgeIntent(), wantStatus: http.StatusOK},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			result, handled := NewFleetBoardIntentModule(nil, test.manager).ExecuteArtifactForge(context.Background(), test.request, "fleet-player")
+			if !handled || result.Status != test.wantStatus {
+				t.Fatalf("expected handled status %d, got handled=%t result=%#v", test.wantStatus, handled, result)
+			}
+			if test.wantCode != "" {
+				outcome, ok := result.Body.(FleetBoardIntentError)
+				if !ok || outcome.Code != test.wantCode {
+					t.Fatalf("expected code %q, got %#v", test.wantCode, result.Body)
+				}
+			}
+		})
+	}
+}
+
+func TestFleetBoardArtifactForgeIntentModulePreservesEligibilityOutcome(t *testing.T) {
+	for _, decision := range []ArtifactForgeDecision{
+		ArtifactForgeRunFailed,
+		ArtifactForgeTelemetryIneligible,
+		ArtifactForgeArtifactIncomplete,
+		ArtifactForgeLineageMissing,
+		ArtifactForgeOutcomeApplied,
+	} {
+		t.Run(string(decision), func(t *testing.T) {
+			manager := &recordingArtifactForgeIntentManager{record: ArtifactForgeRecord{Decision: decision}}
+			result, handled := NewFleetBoardIntentModule(nil, manager).ExecuteArtifactForge(context.Background(), validArtifactForgeIntent(), "fleet-player")
+			if !handled || result.Status != http.StatusOK || result.Body.(ArtifactForgeRecord).Decision != decision {
+				t.Fatalf("intent mediation rewrote Artifact Forge authority: handled=%t result=%#v", handled, result)
+			}
+		})
+	}
+}
+
+func TestFleetBoardArtifactForgeIntentModuleRecoversDuplicateWithoutParallelRun(t *testing.T) {
+	forge, runs, _ := newArtifactForgeTestRig(t)
+	module := NewFleetBoardIntentModule(nil, forge)
+	request := validArtifactForgeIntent()
+
+	accepted, handled := module.ExecuteArtifactForge(context.Background(), request, "fleet-player")
+	if !handled || accepted.Status != http.StatusAccepted {
+		t.Fatalf("expected accepted explicit request, handled=%t result=%#v", handled, accepted)
+	}
+	first := accepted.Body.(ArtifactForgeRecord)
+	if first.RunID == "" || first.RunID == request.SimulationJobID {
+		t.Fatalf("local Simulation Job was promoted or Run association missing: %#v", first.Trace)
+	}
+
+	recovered, handled := module.ExecuteArtifactForge(context.Background(), request, "fleet-player")
+	if !handled || recovered.Status != http.StatusOK {
+		t.Fatalf("expected stable duplicate recovery, handled=%t result=%#v", handled, recovered)
+	}
+	duplicate := recovered.Body.(ArtifactForgeRecord)
+	if duplicate.RequestID != first.RequestID || duplicate.RunID != first.RunID || len(runs.runs) != 1 {
+		t.Fatalf("duplicate request created a parallel lifecycle: first=%#v duplicate=%#v runs=%d", first.Trace, duplicate.Trace, len(runs.runs))
+	}
+}
+
+func TestFleetBoardArtifactForgeIntentModuleRejectsInvalidIdentityBeforeManager(t *testing.T) {
+	manager := &recordingArtifactForgeIntentManager{}
+	result, handled := NewFleetBoardIntentModule(nil, manager).ExecuteArtifactForge(context.Background(), FleetBoardIntentRequest{Intent: "requestArtifactForge"}, "fleet-player")
+	if !handled || result.Status != http.StatusUnprocessableEntity || manager.calls != 0 {
+		t.Fatalf("invalid request reached Artifact Forge: handled=%t calls=%d result=%#v", handled, manager.calls, result)
+	}
+}
+
+func validArtifactForgeIntent() FleetBoardIntentRequest {
+	return FleetBoardIntentRequest{
+		Intent: "requestArtifactForge", GameSessionID: "session-1", ReactorID: "reactor-1",
+		SimulationJobID: "local-job-1", SimulationJobState: "completed", SimulationRecipe: ArtifactForgeSchedulerDriftRecipe,
+		IdempotencyKey: "forge-click-1",
+	}
+}
+
+type recordingArtifactForgeIntentManager struct {
+	request  ArtifactForgeRequest
+	identity string
+	record   ArtifactForgeRecord
+	created  bool
+	err      error
+	calls    int
+}
+
+func (m *recordingArtifactForgeIntentManager) Request(_ context.Context, request ArtifactForgeRequest, identity string) (ArtifactForgeRecord, bool, error) {
+	m.calls++
+	m.request = request
+	m.identity = identity
+	return m.record, m.created, m.err
+}
+
+var _ ArtifactForgeIntentManager = (*recordingArtifactForgeIntentManager)(nil)
 
 func TestFleetBoardDynamicReactorIntentModuleClassifiesStableOutcomes(t *testing.T) {
 	tests := []struct {
@@ -174,7 +307,7 @@ func TestFleetBoardDynamicReactorIntentModuleClassifiesStableOutcomes(t *testing
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			result, handled := NewFleetBoardIntentModule(test.manager).ExecuteDynamicReactor(context.Background(), test.request)
+			result, handled := NewFleetBoardIntentModule(test.manager, nil).ExecuteDynamicReactor(context.Background(), test.request)
 			if !handled || result.Status != test.wantStatus {
 				t.Fatalf("expected handled status %d, got handled=%t result=%#v", test.wantStatus, handled, result)
 			}
@@ -191,7 +324,7 @@ func validDynamicReactorIntent(intent string) FleetBoardIntentRequest {
 }
 
 func TestFleetBoardDynamicReactorIntentModuleLeavesOtherNamedIntentsForTheirAuthority(t *testing.T) {
-	result, handled := NewFleetBoardIntentModule(&recordingDynamicReactorIntentManager{}).ExecuteDynamicReactor(context.Background(), FleetBoardIntentRequest{Intent: "requestArtifactForge"})
+	result, handled := NewFleetBoardIntentModule(&recordingDynamicReactorIntentManager{}, nil).ExecuteDynamicReactor(context.Background(), FleetBoardIntentRequest{Intent: "requestArtifactForge"})
 	if handled || result.Status != 0 || result.Body != nil {
 		t.Fatalf("dynamic-reactor module absorbed a different named intent: %#v handled=%t", result, handled)
 	}
@@ -199,7 +332,7 @@ func TestFleetBoardDynamicReactorIntentModuleLeavesOtherNamedIntentsForTheirAuth
 
 func TestFleetBoardDynamicReactorIntentModuleRejectsInvalidIdentityBeforeManager(t *testing.T) {
 	manager := &recordingDynamicReactorIntentManager{}
-	result, handled := NewFleetBoardIntentModule(manager).ExecuteDynamicReactor(context.Background(), FleetBoardIntentRequest{
+	result, handled := NewFleetBoardIntentModule(manager, nil).ExecuteDynamicReactor(context.Background(), FleetBoardIntentRequest{
 		Intent: "registerDynamicReactor", GameSessionID: "session-1", ReactorID: "", IdempotencyKey: "register-1",
 	})
 	if !handled || result.Status != http.StatusBadGateway {
