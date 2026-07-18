@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { ReactNode } from "react";
 import { SimulatorWorkbenchSurface, type SimulationHealthPanelModel } from "../../components/simulator-workbench";
 import type { ComputeJob } from "../../domain/types";
@@ -20,7 +20,7 @@ const WORKBENCH_HEALTH_TICK_MS = 1250;
 
 export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelection = {}) {
   const [session] = useState<WorkbenchSnapshotSession>(() => createBrowserWorkbenchSnapshotSession());
-  const [readState, setReadState] = useState<WorkbenchReadState>(() => session.getState());
+  const readState = useSyncExternalStore(session.subscribe, session.getState, session.getState);
   const [selection, setSelection] = useState<WorkbenchSelection>(initialSelection);
   const data = readState.model?.input ?? null;
   const projection = useMemo(() => (data ? buildWorkbenchProjection(data, selection) : null), [data, selection]);
@@ -33,12 +33,8 @@ export function useSimulatorWorkbenchFeature(initialSelection: WorkbenchSelectio
   }, [session]);
 
   useEffect(() => {
-    const unsubscribe = session.subscribe(setReadState);
     void session.start();
-    return () => {
-      unsubscribe();
-      session.dispose();
-    };
+    return () => session.dispose();
   }, [session]);
 
   useEffect(() => {

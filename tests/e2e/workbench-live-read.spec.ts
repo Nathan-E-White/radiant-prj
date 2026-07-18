@@ -33,6 +33,44 @@ test("Workbench fallback is explicit and recovers by replacing the whole Snapsho
   }
 });
 
+test("Workbench session exposes initial live success and typed terminal errors without credentials", async ({ page }) => {
+  const requestHeaders: Array<Record<string, string>> = [];
+  let outcome: "live" | "auth" | "schema" = "live";
+  await page.route("**/api/simulator-workbench/snapshot", async (route) => {
+    requestHeaders.push(route.request().headers());
+    if (outcome === "auth") {
+      await route.fulfill({ status: 401, body: "denied" });
+      return;
+    }
+    const snapshot = liveSnapshot(6);
+    if (outcome === "schema") snapshot.state.schemaVersion = "simulator-workbench.state.v2";
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(snapshot) });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Status Workbench" }).click();
+  await expect(page.getByText("Live generation 6")).toBeVisible();
+
+  outcome = "auth";
+  await page.reload();
+  await page.getByRole("button", { name: "Status Workbench" }).click();
+  await expect(page.getByText("Live Snapshot error")).toBeVisible();
+  await expect(page.getByText("Workbench authorization failed (401).")).toBeVisible();
+
+  outcome = "schema";
+  await page.reload();
+  await page.getByRole("button", { name: "Status Workbench" }).click();
+  await expect(page.getByText("Live Snapshot error")).toBeVisible();
+  await expect(page.getByText("Workbench state schema is not supported.")).toBeVisible();
+
+  expect(requestHeaders.length).toBeGreaterThanOrEqual(3);
+  for (const headers of requestHeaders) {
+    expect(headers["x-workbench-ingest-token"]).toBeUndefined();
+    expect(headers["x-simops-ingest-token"]).toBeUndefined();
+    expect(headers.authorization).toBeUndefined();
+  }
+});
+
 test("Workbench retains stale live data, rejects generation regression, and recovers", async ({ page }) => {
   let generation = 8;
   let unavailable = false;

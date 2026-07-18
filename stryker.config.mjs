@@ -6,6 +6,13 @@ export default {
     configFile: "vite.config.ts"
   },
   coverageAnalysis: "perTest",
+  ignorePatterns: [
+    "workers/**/target/**",
+    ".stryker-tmp/**",
+    "dist/**",
+    "test-results/**",
+    "playwright-report/**"
+  ],
   reporters: ["clear-text", "progress"],
   thresholds: {
     high: 90,
