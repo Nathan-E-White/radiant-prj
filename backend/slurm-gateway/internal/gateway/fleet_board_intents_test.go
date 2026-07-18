@@ -64,18 +64,6 @@ func TestFleetBoardDynamicReactorIntentModuleConcentratesExpiryReconciliation(t 
 	}
 }
 
-func TestFleetBoardDynamicReactorIntentModuleTreatsTypedNilManagerAsUnavailable(t *testing.T) {
-	var manager *ReactorTelemetryManager
-	module := NewFleetBoardIntentModule(manager, nil)
-	if result := module.ReconcileDynamicReactors(context.Background()); result != nil {
-		t.Fatalf("typed nil manager attempted reconciliation: %#v", result)
-	}
-	result, handled := module.ExecuteDynamicReactor(context.Background(), validDynamicReactorIntent("registerDynamicReactor"))
-	if !handled || result.Status != http.StatusNotFound {
-		t.Fatalf("typed nil manager was not classified as unavailable: handled=%t result=%#v", handled, result)
-	}
-}
-
 func TestFleetBoardDynamicReactorIntentModuleRecoversRegistrationAfterManagerRestart(t *testing.T) {
 	store := NewInMemoryReactorTelemetryStore()
 	failedRuntime := &recordingReactorTelemetryRuntime{startErr: errors.New("runtime unavailable")}

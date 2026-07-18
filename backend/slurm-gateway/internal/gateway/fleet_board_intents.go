@@ -52,12 +52,6 @@ type FleetBoardIntentModule struct {
 }
 
 func NewFleetBoardIntentModule(reactorTelemetry DynamicReactorIntentManager, artifactForge ArtifactForgeIntentManager) *FleetBoardIntentModule {
-	if concrete, ok := reactorTelemetry.(*ReactorTelemetryManager); ok && concrete == nil {
-		reactorTelemetry = nil
-	}
-	if concrete, ok := artifactForge.(*ArtifactForgeManager); ok && concrete == nil {
-		artifactForge = nil
-	}
 	return &FleetBoardIntentModule{reactorTelemetry: reactorTelemetry, artifactForge: artifactForge}
 }
 

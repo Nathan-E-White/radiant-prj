@@ -18,7 +18,15 @@ func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	intentModule := NewFleetBoardIntentModule(g.reactorTelemetry, g.artifactForge)
+	var reactorTelemetry DynamicReactorIntentManager
+	if g.reactorTelemetry != nil {
+		reactorTelemetry = g.reactorTelemetry
+	}
+	var artifactForge ArtifactForgeIntentManager
+	if g.artifactForge != nil {
+		artifactForge = g.artifactForge
+	}
+	intentModule := NewFleetBoardIntentModule(reactorTelemetry, artifactForge)
 	if result := intentModule.ReconcileDynamicReactors(r.Context()); result != nil {
 		writeJSON(w, result.Status, result.Body)
 		return
