@@ -447,7 +447,7 @@ func NewPostgresWorkbenchStore(dsn string) (*PostgresWorkbenchStore, error) {
 }
 
 func ensureWorkbenchSnapshotSchema(ctx context.Context, db *sql.DB) error {
-	_, err := db.ExecContext(ctx, `
+	if _, err := db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS workbench_snapshot_generation (
 			singleton BOOLEAN PRIMARY KEY DEFAULT TRUE CHECK (singleton),
 			generation BIGINT NOT NULL CHECK (generation >= 0),
@@ -470,8 +470,107 @@ func ensureWorkbenchSnapshotSchema(ctx context.Context, db *sql.DB) error {
 		);
 		ALTER TABLE artifact_forge_result_artifacts
 		ADD COLUMN IF NOT EXISTS eligibility_evidence JSONB
+	`); err != nil {
+		return err
+	}
+	return backfillArtifactForgeEligibilityEvidence(ctx, db)
+}
+
+func backfillArtifactForgeEligibilityEvidence(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, `
+		SELECT run_id, artifact
+		FROM artifact_forge_result_artifacts
+		WHERE eligibility_evidence IS NULL
+		FOR UPDATE
 	`)
-	return err
+	if err != nil {
+		return err
+	}
+	type legacyArtifact struct {
+		runID string
+		raw   []byte
+	}
+	legacy := []legacyArtifact{}
+	for rows.Next() {
+		var row legacyArtifact
+		if err := rows.Scan(&row.runID, &row.raw); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		legacy = append(legacy, row)
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, row := range legacy {
+		var artifact ArtifactForgeResultArtifact
+		if err := json.Unmarshal(row.raw, &artifact); err != nil {
+			return err
+		}
+		evidence := ArtifactForgeEligibilityEvidence{Artifact: artifact}
+		var resultRaw []byte
+		err := tx.QueryRowContext(ctx, `
+			SELECT frame
+			FROM simops_result_values
+			WHERE run_id = $1
+			ORDER BY produced_at DESC, worker_id, sequence
+			LIMIT 1
+		`, row.runID).Scan(&resultRaw)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		if err == nil {
+			var result SimopsResultFrame
+			if err := json.Unmarshal(resultRaw, &result); err != nil {
+				return err
+			}
+			evidence.Result = &result
+			if expectedValue, ok := simopsResultValueByID(result.Values, artifact.ExpectedValue); ok {
+				evidence.ExpectedValue = &expectedValue
+				lineage, lineageErr := lineageForValue(ctx, tx, expectedValue.ValueID)
+				if lineageErr != nil && !errors.Is(lineageErr, ErrWorkbenchNotFound) {
+					return lineageErr
+				}
+				if lineageErr == nil && artifactForgeLineageReferences(lineage, row.runID, artifact.ArtifactID) {
+					evidence.Lineage = &lineage
+				}
+			}
+		}
+		evidenceRaw, err := json.Marshal(evidence)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE artifact_forge_result_artifacts
+			SET eligibility_evidence = $1::jsonb
+			WHERE run_id = $2 AND eligibility_evidence IS NULL
+		`, evidenceRaw, row.runID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func artifactForgeLineageReferences(lineage DigitalTwinValueLineage, runID, artifactID string) bool {
+	for _, input := range lineage.Inputs {
+		if input.SourceKind == "simulation-run" && input.SourceID == runID {
+			return true
+		}
+	}
+	for _, artifact := range lineage.Artifacts {
+		if artifact.ArtifactID == artifactID {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *PostgresWorkbenchStore) SaveResidentSource(source ScadaResidentSourceDeclaration) error {
