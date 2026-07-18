@@ -34,6 +34,12 @@ export function createWorkbenchSnapshotSession(
   adapter: WorkbenchSnapshotAdapter,
   options: WorkbenchSnapshotSessionOptions
 ): WorkbenchSnapshotSession {
+  const configuration: WorkbenchSnapshotSessionOptions = {
+    allowFixtureFallback: options.allowFixtureFallback,
+    fixtureInput: structuredClone(options.fixtureInput),
+    refreshIntervalMs: options.refreshIntervalMs,
+    ...(options.now ? { now: options.now } : {})
+  };
   let state = immutableSnapshot(initialWorkbenchReadState());
   let settledState = state;
   let active: AbortController | null = null;
@@ -63,7 +69,7 @@ export function createWorkbenchSnapshotSession(
     timer = setTimeout(() => {
       timer = null;
       void refresh();
-    }, options.refreshIntervalMs);
+    }, configuration.refreshIntervalMs);
   }
 
   async function refresh(): Promise<void> {
@@ -84,8 +90,8 @@ export function createWorkbenchSnapshotSession(
     publish(pending);
 
     const next = await refreshWorkbenchReadState(acceptedState, adapter, {
-      ...options,
-      allowFixtureFallback: options.allowFixtureFallback && !hasSettledRead,
+      ...configuration,
+      allowFixtureFallback: configuration.allowFixtureFallback && !hasSettledRead,
       signal: controller.signal
     });
     if (!running || active !== controller) return;

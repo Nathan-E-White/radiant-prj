@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { loadFixtureWorkbenchData } from "./fixtureAdapter";
 import { WorkbenchReadError, type AcceptedWorkbenchSnapshot, type WorkbenchSnapshotAdapter } from "./liveWorkbench";
-import { createWorkbenchSnapshotSession } from "./workbenchSnapshotSession";
+import { createWorkbenchSnapshotSession, type WorkbenchSnapshotSessionOptions } from "./workbenchSnapshotSession";
 
 describe("Workbench Snapshot session", () => {
   it("owns initial loading, scheduled refresh, and manual refresh", async () => {
@@ -76,7 +76,11 @@ describe("Workbench Snapshot session", () => {
     });
 
     await session.start();
-    expect(session.getState()).toMatchObject({ phase: "fixture", errorKind: "unavailable", model: { source: "fixture" } });
+    expect(session.getState()).toMatchObject({
+      phase: "fixture",
+      errorKind: "unavailable",
+      model: { source: "fixture", acceptedAt: "2026-07-18T12:00:00.000Z" }
+    });
 
     await session.refresh();
     expect(session.getState()).toMatchObject({ phase: "error", errorKind: "auth", model: { source: "fixture" } });
@@ -105,6 +109,53 @@ describe("Workbench Snapshot session", () => {
     await rejectedSession.refresh();
     expect(rejectedSession.getState()).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
     rejectedSession.dispose();
+  });
+
+  it.each(["auth", "schema", "generation", "partial"] as const)(
+    "never substitutes fixtures for an initial %s failure",
+    async (kind) => {
+      const fixtureInput = loadFixtureWorkbenchData();
+      const session = createWorkbenchSnapshotSession(
+        sequenceAdapter([new WorkbenchReadError(kind, `${kind} failure`)]),
+        { allowFixtureFallback: true, fixtureInput, refreshIntervalMs: 60_000 }
+      );
+
+      await session.start();
+      expect(session.getState()).toMatchObject({ phase: "error", errorKind: kind, model: null });
+      session.dispose();
+    }
+  );
+
+  it("fixes disabled fixture configuration and fixture data when the session is created", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const originalScenario = fixtureInput.state.scenarioId;
+    const options: WorkbenchSnapshotSessionOptions = {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    };
+    const disabled = createWorkbenchSnapshotSession(
+      sequenceAdapter([new WorkbenchReadError("unavailable", "offline")]),
+      options
+    );
+    options.allowFixtureFallback = true;
+    await disabled.start();
+    expect(disabled.getState()).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
+    disabled.dispose();
+
+    options.allowFixtureFallback = true;
+    const enabled = createWorkbenchSnapshotSession(
+      sequenceAdapter([new WorkbenchReadError("empty", "empty")]),
+      options
+    );
+    options.allowFixtureFallback = false;
+    fixtureInput.state.scenarioId = "mutated-after-creation";
+    await enabled.start();
+    expect(enabled.getState()).toMatchObject({
+      phase: "fixture",
+      model: { source: "fixture", input: { state: { scenarioId: originalScenario } } }
+    });
+    enabled.dispose();
   });
 
   it("retains accepted live data as stale across partial failure and generation regression", async () => {

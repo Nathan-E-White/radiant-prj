@@ -127,6 +127,31 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(recovering).toContain("Recovering live Snapshot");
     expect(recovering).toContain("Refreshing one coherent live Workbench Snapshot");
   });
+
+  it("keeps an accepted fixture visible while a later live read remains unavailable", () => {
+    const readState = fixtureReadState();
+    readState.errorKind = "unavailable";
+    readState.message = "Workbench service unavailable. Retaining the explicit whole-Snapshot fixture fallback.";
+    const markup = renderToStaticMarkup(
+      <SimulatorWorkbenchSurface
+        onSelectUnit={vi.fn()}
+        onSelectValue={vi.fn()}
+        projection={buildWorkbenchProjection(readState.model!.input)}
+        readState={readState}
+        onRefresh={vi.fn()}
+        computeQueue={<div>Scientific compute queue</div>}
+        selectedJob={fixtures.computeJobs[0]}
+        scenario="DOME synthetic full-power readiness bundle"
+        scenarioJobs={fixtures.computeJobs}
+        bundleState="ready"
+        orchestrationPanel={<div>Containerized worker orchestration</div>}
+      />
+    );
+
+    expect(markup).toContain("Fixture fallback");
+    expect(markup).toContain("Retaining the explicit whole-Snapshot fixture fallback");
+    expect(markup).toContain("Refresh live Snapshot");
+  });
 });
 
 function fixtureReadState(): WorkbenchReadState {
