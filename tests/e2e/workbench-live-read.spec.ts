@@ -53,6 +53,9 @@ test("Workbench retains stale live data, rejects generation regression, and reco
   await page.goto("/");
   await page.getByRole("button", { name: "Status Workbench" }).click();
   await expect(page.getByText("Live generation 8")).toBeVisible();
+  const imputedState = page.getByRole("region", { name: "Imputed State" });
+  const retainedProjection = imputedState.getByText("Retained generation projection marker", { exact: true });
+  await expect(retainedProjection).toBeVisible();
   const health = page.getByRole("region", { name: "Simulation health cards" });
   await expect(health.getByText("0/1 complete", { exact: true })).toBeVisible();
   await expect(health.getByText("committed", { exact: true })).toBeVisible();
@@ -63,6 +66,7 @@ test("Workbench retains stale live data, rejects generation regression, and reco
   await expect(page.getByText(/Retaining live generation 8 as stale/)).toBeVisible();
   await expect(health.getByText("0/1 complete", { exact: true })).toBeVisible();
   await expect(health.getByText("committed", { exact: true })).toBeVisible();
+  await expect(retainedProjection).toBeVisible();
 
   unavailable = false;
   generation = 7;
@@ -76,6 +80,8 @@ test("Workbench retains stale live data, rejects generation regression, and reco
   await expect(health.getByText("2/2 complete", { exact: true })).toBeVisible();
   await expect(health.getByText("2/2 nominal", { exact: true })).toBeVisible();
   await expect(health.getByText("staged", { exact: true })).toBeVisible();
+  await expect(imputedState.getByText("Recovered generation projection marker", { exact: true })).toBeVisible();
+  await expect(retainedProjection).not.toBeVisible();
   await expect(health.getByText("0/1 complete", { exact: true })).not.toBeVisible();
   await expect(health.getByText("committed", { exact: true })).not.toBeVisible();
 });
@@ -120,7 +126,7 @@ function liveSnapshot(generation = 4) {
       twinId: "twin-live-1",
       asOf: "2026-07-14T11:00:00Z",
       entities: [{ entityId: "reactor-01", displayName: "Reactor 01", values: [
-        { valueId: "margin-imputed", label: "Core margin", valueBasis: "imputed", unit: "percent", value: { scalar: 14 }, confidence: 0.7, freshness: { ageSec: 4, status: "fresh" }, lineageId: "lin-imputed", sourceIds: ["TAG-CORE"] },
+        { valueId: "margin-imputed", label: generation >= 9 ? "Recovered generation projection marker" : "Retained generation projection marker", valueBasis: "imputed", unit: "percent", value: { scalar: generation >= 9 ? 19 : 14 }, confidence: 0.7, freshness: { ageSec: 4, status: "fresh" }, lineageId: "lin-imputed", sourceIds: ["TAG-CORE"] },
         { valueId: "margin-simulated", label: "Forecast margin", valueBasis: "simulated", unit: "percent", value: { scalar: 16 }, confidence: 0.6, freshness: { ageSec: 3, status: "fresh" }, lineageId: "lin-simulated", sourceIds: ["run-1"] }
       ] }]
     },
