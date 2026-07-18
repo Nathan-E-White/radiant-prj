@@ -47,7 +47,21 @@ type FleetBoardIntentModule struct {
 }
 
 func NewFleetBoardIntentModule(reactorTelemetry DynamicReactorIntentManager) *FleetBoardIntentModule {
+	if concrete, ok := reactorTelemetry.(*ReactorTelemetryManager); ok && concrete == nil {
+		reactorTelemetry = nil
+	}
 	return &FleetBoardIntentModule{reactorTelemetry: reactorTelemetry}
+}
+
+func (m *FleetBoardIntentModule) ReconcileDynamicReactors(ctx context.Context) *FleetBoardIntentResult {
+	if m.reactorTelemetry == nil {
+		return nil
+	}
+	if err := m.reactorTelemetry.ReconcileExpired(ctx); err != nil {
+		result := fleetBoardIntentFailure(http.StatusBadGateway, err.Error(), "reactor_telemetry_expiry_cleanup_failed", nil)
+		return &result
+	}
+	return nil
 }
 
 func (m *FleetBoardIntentModule) ExecuteDynamicReactor(ctx context.Context, request FleetBoardIntentRequest) (FleetBoardIntentResult, bool) {
@@ -59,9 +73,6 @@ func (m *FleetBoardIntentModule) ExecuteDynamicReactor(ctx context.Context, requ
 
 	if m.reactorTelemetry == nil {
 		return fleetBoardIntentFailure(http.StatusNotFound, "Reactor Telemetry backend disabled", "reactor_telemetry_disabled", nil), true
-	}
-	if err := m.reactorTelemetry.ReconcileExpired(ctx); err != nil {
-		return fleetBoardIntentFailure(http.StatusBadGateway, err.Error(), "reactor_telemetry_expiry_cleanup_failed", nil), true
 	}
 
 	if request.Intent == "registerDynamicReactor" {

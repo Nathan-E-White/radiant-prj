@@ -18,6 +18,11 @@ func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
+	intentModule := NewFleetBoardIntentModule(g.reactorTelemetry)
+	if result := intentModule.ReconcileDynamicReactors(r.Context()); result != nil {
+		writeJSON(w, result.Status, result.Body)
+		return
+	}
 	defer r.Body.Close()
 	var request FleetBoardIntentRequest
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxSubmitBodyBytes))
@@ -26,7 +31,7 @@ func (g *Gateway) handleFleetBoardIntent(w http.ResponseWriter, r *http.Request)
 		writeJSON(w, http.StatusBadRequest, ErrorResponse{Error: "Invalid JSON payload", Code: "bad_json"})
 		return
 	}
-	if result, handled := NewFleetBoardIntentModule(g.reactorTelemetry).ExecuteDynamicReactor(r.Context(), request); handled {
+	if result, handled := intentModule.ExecuteDynamicReactor(r.Context(), request); handled {
 		writeJSON(w, result.Status, result.Body)
 		return
 	}
