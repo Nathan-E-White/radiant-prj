@@ -1,15 +1,17 @@
 import { expect, test } from "@playwright/test";
 
-test("Workbench fallback is explicit and recovers by replacing the whole Snapshot", async ({ page }) => {
+test("Workbench cadence recovers fixture and stale states by replacing the whole Snapshot", async ({ page }) => {
+  await page.clock.install({ time: new Date("2026-07-18T12:00:00Z") });
   const requestHeaders: Array<Record<string, string>> = [];
   let serveLive = false;
+  let generation = 4;
   await page.route("**/api/simulator-workbench/snapshot", async (route) => {
     requestHeaders.push(route.request().headers());
     if (!serveLive) {
       await route.fulfill({ status: 503, body: "unavailable" });
       return;
     }
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(liveSnapshot()) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(liveSnapshot(generation)) });
   });
 
   await page.goto("/");
@@ -22,12 +24,21 @@ test("Workbench fallback is explicit and recovers by replacing the whole Snapsho
   await expect(page.getByText(/Retaining the explicit whole-Snapshot fixture fallback/)).toBeVisible();
 
   serveLive = true;
-  await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await page.clock.fastForward(10_000);
   await expect(page.getByText("Live generation 4")).toBeVisible();
   await expect(page.getByText(/accepted atomically/)).toBeVisible();
   await expect(page.getByText("Measured State").first()).toBeVisible();
   await expect(page.getByText("Imputed State").first()).toBeVisible();
   await expect(page.getByText("Simulated Result State").first()).toBeVisible();
+
+  serveLive = false;
+  await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
+  await expect(page.getByText("Stale live generation 4")).toBeVisible();
+
+  serveLive = true;
+  generation = 5;
+  await page.clock.fastForward(10_000);
+  await expect(page.getByText("Live generation 5")).toBeVisible();
 
   expect(requestHeaders.length).toBeGreaterThanOrEqual(2);
   for (const headers of requestHeaders) {

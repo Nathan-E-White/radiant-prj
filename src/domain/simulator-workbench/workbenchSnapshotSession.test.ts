@@ -1,11 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { loadFixtureWorkbenchData } from "./fixtureAdapter";
 import { WorkbenchReadError, type AcceptedWorkbenchSnapshot, type WorkbenchSnapshotAdapter } from "./liveWorkbench";
-import { createWorkbenchSnapshotSession, type WorkbenchSnapshotSessionOptions } from "./workbenchSnapshotSession";
+import {
+  createWorkbenchSnapshotSession,
+  type WorkbenchSnapshotScheduler,
+  type WorkbenchSnapshotSessionOptions
+} from "./workbenchSnapshotSession";
 
 describe("Workbench Snapshot session", () => {
   it("owns initial loading, scheduled refresh, and manual refresh", async () => {
-    vi.useFakeTimers();
+    const scheduler = createTestScheduler();
     const fixtureInput = loadFixtureWorkbenchData();
     const adapter = sequenceAdapter([
       accepted(1, fixtureInput),
@@ -16,7 +20,8 @@ describe("Workbench Snapshot session", () => {
     const session = createWorkbenchSnapshotSession(adapter, {
       allowFixtureFallback: false,
       fixtureInput,
-      refreshIntervalMs: 1_000
+      refreshIntervalMs: 1_000,
+      scheduler
     });
     const observations: string[] = [];
     session.subscribe((state) => observations.push(`${state.phase}:${state.message}`));
@@ -29,17 +34,17 @@ describe("Workbench Snapshot session", () => {
     await session.start();
     expect(adapter.load).toHaveBeenCalledTimes(1);
 
-    await vi.advanceTimersByTimeAsync(500);
+    await scheduler.advanceBy(500);
     expect(adapter.load).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(500);
+    await scheduler.advanceBy(500);
     expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 2 } });
 
-    await vi.advanceTimersByTimeAsync(500);
+    await scheduler.advanceBy(500);
     await session.refresh();
     expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 3 } });
-    await vi.advanceTimersByTimeAsync(500);
+    await scheduler.advanceBy(500);
     expect(adapter.load).toHaveBeenCalledTimes(3);
-    await vi.advanceTimersByTimeAsync(500);
+    await scheduler.advanceBy(500);
     expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 4 } });
     expect(observations.map((entry) => entry.split(":", 1)[0])).toEqual([
       "loading",
@@ -55,10 +60,44 @@ describe("Workbench Snapshot session", () => {
     expect(observations).toContain("recovering:Refreshing one coherent live Workbench Snapshot.");
 
     session.dispose();
-    await vi.advanceTimersByTimeAsync(2_000);
+    await scheduler.advanceBy(2_000);
     await session.refresh();
     expect(adapter.load).toHaveBeenCalledTimes(4);
-    vi.useRealTimers();
+  });
+
+  it("lets a manual refresh supersede an older scheduled request", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const scheduler = createTestScheduler();
+    const pending: Array<{ signal: AbortSignal; resolve: (value: AcceptedWorkbenchSnapshot) => void }> = [];
+    let calls = 0;
+    const adapter: WorkbenchSnapshotAdapter = {
+      load: ({ signal } = {}) => {
+        calls += 1;
+        if (!signal) throw new Error("missing cancellation signal");
+        if (calls === 1) return Promise.resolve(accepted(1, fixtureInput));
+        return new Promise((resolve, reject) => {
+          signal.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true });
+          pending.push({ signal, resolve });
+        });
+      }
+    };
+    const session = createWorkbenchSnapshotSession(adapter, {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 1_000,
+      scheduler
+    });
+
+    await session.start();
+    await scheduler.advanceBy(1_000);
+    expect(pending).toHaveLength(1);
+    const manual = session.refresh();
+    expect(pending[0]?.signal.aborted).toBe(true);
+    expect(pending).toHaveLength(2);
+    pending[1]?.resolve(accepted(2, fixtureInput));
+    await manual;
+    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 2 } });
+    session.dispose();
   });
 
   it("uses fixtures only for an allowed initial unavailable or empty read and recovers live", async () => {
@@ -289,4 +328,30 @@ function sequenceAdapter(
     return outcome;
   });
   return { load };
+}
+
+function createTestScheduler(): WorkbenchSnapshotScheduler & { advanceBy(milliseconds: number): Promise<void> } {
+  let now = 0;
+  let nextHandle = 0;
+  const tasks = new Map<number, { dueAt: number; task: () => void }>();
+  return {
+    schedule(task, delayMs) {
+      const handle = ++nextHandle;
+      tasks.set(handle, { dueAt: now + delayMs, task });
+      return handle;
+    },
+    cancel(handle) {
+      tasks.delete(handle as number);
+    },
+    async advanceBy(milliseconds) {
+      now += milliseconds;
+      for (const [handle, scheduled] of [...tasks].sort((left, right) => left[1].dueAt - right[1].dueAt)) {
+        if (scheduled.dueAt > now) continue;
+        tasks.delete(handle);
+        scheduled.task();
+        await Promise.resolve();
+        await Promise.resolve();
+      }
+    }
+  };
 }
