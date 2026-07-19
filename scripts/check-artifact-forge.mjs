@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 
 const forge = readFileSync("backend/slurm-gateway/internal/gateway/artifact_forge.go", "utf8");
-const handlers = readFileSync("backend/slurm-gateway/internal/gateway/reactor_telemetry_handlers.go", "utf8");
+const intents = readFileSync("backend/slurm-gateway/internal/gateway/fleet_board_intents.go", "utf8");
 const workbenchStore = readFileSync("backend/slurm-gateway/internal/gateway/workbench_store.go", "utf8");
 const flush = readFileSync("backend/slurm-gateway/internal/gateway/configured_data_flush.go", "utf8");
 const problems = [];
@@ -20,7 +20,7 @@ for (const token of [
 ]) {
   if (!forge.includes(token)) problems.push(`Artifact Forge contract missing ${token}`);
 }
-if (!handlers.includes('case "requestArtifactForge"')) {
+if (!intents.includes('request.Intent != "requestArtifactForge"')) {
   problems.push("Fleet Board intent handler does not expose requestArtifactForge");
 }
 if (!workbenchStore.includes("buildArtifactForgeResultArtifact") || !workbenchStore.includes("artifact_forge_result_artifacts")) {
