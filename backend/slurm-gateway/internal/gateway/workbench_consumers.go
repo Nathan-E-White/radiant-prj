@@ -23,13 +23,14 @@ func RunWorkbenchScadaProjectionConsumer(ctx context.Context, cfg WorkbenchConfi
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
-	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[ScadaProjection]{
-		Stream: WorkbenchProjectionMeasured,
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[ScadaProjection]{
+		Stream: ProjectionStreamMeasuredState,
 		Project: func(message SimopsBrokerMessage) (ScadaProjection, error) {
 			return ProjectScadaFrame(message.Topic, message.Partition, message.Offset, message.Value)
 		},
-		Persist: func(projection ScadaProjection) (bool, error) {
-			return store.SaveScadaProjection(cfg.ScadaProjectionConsumerGroup, projection)
+		Persist: func(projection ScadaProjection) (uint64, error) {
+			written, err := store.SaveScadaProjection(cfg.ScadaProjectionConsumerGroup, projection)
+			return boolCount(written), err
 		},
 	})
 }
@@ -46,13 +47,14 @@ func RunWorkbenchResultProjectionConsumer(ctx context.Context, cfg WorkbenchConf
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
-	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[SimopsResultProjection]{
-		Stream: WorkbenchProjectionSimulated,
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[SimopsResultProjection]{
+		Stream: ProjectionStreamSimulatedResultState,
 		Project: func(message SimopsBrokerMessage) (SimopsResultProjection, error) {
 			return ProjectSimopsResultFrame(message.Topic, message.Partition, message.Offset, message.Value)
 		},
-		Persist: func(projection SimopsResultProjection) (bool, error) {
-			return store.SaveResultProjection(cfg.ResultProjectionConsumerGroup, projection)
+		Persist: func(projection SimopsResultProjection) (uint64, error) {
+			written, err := store.SaveResultProjection(cfg.ResultProjectionConsumerGroup, projection)
+			return boolCount(written), err
 		},
 	})
 }
@@ -69,15 +71,98 @@ func RunWorkbenchTwinProjectionConsumer(ctx context.Context, cfg WorkbenchConfig
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
-	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[TwinStateProjection]{
-		Stream: WorkbenchProjectionTwin,
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[TwinStateProjection]{
+		Stream: ProjectionStreamTwinState,
 		Project: func(message SimopsBrokerMessage) (TwinStateProjection, error) {
 			return ProjectTwinState(message.Topic, message.Partition, message.Offset, message.Value, message.Headers...)
 		},
-		Persist: func(projection TwinStateProjection) (bool, error) {
-			return store.SaveTwinStateProjection(cfg.TwinProjectionConsumerGroup, projection)
+		Persist: func(projection TwinStateProjection) (uint64, error) {
+			written, err := store.SaveTwinStateProjection(cfg.TwinProjectionConsumerGroup, projection)
+			return boolCount(written), err
 		},
 	})
+}
+
+type WorkbenchIcebergProjectionAppender interface {
+	AppendScada(context.Context, ScadaProjection) error
+	AppendResult(context.Context, SimopsResultProjection) error
+	AppendTwin(context.Context, TwinStateProjection) error
+}
+
+func RunWorkbenchScadaIcebergConsumer(ctx context.Context, cfg WorkbenchConfig, reader SimopsKafkaReader, writer WorkbenchIcebergProjectionAppender, metrics *SimopsConsumerMetrics) error {
+	if reader == nil {
+		created, err := NewWorkbenchKafkaReader(cfg, cfg.ScadaTopic, cfg.IcebergConsumerGroup+"-scada")
+		if err != nil {
+			return err
+		}
+		reader = created
+		defer reader.Close()
+	}
+	if writer == nil {
+		return fmt.Errorf("workbench measured-state iceberg ingestion requires a writer")
+	}
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[ScadaProjection]{
+		Stream: ProjectionStreamMeasuredState, WriteStage: ProjectionIngestionAppend,
+		Project: func(message SimopsBrokerMessage) (ScadaProjection, error) {
+			return ProjectScadaFrame(message.Topic, message.Partition, message.Offset, message.Value)
+		},
+		Persist: func(projection ScadaProjection) (uint64, error) {
+			return 1, writer.AppendScada(ctx, projection)
+		},
+	})
+}
+
+func RunWorkbenchResultIcebergConsumer(ctx context.Context, cfg WorkbenchConfig, reader SimopsKafkaReader, writer WorkbenchIcebergProjectionAppender, metrics *SimopsConsumerMetrics) error {
+	if reader == nil {
+		created, err := NewWorkbenchKafkaReader(cfg, cfg.ResultsTopic, cfg.IcebergConsumerGroup+"-results")
+		if err != nil {
+			return err
+		}
+		reader = created
+		defer reader.Close()
+	}
+	if writer == nil {
+		return fmt.Errorf("workbench simulated-result-state iceberg ingestion requires a writer")
+	}
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[SimopsResultProjection]{
+		Stream: ProjectionStreamSimulatedResultState, WriteStage: ProjectionIngestionAppend,
+		Project: func(message SimopsBrokerMessage) (SimopsResultProjection, error) {
+			return ProjectSimopsResultFrame(message.Topic, message.Partition, message.Offset, message.Value)
+		},
+		Persist: func(projection SimopsResultProjection) (uint64, error) {
+			return 1, writer.AppendResult(ctx, projection)
+		},
+	})
+}
+
+func RunWorkbenchTwinIcebergConsumer(ctx context.Context, cfg WorkbenchConfig, reader SimopsKafkaReader, writer WorkbenchIcebergProjectionAppender, metrics *SimopsConsumerMetrics) error {
+	if reader == nil {
+		created, err := NewWorkbenchKafkaReader(cfg, cfg.TwinStateTopic, cfg.IcebergConsumerGroup+"-twin")
+		if err != nil {
+			return err
+		}
+		reader = created
+		defer reader.Close()
+	}
+	if writer == nil {
+		return fmt.Errorf("workbench twin-state iceberg ingestion requires a writer")
+	}
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[TwinStateProjection]{
+		Stream: ProjectionStreamTwinState, WriteStage: ProjectionIngestionAppend,
+		Project: func(message SimopsBrokerMessage) (TwinStateProjection, error) {
+			return ProjectTwinState(message.Topic, message.Partition, message.Offset, message.Value, message.Headers...)
+		},
+		Persist: func(projection TwinStateProjection) (uint64, error) {
+			return 1, writer.AppendTwin(ctx, projection)
+		},
+	})
+}
+
+func boolCount(written bool) uint64 {
+	if written {
+		return 1
+	}
+	return 0
 }
 
 type TwinProjector struct {
@@ -130,8 +215,6 @@ func RunTwinProjector(ctx context.Context, cfg WorkbenchConfig, scadaReader Simo
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
@@ -152,16 +235,14 @@ func RunTwinProjector(ctx context.Context, cfg WorkbenchConfig, scadaReader Simo
 		defer resultReader.Close()
 	}
 
-	errs := make(chan error, 2)
-	go func() { errs <- projector.runScada(ctx, scadaReader, metrics) }()
-	go func() { errs <- projector.runResults(ctx, resultReader, metrics) }()
-
-	select {
-	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-errs:
-		return err
-	}
+	return runBackgroundConsumers(ctx, metrics,
+		BackgroundConsumer{Name: "measured-state-input", Consume: func(ctx context.Context) error {
+			return projector.runScada(ctx, scadaReader, metrics)
+		}},
+		BackgroundConsumer{Name: "simulated-result-state-input", Consume: func(ctx context.Context) error {
+			return projector.runResults(ctx, resultReader, metrics)
+		}},
+	)
 }
 
 func (p *TwinProjector) runScada(ctx context.Context, reader SimopsKafkaReader, metrics *SimopsConsumerMetrics) error {
@@ -171,8 +252,10 @@ func (p *TwinProjector) runScada(ctx context.Context, reader SimopsKafkaReader, 
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			metrics.MarkBrokerConnection(backgroundConsumerName(ctx), false)
 			return err
 		}
+		metrics.MarkBrokerConnection(backgroundConsumerName(ctx), true)
 		source := WorkbenchProjectionPosition{Topic: msg.Topic, Partition: msg.Partition, Offset: msg.Offset}
 		if err := p.consumeScada(ctx, reader, metrics, msg, source); err != nil {
 			return err
@@ -187,8 +270,10 @@ func (p *TwinProjector) runResults(ctx context.Context, reader SimopsKafkaReader
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			metrics.MarkBrokerConnection(backgroundConsumerName(ctx), false)
 			return err
 		}
+		metrics.MarkBrokerConnection(backgroundConsumerName(ctx), true)
 		source := WorkbenchProjectionPosition{Topic: msg.Topic, Partition: msg.Partition, Offset: msg.Offset}
 		if err := p.consumeResult(ctx, reader, metrics, msg, source); err != nil {
 			return err

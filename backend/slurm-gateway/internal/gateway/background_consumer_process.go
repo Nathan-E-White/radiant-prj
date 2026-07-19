@@ -19,7 +19,110 @@ type BackgroundConsumerProcessConfig struct {
 	Metrics         *SimopsConsumerMetrics
 	ShutdownTimeout time.Duration
 	ReadyDetails    func() map[string]any
-	Consume         func(context.Context) error
+	Consumers       []BackgroundConsumer
+}
+
+type BackgroundConsumer struct {
+	Name          string
+	Consume       func(context.Context) error
+	SkipReadiness bool
+}
+
+type backgroundConsumerContextKey struct{}
+
+func backgroundConsumerName(ctx context.Context) string {
+	name, _ := ctx.Value(backgroundConsumerContextKey{}).(string)
+	return name
+}
+
+type BackgroundConsumerError struct {
+	Consumer string
+	Cause    error
+}
+
+func (e *BackgroundConsumerError) Error() string {
+	return fmt.Sprintf("background consumer %s failed: %v", e.Consumer, e.Cause)
+}
+
+func (e *BackgroundConsumerError) Unwrap() error {
+	return e.Cause
+}
+
+type backgroundConsumerGroup struct {
+	cancel    context.CancelFunc
+	results   <-chan *BackgroundConsumerError
+	remaining int
+}
+
+func validateBackgroundConsumers(consumers []BackgroundConsumer) error {
+	if len(consumers) == 0 {
+		return fmt.Errorf("background consumer group requires at least one consumer")
+	}
+	for _, consumer := range consumers {
+		if strings.TrimSpace(consumer.Name) == "" || consumer.Consume == nil {
+			return fmt.Errorf("background consumer group requires named consumers")
+		}
+	}
+	return nil
+}
+
+func startBackgroundConsumers(ctx context.Context, metrics *SimopsConsumerMetrics, consumers []BackgroundConsumer) (*backgroundConsumerGroup, error) {
+	if err := validateBackgroundConsumers(consumers); err != nil {
+		return nil, err
+	}
+	groupCtx, cancel := context.WithCancel(ctx)
+	results := make(chan *BackgroundConsumerError, len(consumers))
+	if metrics != nil {
+		for _, consumer := range consumers {
+			if !consumer.SkipReadiness {
+				metrics.RequireBrokerConnections(consumer.Name)
+			}
+		}
+	}
+	for _, consumer := range consumers {
+		consumer := consumer
+		go func() {
+			consumerCtx := context.WithValue(groupCtx, backgroundConsumerContextKey{}, consumer.Name)
+			err := consumer.Consume(consumerCtx)
+			if err == nil && groupCtx.Err() == nil {
+				err = fmt.Errorf("exited unexpectedly")
+			}
+			results <- &BackgroundConsumerError{Consumer: consumer.Name, Cause: err}
+		}()
+	}
+	return &backgroundConsumerGroup{cancel: cancel, results: results, remaining: len(consumers)}, nil
+}
+
+func RunBackgroundConsumers(ctx context.Context, consumers ...BackgroundConsumer) error {
+	return runBackgroundConsumers(ctx, nil, consumers...)
+}
+
+func runBackgroundConsumers(ctx context.Context, metrics *SimopsConsumerMetrics, consumers ...BackgroundConsumer) error {
+	group, err := startBackgroundConsumers(ctx, metrics, consumers)
+	if err != nil {
+		return err
+	}
+	defer group.cancel()
+
+	var firstFailure error
+	done := ctx.Done()
+	for group.remaining > 0 {
+		select {
+		case result := <-group.results:
+			group.remaining--
+			if firstFailure == nil && ctx.Err() == nil && result.Cause != nil && !errors.Is(result.Cause, context.Canceled) {
+				firstFailure = result
+				group.cancel()
+			}
+		case <-done:
+			group.cancel()
+			done = nil
+		}
+	}
+	if firstFailure != nil {
+		return firstFailure
+	}
+	return ctx.Err()
 }
 
 type BackgroundConsumerShutdownError struct {
@@ -58,8 +161,11 @@ func NewBackgroundConsumerProcess(cfg BackgroundConsumerProcessConfig) (*Backgro
 	if cfg.ShutdownTimeout <= 0 {
 		return nil, fmt.Errorf("background consumer process %s requires a positive shutdown timeout", cfg.Name)
 	}
-	if cfg.Consume == nil {
-		return nil, fmt.Errorf("background consumer process %s requires a consumer", cfg.Name)
+	if len(cfg.Consumers) == 0 {
+		return nil, fmt.Errorf("background consumer process %s requires at least one consumer", cfg.Name)
+	}
+	if err := validateBackgroundConsumers(cfg.Consumers); err != nil {
+		return nil, fmt.Errorf("background consumer process %s: %w", cfg.Name, err)
 	}
 	return &BackgroundConsumerProcess{cfg: cfg, started: make(chan struct{})}, nil
 }
@@ -84,67 +190,73 @@ func (p *BackgroundConsumerProcess) Run(ctx context.Context) error {
 	p.mu.Unlock()
 	close(p.started)
 
-	processCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	group, err := startBackgroundConsumers(context.Background(), p.cfg.Metrics, p.cfg.Consumers)
+	if err != nil {
+		_ = listener.Close()
+		return fmt.Errorf("start background consumer %s group: %w", p.cfg.Name, err)
+	}
+	defer group.cancel()
 	server := &http.Server{
 		Handler:           p.handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	consumerResult := make(chan error, 1)
 	serverResult := make(chan error, 1)
-	go func() { consumerResult <- p.cfg.Consume(processCtx) }()
 	go func() { serverResult <- server.Serve(listener) }()
 
 	select {
-	case consumerErr := <-consumerResult:
+	case consumerErr := <-group.results:
+		group.remaining--
 		if ctx.Err() != nil {
-			return p.shutdown(server, consumerResult, true)
-		}
-		if consumerErr == nil {
-			consumerErr = fmt.Errorf("background consumer %s exited unexpectedly", p.cfg.Name)
+			group.cancel()
+			return p.shutdown(server, group)
 		}
 		p.recordFailure(consumerErr)
-		cancel()
-		return errors.Join(consumerErr, p.shutdown(server, consumerResult, true))
+		group.cancel()
+		return errors.Join(consumerErr, p.shutdown(server, group))
 	case serverErr := <-serverResult:
 		if errors.Is(serverErr, http.ErrServerClosed) && ctx.Err() != nil {
-			return p.shutdown(server, consumerResult, false)
+			group.cancel()
+			return p.shutdown(server, group)
 		}
 		if serverErr == nil {
 			serverErr = fmt.Errorf("background consumer %s HTTP server exited unexpectedly", p.cfg.Name)
 		}
 		p.recordFailure(serverErr)
-		cancel()
-		return errors.Join(serverErr, p.shutdown(server, consumerResult, false))
+		group.cancel()
+		return errors.Join(serverErr, p.shutdown(server, group))
 	case <-ctx.Done():
-		cancel()
-		return p.shutdown(server, consumerResult, false)
+		group.cancel()
+		return p.shutdown(server, group)
 	}
 }
 
-func (p *BackgroundConsumerProcess) shutdown(server *http.Server, consumerResult <-chan error, consumerDone bool) error {
+func (p *BackgroundConsumerProcess) shutdown(server *http.Server, group *backgroundConsumerGroup) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), p.cfg.ShutdownTimeout)
 	defer cancel()
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- server.Shutdown(shutdownCtx) }()
 
-	for !consumerDone || serverDone != nil {
+	var shutdownErr error
+	for group.remaining > 0 || serverDone != nil {
 		select {
-		case <-consumerResult:
-			consumerDone = true
+		case result := <-group.results:
+			group.remaining--
+			if result.Cause != nil && !errors.Is(result.Cause, context.Canceled) && !errors.Is(result.Cause, context.DeadlineExceeded) {
+				shutdownErr = errors.Join(shutdownErr, result)
+			}
 		case err := <-serverDone:
 			serverDone = nil
 			if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
-				return p.forceCloseAfterDeadline(server, shutdownCtx.Err())
+				return errors.Join(shutdownErr, p.forceCloseAfterDeadline(server, shutdownCtx.Err()))
 			}
 			if err != nil {
 				return fmt.Errorf("shut down background consumer %s HTTP server: %w", p.cfg.Name, err)
 			}
 		case <-shutdownCtx.Done():
-			return p.forceCloseAfterDeadline(server, shutdownCtx.Err())
+			return errors.Join(shutdownErr, p.forceCloseAfterDeadline(server, shutdownCtx.Err()))
 		}
 	}
-	return nil
+	return shutdownErr
 }
 
 func (p *BackgroundConsumerProcess) forceCloseAfterDeadline(server *http.Server, cause error) error {
@@ -165,6 +277,10 @@ func (p *BackgroundConsumerProcess) recordFailure(err error) {
 func (p *BackgroundConsumerProcess) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		if p.cfg.Metrics.Snapshot().LastError != "" {
+			writeBackgroundConsumerJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "failed"})
+			return
+		}
 		writeBackgroundConsumerJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
@@ -174,6 +290,9 @@ func (p *BackgroundConsumerProcess) handler() http.Handler {
 		if !snapshot.Ready() {
 			status = http.StatusServiceUnavailable
 			state = "starting"
+			if snapshot.LastError != "" {
+				state = "failed"
+			}
 		}
 		payload := map[string]any{}
 		if p.cfg.ReadyDetails != nil {

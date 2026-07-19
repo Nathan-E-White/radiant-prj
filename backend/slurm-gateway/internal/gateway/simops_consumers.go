@@ -93,49 +93,26 @@ func RunArtifactIntentConsumer(ctx context.Context, cfg SimopsConfig, reader Sim
 		reader = created
 	}
 	defer reader.Close()
-
-	for {
-		msg, err := reader.FetchMessage(ctx)
-		if err != nil {
-			if ctx.Err() != nil {
-				return nil
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[SimopsEvent]{
+		Stream: ProjectionStreamOperationalTelemetry, WriteStage: ProjectionIngestionAppend, CommitProjectFailure: true,
+		Project: func(message SimopsBrokerMessage) (SimopsEvent, error) {
+			event, err := decodeSimopsKafkaEvent(message)
+			if err != nil {
+				return SimopsEvent{}, err
 			}
-			metrics.MarkBrokerConnected(false)
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		metrics.MarkConsumed(msg.Offset)
-
-		event, err := decodeSimopsKafkaEvent(msg)
-		if err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			if commitErr := reader.CommitMessages(ctx, msg); commitErr != nil {
-				return commitErr
+			event.RedpandaTopic = message.Topic
+			event.RedpandaPartition = message.Partition
+			event.RedpandaOffset = message.Offset
+			return event, nil
+		},
+		Persist: func(event SimopsEvent) (uint64, error) {
+			ready, err := processor.ProcessEvent(ctx, event)
+			if ready > 0 {
+				metrics.IncBatchFlushes()
 			}
-			continue
-		}
-		event.RedpandaTopic = msg.Topic
-		event.RedpandaPartition = msg.Partition
-		event.RedpandaOffset = msg.Offset
-		ready, err := processor.ProcessEvent(ctx, event)
-		if err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		if ready > 0 {
-			metrics.IncFramesWritten(uint64(ready))
-			metrics.IncBatchFlushes()
-		}
-		if err := reader.CommitMessages(ctx, msg); err != nil {
-			metrics.IncWriteFailures()
-			metrics.SetLastError(err)
-			return err
-		}
-		metrics.SetLastError(nil)
-	}
+			return uint64(ready), err
+		},
+	})
 }
 
 func decodeSimopsKafkaEvent(msg SimopsBrokerMessage) (SimopsEvent, error) {

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -24,13 +26,13 @@ func TestBackgroundConsumerProcessExposesLifecycleAndStopsOnCancellation(t *test
 		ReadyDetails: func() map[string]any {
 			return map[string]any{"consumer_group": "test-group", "status": "domain-override", "metrics": "domain-override"}
 		},
-		Consume: func(ctx context.Context) error {
+		Consumers: testBackgroundConsumers("test-stream", func(ctx context.Context) error {
 			close(consumerStarted)
 			<-allowReady
 			metrics.MarkBrokerConnected(true)
 			<-ctx.Done()
 			return ctx.Err()
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("construct process: %v", err)
@@ -70,11 +72,11 @@ func TestBackgroundConsumerProcessPublishesConsumerFailureAndStops(t *testing.T)
 	process, err := NewBackgroundConsumerProcess(BackgroundConsumerProcessConfig{
 		Name: "failed-writer", Address: "127.0.0.1:0", MetricsPrefix: "failed_writer",
 		Metrics: metrics, ShutdownTimeout: time.Second,
-		Consume: func(context.Context) error {
+		Consumers: testBackgroundConsumers("failed-stream", func(context.Context) error {
 			metrics.MarkBrokerConnected(true)
 			<-release
 			return failure
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("construct process: %v", err)
@@ -88,8 +90,164 @@ func TestBackgroundConsumerProcessPublishesConsumerFailureAndStops(t *testing.T)
 		t.Fatalf("expected consumer failure, got %v", err)
 	}
 	snapshot := metrics.Snapshot()
-	if snapshot.BrokerConnected || snapshot.LastError != failure.Error() || snapshot.Ready() {
+	if snapshot.BrokerConnected || !strings.Contains(snapshot.LastError, "failed-stream") || !strings.Contains(snapshot.LastError, failure.Error()) || snapshot.Ready() {
 		t.Fatalf("expected externally visible failed metrics state, got %#v", snapshot)
+	}
+}
+
+func TestBackgroundConsumerReadinessNamesTerminalStreamFailure(t *testing.T) {
+	metrics := NewSimopsConsumerMetrics()
+	metrics.MarkBrokerConnected(true)
+	metrics.SetLastError(&BackgroundConsumerError{Consumer: "twin-state-and-lineage", Cause: errors.New("commit failed")})
+	process, err := NewBackgroundConsumerProcess(BackgroundConsumerProcessConfig{
+		Name: "failed-projection", Address: "127.0.0.1:0", MetricsPrefix: "failed_projection",
+		Metrics: metrics, ShutdownTimeout: time.Second,
+		Consumers: testBackgroundConsumers("failed-stream", func(context.Context) error { return nil }),
+	})
+	if err != nil {
+		t.Fatalf("construct process: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	response := httptest.NewRecorder()
+	process.handler().ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"status":"failed"`) || !strings.Contains(response.Body.String(), "twin-state-and-lineage") {
+		t.Fatalf("readiness did not identify terminal stream failure: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestBackgroundConsumerReadinessRequiresEveryNamedBrokerConnection(t *testing.T) {
+	metrics := NewSimopsConsumerMetrics()
+	firstConnected := make(chan struct{})
+	secondStarted := make(chan struct{})
+	allowSecondConnection := make(chan struct{})
+	group, err := startBackgroundConsumers(context.Background(), metrics, []BackgroundConsumer{
+		{Name: "measured-state", Consume: func(ctx context.Context) error {
+			metrics.MarkBrokerConnection(backgroundConsumerName(ctx), true)
+			close(firstConnected)
+			<-ctx.Done()
+			return ctx.Err()
+		}},
+		{Name: "simulated-result-state", Consume: func(ctx context.Context) error {
+			close(secondStarted)
+			<-allowSecondConnection
+			metrics.MarkBrokerConnection(backgroundConsumerName(ctx), true)
+			<-ctx.Done()
+			return ctx.Err()
+		}},
+	})
+	if err != nil {
+		t.Fatalf("start consumer group: %v", err)
+	}
+	<-firstConnected
+	<-secondStarted
+	if snapshot := metrics.Snapshot(); snapshot.Ready() {
+		t.Fatalf("one connected stream made two-stream group ready: %#v", snapshot)
+	}
+	close(allowSecondConnection)
+	for !metrics.Snapshot().Ready() {
+		time.Sleep(time.Millisecond)
+	}
+	group.cancel()
+	for group.remaining > 0 {
+		<-group.results
+		group.remaining--
+	}
+}
+
+func TestBackgroundConsumerHealthRejectsTerminalStreamFailure(t *testing.T) {
+	metrics := NewSimopsConsumerMetrics()
+	metrics.SetLastError(&BackgroundConsumerError{Consumer: "measured-state", Cause: errors.New("append failed")})
+	process, err := NewBackgroundConsumerProcess(BackgroundConsumerProcessConfig{
+		Name: "failed-projection", Address: "127.0.0.1:0", MetricsPrefix: "failed_projection",
+		Metrics: metrics, ShutdownTimeout: time.Second,
+		Consumers: testBackgroundConsumers("measured-state", func(context.Context) error { return nil }),
+	})
+	if err != nil {
+		t.Fatalf("construct process: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	response := httptest.NewRecorder()
+	process.handler().ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"status":"failed"`) {
+		t.Fatalf("health remained healthy after terminal failure: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestBackgroundConsumersNameTheFailedStreamAndCancelItsSiblings(t *testing.T) {
+	failure := errors.New("append failed")
+	siblingCanceled := make(chan struct{})
+	releaseSibling := make(chan struct{})
+	result := make(chan error, 1)
+	go func() {
+		result <- RunBackgroundConsumers(context.Background(),
+			BackgroundConsumer{Name: "measured-state", Consume: func(context.Context) error { return failure }},
+			BackgroundConsumer{Name: "simulated-result-state", Consume: func(ctx context.Context) error {
+				<-ctx.Done()
+				close(siblingCanceled)
+				<-releaseSibling
+				return ctx.Err()
+			}},
+		)
+	}()
+	<-siblingCanceled
+	select {
+	case err := <-result:
+		t.Fatalf("consumer group returned before sibling stopped: %v", err)
+	default:
+	}
+	close(releaseSibling)
+	err := <-result
+	var consumerErr *BackgroundConsumerError
+	if !errors.As(err, &consumerErr) || consumerErr.Consumer != "measured-state" || !errors.Is(err, failure) {
+		t.Fatalf("expected named measured-state failure, got %T %v", err, err)
+	}
+}
+
+func TestBackgroundConsumerProcessCoordinatesSiblingShutdownAfterFailure(t *testing.T) {
+	failure := errors.New("append failed")
+	siblingStopped := make(chan struct{})
+	process, err := NewBackgroundConsumerProcess(BackgroundConsumerProcessConfig{
+		Name: "grouped-writer", Address: "127.0.0.1:0", MetricsPrefix: "grouped_writer",
+		Metrics: NewSimopsConsumerMetrics(), ShutdownTimeout: time.Second,
+		Consumers: []BackgroundConsumer{
+			{Name: "failed-sink", Consume: func(context.Context) error { return failure }},
+			{Name: "sibling-sink", Consume: func(ctx context.Context) error {
+				<-ctx.Done()
+				close(siblingStopped)
+				return ctx.Err()
+			}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("construct grouped process: %v", err)
+	}
+	err = process.Run(context.Background())
+	if !errors.Is(err, failure) {
+		t.Fatalf("expected terminal sink failure, got %v", err)
+	}
+	select {
+	case <-siblingStopped:
+	default:
+		t.Fatal("process returned before sibling shutdown completed")
+	}
+}
+
+func TestBackgroundConsumerProcessRejectsHTTPListenerFailure(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve listener: %v", err)
+	}
+	defer listener.Close()
+	process, err := NewBackgroundConsumerProcess(BackgroundConsumerProcessConfig{
+		Name: "listener-failure", Address: listener.Addr().String(), MetricsPrefix: "listener_failure",
+		Metrics: NewSimopsConsumerMetrics(), ShutdownTimeout: time.Second,
+		Consumers: testBackgroundConsumers("listener-stream", func(context.Context) error { t.Fatal("listener failure must not start consumer"); return nil }),
+	})
+	if err != nil {
+		t.Fatalf("construct process: %v", err)
+	}
+	if err := process.Run(context.Background()); err == nil || !strings.Contains(err.Error(), "listener") {
+		t.Fatalf("expected terminal HTTP listener failure, got %v", err)
 	}
 }
 
@@ -99,11 +257,11 @@ func TestBackgroundConsumerProcessBoundsUncooperativeConsumerShutdown(t *testing
 	process, err := NewBackgroundConsumerProcess(BackgroundConsumerProcessConfig{
 		Name: "blocked-writer", Address: "127.0.0.1:0", MetricsPrefix: "blocked_writer",
 		Metrics: metrics, ShutdownTimeout: 20 * time.Millisecond,
-		Consume: func(context.Context) error {
+		Consumers: testBackgroundConsumers("blocked-stream", func(context.Context) error {
 			metrics.MarkBrokerConnected(true)
 			<-release
 			return nil
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("construct process: %v", err)
@@ -142,11 +300,11 @@ func TestBackgroundConsumerProcessBoundsActiveHTTPHandlerShutdown(t *testing.T) 
 			<-releaseHandler
 			return nil
 		},
-		Consume: func(ctx context.Context) error {
+		Consumers: testBackgroundConsumers("handler-stream", func(ctx context.Context) error {
 			metrics.MarkBrokerConnected(true)
 			<-ctx.Done()
 			return ctx.Err()
-		},
+		}),
 	})
 	if err != nil {
 		t.Fatalf("construct process: %v", err)
@@ -187,7 +345,7 @@ func TestBackgroundConsumerProcessRejectsIncompleteConfiguration(t *testing.T) {
 	valid := BackgroundConsumerProcessConfig{
 		Name: "writer", Address: "127.0.0.1:0", MetricsPrefix: "writer",
 		Metrics: NewSimopsConsumerMetrics(), ShutdownTimeout: time.Second,
-		Consume: func(context.Context) error { return nil },
+		Consumers: testBackgroundConsumers("writer-stream", func(context.Context) error { return nil }),
 	}
 	tests := []struct {
 		name   string
@@ -199,7 +357,7 @@ func TestBackgroundConsumerProcessRejectsIncompleteConfiguration(t *testing.T) {
 		{name: "metrics prefix", change: func(cfg *BackgroundConsumerProcessConfig) { cfg.MetricsPrefix = "" }, want: "metrics prefix"},
 		{name: "metrics", change: func(cfg *BackgroundConsumerProcessConfig) { cfg.Metrics = nil }, want: "metrics"},
 		{name: "shutdown timeout", change: func(cfg *BackgroundConsumerProcessConfig) { cfg.ShutdownTimeout = 0 }, want: "shutdown timeout"},
-		{name: "consumer", change: func(cfg *BackgroundConsumerProcessConfig) { cfg.Consume = nil }, want: "consumer"},
+		{name: "consumer", change: func(cfg *BackgroundConsumerProcessConfig) { cfg.Consumers = nil }, want: "consumer"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -211,6 +369,10 @@ func TestBackgroundConsumerProcessRejectsIncompleteConfiguration(t *testing.T) {
 			}
 		})
 	}
+}
+
+func testBackgroundConsumers(name string, consume func(context.Context) error) []BackgroundConsumer {
+	return []BackgroundConsumer{{Name: name, Consume: consume}}
 }
 
 func waitForProcessStart(t *testing.T, process *BackgroundConsumerProcess) {

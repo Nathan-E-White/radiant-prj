@@ -2,9 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,78 +13,47 @@ import (
 )
 
 func main() {
-	cfg, err := gateway.LoadConfigFromEnv()
-	if err != nil {
-		log.Fatalf("invalid workbench projection writer configuration: %v", err)
-	}
-	store, err := gateway.NewPostgresWorkbenchStore(cfg.Workbench.PostgresDSN)
-	if err != nil {
-		log.Fatalf("initialize workbench postgres store: %v", err)
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	metrics := gateway.NewSimopsConsumerMetrics()
-	go runConsumer(ctx, metrics, "scada", func() error {
-		return gateway.RunWorkbenchScadaProjectionConsumer(ctx, cfg.Workbench, nil, store, metrics)
-	})
-	go runConsumer(ctx, metrics, "results", func() error {
-		return gateway.RunWorkbenchResultProjectionConsumer(ctx, cfg.Workbench, nil, store, metrics)
-	})
-	go runConsumer(ctx, metrics, "twin", func() error {
-		return gateway.RunWorkbenchTwinProjectionConsumer(ctx, cfg.Workbench, nil, store, metrics)
-	})
-
-	addr := getenv("WORKBENCH_PROJECTION_WRITER_ADDR", ":9470")
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		snapshot := metrics.Snapshot()
-		status := http.StatusOK
-		state := "ready"
-		if !snapshot.Ready() {
-			status = http.StatusServiceUnavailable
-			state = "starting"
-		}
-		writeJSON(w, status, map[string]any{
-			"status":  state,
-			"topics":  []string{cfg.Workbench.ScadaTopic, cfg.Workbench.ResultsTopic, cfg.Workbench.TwinStateTopic},
-			"metrics": snapshot,
-		})
-	})
-	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(metrics.Snapshot().Prometheus("workbench_projection_writer")))
-	})
-
-	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
-	}()
-	log.Printf("workbench projection writer listening on %s", addr)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func runConsumer(ctx context.Context, metrics *gateway.SimopsConsumerMetrics, label string, run func() error) {
-	if err := run(); err != nil && ctx.Err() == nil {
-		log.Printf("workbench projection %s consumer stopped: %v", label, err)
-		metrics.MarkBrokerConnected(false)
-		metrics.SetLastError(err)
+func run() error {
+	cfg, err := gateway.LoadConfigFromEnv()
+	if err != nil {
+		return fmt.Errorf("invalid workbench projection writer configuration: %w", err)
 	}
-}
-
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+	store, err := gateway.NewPostgresWorkbenchStore(cfg.Workbench.PostgresDSN)
+	if err != nil {
+		return fmt.Errorf("initialize workbench postgres store: %w", err)
+	}
+	metrics := gateway.NewSimopsConsumerMetrics()
+	addr := getenv("WORKBENCH_PROJECTION_WRITER_ADDR", ":9470")
+	process, err := gateway.NewBackgroundConsumerProcess(gateway.BackgroundConsumerProcessConfig{
+		Name: "workbench-projection-writer", Address: addr, MetricsPrefix: "workbench_projection_writer",
+		Metrics: metrics, ShutdownTimeout: 5 * time.Second,
+		ReadyDetails: func() map[string]any {
+			return map[string]any{"topics": []string{cfg.Workbench.ScadaTopic, cfg.Workbench.ResultsTopic, cfg.Workbench.TwinStateTopic}}
+		},
+		Consumers: []gateway.BackgroundConsumer{
+			gateway.BackgroundConsumer{Name: "measured-state", Consume: func(ctx context.Context) error {
+				return gateway.RunWorkbenchScadaProjectionConsumer(ctx, cfg.Workbench, nil, store, metrics)
+			}},
+			gateway.BackgroundConsumer{Name: "simulated-result-state", Consume: func(ctx context.Context) error {
+				return gateway.RunWorkbenchResultProjectionConsumer(ctx, cfg.Workbench, nil, store, metrics)
+			}},
+			gateway.BackgroundConsumer{Name: "twin-state-and-lineage", Consume: func(ctx context.Context) error {
+				return gateway.RunWorkbenchTwinProjectionConsumer(ctx, cfg.Workbench, nil, store, metrics)
+			}},
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("configure workbench projection writer process: %w", err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	log.Printf("workbench projection writer listening on %s", addr)
+	return process.Run(ctx)
 }
 
 func getenv(key string, fallback string) string {

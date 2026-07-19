@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-func TestWorkbenchProjectionIngestionPersistsBeforeCommitAndCountsOnlyNewFrames(t *testing.T) {
+func TestProjectionIngestionPersistsBeforeCommitAndCountsOnlyNewFrames(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	steps := []string{}
@@ -25,20 +25,20 @@ func TestWorkbenchProjectionIngestionPersistsBeforeCommitAndCountsOnlyNewFrames(
 	}
 	metrics := NewSimopsConsumerMetrics()
 	persistCalls := 0
-	adapter := WorkbenchProjectionIngestionAdapter[int]{
-		Stream: WorkbenchProjectionMeasured,
+	adapter := ProjectionIngestionAdapter[int]{
+		Stream: ProjectionStreamMeasuredState,
 		Project: func(message SimopsBrokerMessage) (int, error) {
 			steps = append(steps, "project")
 			return int(message.Offset), nil
 		},
-		Persist: func(projection int) (bool, error) {
+		Persist: func(projection int) (uint64, error) {
 			steps = append(steps, "persist")
 			persistCalls++
-			return persistCalls == 1, nil
+			return boolCount(persistCalls == 1), nil
 		},
 	}
 
-	err := RunWorkbenchProjectionIngestion(ctx, reader, metrics, adapter)
+	err := RunProjectionIngestion(ctx, reader, metrics, adapter)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected clean cancellation result, got %v", err)
 	}
@@ -52,7 +52,7 @@ func TestWorkbenchProjectionIngestionPersistsBeforeCommitAndCountsOnlyNewFrames(
 	}
 }
 
-func TestWorkbenchProjectionIngestionMakesFailureStagesAndMetricsExplicit(t *testing.T) {
+func TestProjectionIngestionMakesFailureStagesAndMetricsExplicit(t *testing.T) {
 	fetchFailure := errors.New("broker fetch failed")
 	projectFailure := errors.New("invalid measured frame")
 	persistFailure := errors.New("projection persistence failed")
@@ -61,8 +61,8 @@ func TestWorkbenchProjectionIngestionMakesFailureStagesAndMetricsExplicit(t *tes
 		name         string
 		reader       *projectionIngestionTestReader
 		project      func(SimopsBrokerMessage) (int, error)
-		persist      func(int) (bool, error)
-		wantStage    WorkbenchProjectionIngestionStage
+		persist      func(int) (uint64, error)
+		wantStage    ProjectionIngestionStage
 		wantCause    error
 		wantCommits  int
 		wantFrames   uint64
@@ -71,35 +71,35 @@ func TestWorkbenchProjectionIngestionMakesFailureStagesAndMetricsExplicit(t *tes
 		{
 			name: "fetch", reader: &projectionIngestionTestReader{fetchErr: fetchFailure},
 			project:   func(SimopsBrokerMessage) (int, error) { t.Fatal("fetch failure must not project"); return 0, nil },
-			persist:   func(int) (bool, error) { t.Fatal("fetch failure must not persist"); return false, nil },
-			wantStage: WorkbenchProjectionIngestionFetch, wantCause: fetchFailure,
+			persist:   func(int) (uint64, error) { t.Fatal("fetch failure must not persist"); return 0, nil },
+			wantStage: ProjectionIngestionFetch, wantCause: fetchFailure,
 		},
 		{
 			name: "projection", reader: &projectionIngestionTestReader{messages: []SimopsBrokerMessage{{Offset: 20}}},
 			project:   func(SimopsBrokerMessage) (int, error) { return 0, projectFailure },
-			persist:   func(int) (bool, error) { t.Fatal("invalid projection must not persist"); return false, nil },
-			wantStage: WorkbenchProjectionIngestionProject, wantCause: projectFailure, wantPosition: true,
+			persist:   func(int) (uint64, error) { t.Fatal("invalid projection must not persist"); return 0, nil },
+			wantStage: ProjectionIngestionProject, wantCause: projectFailure, wantPosition: true,
 		},
 		{
 			name: "persistence", reader: &projectionIngestionTestReader{messages: []SimopsBrokerMessage{{Offset: 21}}},
 			project:   func(SimopsBrokerMessage) (int, error) { return 21, nil },
-			persist:   func(int) (bool, error) { return false, persistFailure },
-			wantStage: WorkbenchProjectionIngestionPersist, wantCause: persistFailure, wantPosition: true,
+			persist:   func(int) (uint64, error) { return 0, persistFailure },
+			wantStage: ProjectionIngestionPersist, wantCause: persistFailure, wantPosition: true,
 		},
 		{
 			name: "commit", reader: &projectionIngestionTestReader{messages: []SimopsBrokerMessage{{Offset: 22}}, commitErr: commitFailure},
 			project:   func(SimopsBrokerMessage) (int, error) { return 22, nil },
-			persist:   func(int) (bool, error) { return true, nil },
-			wantStage: WorkbenchProjectionIngestionCommit, wantCause: commitFailure, wantCommits: 1, wantFrames: 1, wantPosition: true,
+			persist:   func(int) (uint64, error) { return 1, nil },
+			wantStage: ProjectionIngestionCommit, wantCause: commitFailure, wantCommits: 1, wantFrames: 1, wantPosition: true,
 		},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			metrics := NewSimopsConsumerMetrics()
-			err := RunWorkbenchProjectionIngestion(context.Background(), test.reader, metrics, WorkbenchProjectionIngestionAdapter[int]{
-				Stream: WorkbenchProjectionMeasured, Project: test.project, Persist: test.persist,
+			err := RunProjectionIngestion(context.Background(), test.reader, metrics, ProjectionIngestionAdapter[int]{
+				Stream: ProjectionStreamMeasuredState, Project: test.project, Persist: test.persist,
 			})
-			var ingestionErr *WorkbenchProjectionIngestionError
+			var ingestionErr *ProjectionIngestionError
 			if !errors.As(err, &ingestionErr) || ingestionErr.Stage != test.wantStage {
 				t.Fatalf("expected %s error, got %T %v", test.wantStage, err, err)
 			}
@@ -109,7 +109,7 @@ func TestWorkbenchProjectionIngestionMakesFailureStagesAndMetricsExplicit(t *tes
 			if (ingestionErr.Position != nil) != test.wantPosition {
 				t.Fatalf("unexpected position evidence: %#v", ingestionErr.Position)
 			}
-			if test.wantStage == WorkbenchProjectionIngestionFetch && strings.Contains(err.Error(), "[0]@0") {
+			if test.wantStage == ProjectionIngestionFetch && strings.Contains(err.Error(), "[0]@0") {
 				t.Fatalf("fetch failure fabricated a broker position: %v", err)
 			}
 			if len(test.reader.committed) != test.wantCommits {
@@ -123,15 +123,15 @@ func TestWorkbenchProjectionIngestionMakesFailureStagesAndMetricsExplicit(t *tes
 	}
 }
 
-func TestWorkbenchProjectionIngestionCancellationIsNotAWriteFailure(t *testing.T) {
+func TestProjectionIngestionCancellationIsNotAWriteFailure(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	metrics := NewSimopsConsumerMetrics()
 	reader := &projectionIngestionTestReader{}
-	err := RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[int]{
-		Stream:  WorkbenchProjectionMeasured,
+	err := RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[int]{
+		Stream:  ProjectionStreamMeasuredState,
 		Project: func(SimopsBrokerMessage) (int, error) { t.Fatal("cancellation must not project"); return 0, nil },
-		Persist: func(int) (bool, error) { t.Fatal("cancellation must not persist"); return false, nil },
+		Persist: func(int) (uint64, error) { t.Fatal("cancellation must not persist"); return 0, nil },
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context cancellation, got %v", err)
@@ -141,18 +141,18 @@ func TestWorkbenchProjectionIngestionCancellationIsNotAWriteFailure(t *testing.T
 	}
 }
 
-func TestWorkbenchProjectionIngestionDoesNotCommitWhenCancelledAfterPersistence(t *testing.T) {
+func TestProjectionIngestionDoesNotCommitWhenCancelledAfterPersistence(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	metrics := NewSimopsConsumerMetrics()
 	reader := &projectionIngestionTestReader{messages: []SimopsBrokerMessage{{Topic: "measured", Offset: 23}}}
 	persisted := false
-	err := RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[int]{
-		Stream:  WorkbenchProjectionMeasured,
+	err := RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[int]{
+		Stream:  ProjectionStreamMeasuredState,
 		Project: func(message SimopsBrokerMessage) (int, error) { return int(message.Offset), nil },
-		Persist: func(int) (bool, error) {
+		Persist: func(int) (uint64, error) {
 			persisted = true
 			cancel()
-			return true, nil
+			return 1, nil
 		},
 	})
 	if !persisted || !errors.Is(err, context.Canceled) {
@@ -163,7 +163,7 @@ func TestWorkbenchProjectionIngestionDoesNotCommitWhenCancelledAfterPersistence(
 	}
 }
 
-func TestWorkbenchProjectionIngestionDoesNotClearAnotherStreamsError(t *testing.T) {
+func TestProjectionIngestionDoesNotClearAnotherStreamsError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	metrics := NewSimopsConsumerMetrics()
 	metrics.IncWriteFailures()
@@ -172,10 +172,10 @@ func TestWorkbenchProjectionIngestionDoesNotClearAnotherStreamsError(t *testing.
 		messages:    []SimopsBrokerMessage{{Offset: 24}},
 		afterCommit: func(int) { cancel() },
 	}
-	err := RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[int]{
-		Stream:  WorkbenchProjectionMeasured,
+	err := RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[int]{
+		Stream:  ProjectionStreamMeasuredState,
 		Project: func(message SimopsBrokerMessage) (int, error) { return int(message.Offset), nil },
-		Persist: func(int) (bool, error) { return true, nil },
+		Persist: func(int) (uint64, error) { return 1, nil },
 	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cancellation after proof message, got %v", err)
@@ -220,7 +220,7 @@ func TestWorkbenchProjectionStreamAdaptersPreserveDistinctValueBasisContracts(t 
 	scadaRaw, _ := json.Marshal(scadaFrameFixture())
 	scadaReader := &projectionIngestionTestReader{messages: []SimopsBrokerMessage{{Topic: cfg.ScadaTopic, Offset: 31, Value: scadaRaw}}, commitErr: commitFailure}
 	err := RunWorkbenchScadaProjectionConsumer(context.Background(), cfg, scadaReader, store, NewSimopsConsumerMetrics())
-	assertProjectionIngestionStream(t, err, WorkbenchProjectionMeasured)
+	assertProjectionIngestionStream(t, err, ProjectionStreamMeasuredState)
 	if store.scada.Frame.ValueBasis != WorkbenchValueMeasured {
 		t.Fatalf("SCADA adapter collapsed measured basis: %#v", store.scada.Frame)
 	}
@@ -228,7 +228,7 @@ func TestWorkbenchProjectionStreamAdaptersPreserveDistinctValueBasisContracts(t 
 	resultRaw, _ := json.Marshal(simopsResultFixture("RUN-INGESTION-PROOF"))
 	resultReader := &projectionIngestionTestReader{messages: []SimopsBrokerMessage{{Topic: cfg.ResultsTopic, Offset: 32, Value: resultRaw}}, commitErr: commitFailure}
 	err = RunWorkbenchResultProjectionConsumer(context.Background(), cfg, resultReader, store, NewSimopsConsumerMetrics())
-	assertProjectionIngestionStream(t, err, WorkbenchProjectionSimulated)
+	assertProjectionIngestionStream(t, err, ProjectionStreamSimulatedResultState)
 	if store.result.Frame.ValueBasis != WorkbenchValueSimulated {
 		t.Fatalf("result adapter collapsed simulated basis: %#v", store.result.Frame)
 	}
@@ -237,7 +237,7 @@ func TestWorkbenchProjectionStreamAdaptersPreserveDistinctValueBasisContracts(t 
 	twinRaw, _ := json.Marshal(twinState)
 	twinReader := &projectionIngestionTestReader{messages: []SimopsBrokerMessage{{Topic: cfg.TwinStateTopic, Offset: 33, Value: twinRaw}}, commitErr: commitFailure}
 	err = RunWorkbenchTwinProjectionConsumer(context.Background(), cfg, twinReader, store, NewSimopsConsumerMetrics())
-	assertProjectionIngestionStream(t, err, WorkbenchProjectionTwin)
+	assertProjectionIngestionStream(t, err, ProjectionStreamTwinState)
 	bases := map[WorkbenchValueBasis]bool{}
 	for _, entity := range store.twin.State.Entities {
 		for _, value := range entity.Values {
@@ -249,10 +249,68 @@ func TestWorkbenchProjectionStreamAdaptersPreserveDistinctValueBasisContracts(t 
 	}
 }
 
-func assertProjectionIngestionStream(t *testing.T, err error, want WorkbenchProjectionStream) {
+func TestWorkbenchIcebergStreamsShareAppendThenCommitPath(t *testing.T) {
+	appendFailure := errors.New("iceberg append failed")
+	cfg := DefaultConfig().Workbench
+	writer := &projectionIngestionIcebergAppender{err: appendFailure}
+
+	scadaRaw, _ := json.Marshal(scadaFrameFixture())
+	err := RunWorkbenchScadaIcebergConsumer(context.Background(), cfg, &projectionIngestionTestReader{
+		messages: []SimopsBrokerMessage{{Topic: cfg.ScadaTopic, Offset: 51, Value: scadaRaw}},
+	}, writer, NewSimopsConsumerMetrics())
+	assertProjectionIngestionFailure(t, err, ProjectionStreamMeasuredState, ProjectionIngestionAppend, appendFailure)
+
+	resultRaw, _ := json.Marshal(simopsResultFixture("RUN-ICEBERG-PATH"))
+	err = RunWorkbenchResultIcebergConsumer(context.Background(), cfg, &projectionIngestionTestReader{
+		messages: []SimopsBrokerMessage{{Topic: cfg.ResultsTopic, Offset: 52, Value: resultRaw}},
+	}, writer, NewSimopsConsumerMetrics())
+	assertProjectionIngestionFailure(t, err, ProjectionStreamSimulatedResultState, ProjectionIngestionAppend, appendFailure)
+
+	state, lineage := BuildTwinStateFromData([]ScadaTelemetryFrame{scadaFrameFixture()}, simopsResultFixture("RUN-ICEBERG-PATH"), time.Now().UTC())
+	publication := NewTwinStatePublication(WorkbenchProjectionPosition{Topic: cfg.ResultsTopic, Offset: 52}, cfg.TwinStateTopic, state, lineage)
+	twinRaw, _ := json.Marshal(publication)
+	err = RunWorkbenchTwinIcebergConsumer(context.Background(), cfg, &projectionIngestionTestReader{
+		messages: []SimopsBrokerMessage{{Topic: cfg.TwinStateTopic, Offset: 53, Value: twinRaw}},
+	}, writer, NewSimopsConsumerMetrics())
+	assertProjectionIngestionFailure(t, err, ProjectionStreamTwinState, ProjectionIngestionAppend, appendFailure)
+
+	if !reflect.DeepEqual(writer.calls, []ProjectionIngestionStream{ProjectionStreamMeasuredState, ProjectionStreamSimulatedResultState, ProjectionStreamTwinState}) {
+		t.Fatalf("iceberg stream adapters did not remain separate: %v", writer.calls)
+	}
+}
+
+func assertProjectionIngestionFailure(t *testing.T, err error, stream ProjectionIngestionStream, stage ProjectionIngestionStage, cause error) {
 	t.Helper()
-	var ingestionErr *WorkbenchProjectionIngestionError
-	if !errors.As(err, &ingestionErr) || ingestionErr.Stream != want || ingestionErr.Stage != WorkbenchProjectionIngestionCommit {
+	var ingestionErr *ProjectionIngestionError
+	if !errors.As(err, &ingestionErr) || ingestionErr.Stream != stream || ingestionErr.Stage != stage || !errors.Is(err, cause) {
+		t.Fatalf("expected %s %s failure, got %T %v", stream, stage, err, err)
+	}
+}
+
+type projectionIngestionIcebergAppender struct {
+	calls []ProjectionIngestionStream
+	err   error
+}
+
+func (w *projectionIngestionIcebergAppender) AppendScada(context.Context, ScadaProjection) error {
+	w.calls = append(w.calls, ProjectionStreamMeasuredState)
+	return w.err
+}
+
+func (w *projectionIngestionIcebergAppender) AppendResult(context.Context, SimopsResultProjection) error {
+	w.calls = append(w.calls, ProjectionStreamSimulatedResultState)
+	return w.err
+}
+
+func (w *projectionIngestionIcebergAppender) AppendTwin(context.Context, TwinStateProjection) error {
+	w.calls = append(w.calls, ProjectionStreamTwinState)
+	return w.err
+}
+
+func assertProjectionIngestionStream(t *testing.T, err error, want ProjectionIngestionStream) {
+	t.Helper()
+	var ingestionErr *ProjectionIngestionError
+	if !errors.As(err, &ingestionErr) || ingestionErr.Stream != want || ingestionErr.Stage != ProjectionIngestionCommit {
 		t.Fatalf("expected %s commit error, got %T %v", want, err, err)
 	}
 }

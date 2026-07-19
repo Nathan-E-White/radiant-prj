@@ -43,9 +43,9 @@ func run() error {
 				"redpanda_topic": cfg.Simops.RedpandaTopic,
 			}
 		},
-		Consume: func(ctx context.Context) error {
+		Consumers: []gateway.BackgroundConsumer{{Name: "simops-telemetry", Consume: func(ctx context.Context) error {
 			return gateway.RunTimescaleTelemetryConsumer(ctx, cfg.Simops, nil, store, metrics)
-		},
+		}}},
 	})
 	if err != nil {
 		return fmt.Errorf("configure timescale writer process: %w", err)

@@ -80,6 +80,49 @@ func TestRunTimescaleTelemetryConsumerWritesProjectionAndCommits(t *testing.T) {
 	}
 }
 
+func TestRunArtifactIntentConsumerUsesSharedOperationalAppendPath(t *testing.T) {
+	appendFailure := errors.New("operational telemetry append failed")
+	processor := NewSimopsArtifactIntentProcessor(&failingSimopsArtifactWriter{err: appendFailure}, nil, "simops.telemetry.v1", 1, time.Now)
+	event := SimopsEvent{RunID: "RUN-OPERATIONAL-APPEND", EventType: SimopsEventWorkerTelemetry}
+	payload, _ := json.Marshal(event)
+	reader := &projectionIngestionTestReader{messages: []SimopsBrokerMessage{{Topic: "simops.telemetry.v1", Offset: 54, Value: payload}}}
+
+	err := RunArtifactIntentConsumer(context.Background(), DefaultConfig().Simops, reader, processor, NewSimopsConsumerMetrics())
+	assertProjectionIngestionFailure(t, err, ProjectionStreamOperationalTelemetry, ProjectionIngestionAppend, appendFailure)
+	if len(reader.committed) != 0 {
+		t.Fatalf("failed operational append committed its broker position: %#v", reader.committed)
+	}
+}
+
+func TestRunArtifactIntentConsumerCommitsAndSkipsMalformedOperationalTelemetry(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := &fakeSimopsKafkaReader{
+		messages:    []SimopsBrokerMessage{{Topic: "simops.telemetry.v1", Partition: 2, Offset: 55, Value: []byte("not-json")}},
+		afterCommit: cancel,
+	}
+	processor := NewSimopsArtifactIntentProcessor(&failingSimopsArtifactWriter{}, nil, "simops.telemetry.v1", 1, time.Now)
+
+	err := RunArtifactIntentConsumer(ctx, DefaultConfig().Simops, reader, processor, NewSimopsConsumerMetrics())
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("malformed operational telemetry should be skipped until cancellation, got %v", err)
+	}
+	if len(reader.committed) != 1 || reader.committed[0].Offset != 55 {
+		t.Fatalf("malformed operational telemetry was not committed: %#v", reader.committed)
+	}
+}
+
+type failingSimopsArtifactWriter struct{ err error }
+
+func (w *failingSimopsArtifactWriter) Prepare(plan SimopsArtifactWritePlan) (SimopsArtifactWritePlan, error) {
+	return plan, nil
+}
+
+func (w *failingSimopsArtifactWriter) WriteArtifact(string, SimopsArtifactWritePlan) error {
+	return w.err
+}
+
+func (w *failingSimopsArtifactWriter) Commit(string) error { return nil }
+
 func TestMoQTrackRouterRoutesLifecycleTelemetryQualityAndArtifacts(t *testing.T) {
 	router := NewSimopsMoQTrackRouter()
 	frame := testTelemetryFrame(t, "RUN-TRACKS", "fabric-01", 3)
