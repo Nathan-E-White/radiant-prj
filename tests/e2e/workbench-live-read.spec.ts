@@ -34,6 +34,13 @@ test("Workbench cadence recovers fixture and stale states by replacing the whole
   await expect(missingLineageValue).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText(/Lineage pending for VAL-KAL-01-IMPUTED-BLOCK-TEMP/)).toBeVisible();
 
+  const unit01 = page.locator('button[data-unit-id="KAL-01"]');
+  const unit02 = page.locator('button[data-unit-id="KAL-02"]');
+  await unit02.click();
+  await expect(unit02).toHaveAttribute("aria-pressed", "true");
+  await expect(unit01).toHaveAttribute("aria-pressed", "false");
+  await expect(page.getByText("Commercial Display Basis")).toBeVisible();
+
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
   await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();
   await expect(page.getByText(/Retaining the explicit whole-Snapshot fixture fallback/)).toBeVisible();
@@ -45,15 +52,26 @@ test("Workbench cadence recovers fixture and stale states by replacing the whole
   await expect(page.getByText("Measured State").first()).toBeVisible();
   await expect(page.getByText("Imputed State").first()).toBeVisible();
   await expect(page.getByText("Simulated Result State").first()).toBeVisible();
+  await expect(page.locator('button[data-unit-id="KAL-01"]')).toHaveCount(0);
+  await expect(page.locator('button[data-unit-id="KAL-02"]')).toHaveCount(0);
+  const liveUnit = page.locator('button[data-unit-id="reactor-01"]');
+  await expect(liveUnit).toHaveAttribute("aria-pressed", "true");
+  const liveSimulatedValue = page.getByRole("button", { name: /Forecast margin/ });
+  await liveSimulatedValue.click();
+  await expect(liveSimulatedValue).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByLabel("Bottom Explanation Rail").locator(".simwb-count")).toContainText("simulated");
 
   serveLive = false;
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
   await expect(page.getByText("Stale live generation 4")).toBeVisible();
+  await expect(liveSimulatedValue).toHaveAttribute("aria-pressed", "true");
 
   serveLive = true;
   generation = 5;
   await page.clock.fastForward(10_000);
   await expect(page.getByText("Live generation 5")).toBeVisible();
+  await expect(liveUnit).toHaveAttribute("aria-pressed", "true");
+  await expect(liveSimulatedValue).toHaveAttribute("aria-pressed", "true");
 
   expect(requestHeaders.length).toBeGreaterThanOrEqual(2);
   for (const headers of requestHeaders) {

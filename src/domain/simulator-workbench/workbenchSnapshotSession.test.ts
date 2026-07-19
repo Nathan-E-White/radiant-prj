@@ -402,14 +402,158 @@ describe("Workbench Snapshot session", () => {
     session.selectValue("missing-value");
     expect(session.getState()).toBe(beforeInvalidValue);
 
+    const beforeInvalidUnit = session.getState();
     session.selectUnit("missing-unit");
-    const normalizedUnit = session.getState();
-    expect(normalizedUnit.selection.selectedUnitId).toBe(fixtureInput.state.selectedUnitId);
-    expect(normalizedUnit.projection?.selectedUnit.unitId).toBe(normalizedUnit.selection.selectedUnitId);
+    expect(session.getState()).toBe(beforeInvalidUnit);
+
+    const oldUnitValueId = initial.selection.selectedValueId;
+    session.selectUnit("KAL-02");
+    const commercialUnit = session.getState();
+    expect(commercialUnit.selection).toMatchObject({
+      selectedUnitId: "KAL-02",
+      selectedCommercialBasisId: "CDB-KAL-02-FACILITY-HEAT"
+    });
+    expect(commercialUnit.selection.selectedValueId).not.toBe(oldUnitValueId);
+    expect(commercialUnit.selection.selectedValueId).toBe(commercialUnit.projection?.selectedValue?.valueId);
+    expect(commercialUnit.projection?.explanation.kind).toBe("commercial");
+    expect(commercialUnit.projection?.fleetUnits.find((unit) => unit.unitId === "KAL-02")?.selected).toBe(true);
+
+    const repeatedListener = vi.fn();
+    const unsubscribeRepeated = session.subscribe(repeatedListener);
+    session.selectUnit("KAL-02");
+    expect(session.getState()).toBe(commercialUnit);
+    expect(repeatedListener).toHaveBeenCalledTimes(1);
+    unsubscribeRepeated();
 
     const beforeUnknownValue = session.getState();
     session.selectValue("missing-value");
     expect(session.getState()).toBe(beforeUnknownValue);
+    session.dispose();
+  });
+
+  it("uses an engineering explanation when the selected unit has no owned commercial basis", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    fixtureInput.commercialDisplayBasis = fixtureInput.commercialDisplayBasis.filter((basis) => basis.unitId !== "KAL-02");
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(3, fixtureInput)]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
+
+    await session.start();
+    session.selectUnit("KAL-02");
+    expect(session.getState()).toMatchObject({
+      selection: { selectedUnitId: "KAL-02" },
+      projection: { explanation: { kind: "engineering" } }
+    });
+    expect(session.getState().selection.selectedCommercialBasisId).toBeUndefined();
+    session.dispose();
+  });
+
+  it("does not renegotiate selection while retaining the same accepted Snapshot as stale", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const unit02 = fixtureInput.fleetUnits.find((unit) => unit.unitId === "KAL-02");
+    if (!unit02) throw new Error("missing KAL-02 fixture");
+    unit02.commercialBasisId = "CDB-KAL-02-NOT-PUBLISHED";
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([
+      accepted(3, fixtureInput),
+      new WorkbenchReadError("unavailable", "offline")
+    ]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
+
+    await session.start();
+    session.selectUnit("KAL-02");
+    expect(session.getState().selection.selectedCommercialBasisId).toBeUndefined();
+
+    await session.refresh();
+    expect(session.getState()).toMatchObject({
+      readState: { phase: "stale", model: { generation: 3 } },
+      selection: { selectedUnitId: "KAL-02" },
+      projection: { explanation: { kind: "engineering" } }
+    });
+    expect(session.getState().selection.selectedCommercialBasisId).toBeUndefined();
+    session.dispose();
+  });
+
+  it("reconciles unit, commercial basis, value, and Lineage across atomic Snapshot replacement", async () => {
+    const initialInput = loadFixtureWorkbenchData();
+    const equalInput = structuredClone(initialInput);
+    equalInput.state.scenarioId = "equal-replacement";
+    const replacementBasisInput = structuredClone(equalInput);
+    replacementBasisInput.state.scenarioId = "replacement-basis";
+    const unit02 = replacementBasisInput.fleetUnits.find((unit) => unit.unitId === "KAL-02");
+    const unit02Basis = replacementBasisInput.commercialDisplayBasis.find((basis) => basis.unitId === "KAL-02");
+    if (!unit02 || !unit02Basis) throw new Error("missing KAL-02 replacement fixtures");
+    unit02.commercialBasisId = "CDB-KAL-02-REPLACEMENT";
+    unit02Basis.basisId = "CDB-KAL-02-REPLACEMENT";
+
+    const missingUnitInput = structuredClone(replacementBasisInput);
+    missingUnitInput.state.scenarioId = "missing-selected-unit";
+    missingUnitInput.fleetUnits = missingUnitInput.fleetUnits.filter((unit) => unit.unitId !== "KAL-02");
+
+    const emptyValueInput = structuredClone(missingUnitInput);
+    emptyValueInput.state.scenarioId = "empty-selected-unit";
+    emptyValueInput.twin.entities = emptyValueInput.twin.entities.filter((entity) => entity.unitId !== "KAL-01");
+    emptyValueInput.commercialDisplayBasis = emptyValueInput.commercialDisplayBasis.filter(
+      (basis) => basis.unitId !== "KAL-01"
+    );
+
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([
+      accepted(5, initialInput),
+      accepted(5, equalInput),
+      accepted(6, replacementBasisInput),
+      accepted(7, missingUnitInput),
+      accepted(8, emptyValueInput)
+    ]), {
+      allowFixtureFallback: false,
+      fixtureInput: initialInput,
+      refreshIntervalMs: 60_000
+    });
+
+    await session.start();
+    session.selectUnit("KAL-02");
+    const selectedValueId = session.getState().projection?.groups.measured.values[0]?.valueId;
+    if (!selectedValueId) throw new Error("missing KAL-02 selected value fixture");
+    session.selectValue(selectedValueId);
+
+    await session.refresh();
+    expect(session.getState()).toMatchObject({
+      readState: { model: { generation: 5, input: { state: { scenarioId: "equal-replacement" } } } },
+      selection: {
+        selectedUnitId: "KAL-02",
+        selectedValueId,
+        selectedCommercialBasisId: "CDB-KAL-02-FACILITY-HEAT"
+      },
+      projection: { selectedValue: { valueId: selectedValueId } }
+    });
+
+    await session.refresh();
+    expect(session.getState()).toMatchObject({
+      readState: { model: { generation: 6, input: { state: { scenarioId: "replacement-basis" } } } },
+      selection: { selectedUnitId: "KAL-02", selectedCommercialBasisId: "CDB-KAL-02-REPLACEMENT" },
+      projection: { selectedValue: { valueId: selectedValueId }, explanation: { kind: "commercial" } }
+    });
+
+    await session.refresh();
+    expect(session.getState()).toMatchObject({
+      readState: { model: { generation: 7, input: { state: { scenarioId: "missing-selected-unit" } } } },
+      selection: { selectedUnitId: "KAL-01", selectedCommercialBasisId: "CDB-KAL-01-PPA" },
+      projection: { selectedUnit: { unitId: "KAL-01" }, selectedValue: { valueBasis: "imputed" } }
+    });
+
+    await session.refresh();
+    const empty = session.getState();
+    expect(empty.readState.model).toMatchObject({ generation: 8, input: { state: { scenarioId: "empty-selected-unit" } } });
+    expect(empty.selection).toEqual({ selectedUnitId: "KAL-01" });
+    expect(empty.projection).toMatchObject({
+      selectedValue: null,
+      selectedLineage: null,
+      selectedLineageMissing: false,
+      explanation: { kind: "engineering", subtitle: "No value selected" }
+    });
     session.dispose();
   });
 });

@@ -18,7 +18,7 @@ export type WorkbenchSnapshotSession = {
   subscribe(listener: (state: WorkbenchSnapshotResult) => void): () => void;
   start(): Promise<void>;
   refresh(): Promise<void>;
-  selectUnit(unitId: string, commercialBasisId?: string): void;
+  selectUnit(unitId: string): void;
   selectValue(valueId: string): void;
   dispose(): void;
 };
@@ -81,8 +81,13 @@ export function createWorkbenchSnapshotSession(
   }
 
   function settle(next: WorkbenchReadState): void {
-    publish(next);
+    const replacesAcceptedSnapshot = Boolean(
+      next.model && settledReadState.model && next.model !== settledReadState.model
+    );
+    state = immutableResult(projectResult(next, requestedSelection, replacesAcceptedSnapshot));
     settledReadState = state.readState;
+    requestedSelection = state.selection;
+    listeners.forEach((listener) => listener(state));
   }
 
   function clearScheduledRefresh(): void {
@@ -142,11 +147,17 @@ export function createWorkbenchSnapshotSession(
       await refresh();
     },
     refresh,
-    selectUnit(unitId, commercialBasisId) {
+    selectUnit(unitId) {
+      if (state.selection.selectedUnitId === unitId) return;
+      const selectedUnit = state.projection?.fleetUnits.find((unit) => unit.unitId === unitId);
+      const input = state.readState.model?.input;
+      if (!selectedUnit || !input) return;
+      const commercialBasis = input.commercialDisplayBasis.find(
+        (basis) => basis.unitId === unitId && basis.basisId === selectedUnit.commercialBasisId
+      );
       requestedSelection = {
-        ...requestedSelection,
         selectedUnitId: unitId,
-        ...(commercialBasisId ? { selectedCommercialBasisId: commercialBasisId } : {})
+        ...(commercialBasis ? { selectedCommercialBasisId: commercialBasis.basisId } : {})
       };
       publish(state.readState);
     },
@@ -168,9 +179,26 @@ export function createWorkbenchSnapshotSession(
   };
 }
 
-function projectResult(readState: WorkbenchReadState, selection: WorkbenchSelection): WorkbenchSnapshotResult {
+function projectResult(
+  readState: WorkbenchReadState,
+  selection: WorkbenchSelection,
+  reconcileCommercialBasis = false
+): WorkbenchSnapshotResult {
   if (!readState.model) return { readState, projection: null, selection };
-  const projected = buildWorkbenchProjectionResult(readState.model.input, selection);
+  let projected = buildWorkbenchProjectionResult(readState.model.input, selection);
+  if (reconcileCommercialBasis && !projected.selection.selectedCommercialBasisId) {
+    const unitId = projected.selection.selectedUnitId;
+    const selectedUnitBasisId = projected.projection.selectedUnit.commercialBasisId;
+    const replacementBasis = readState.model.input.commercialDisplayBasis.find(
+      (basis) => basis.unitId === unitId && basis.basisId === selectedUnitBasisId
+    ) ?? readState.model.input.commercialDisplayBasis.find((basis) => basis.unitId === unitId);
+    if (replacementBasis) {
+      projected = buildWorkbenchProjectionResult(readState.model.input, {
+        ...projected.selection,
+        selectedCommercialBasisId: replacementBasis.basisId
+      });
+    }
+  }
   return { readState, ...projected };
 }
 
