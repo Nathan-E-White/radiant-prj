@@ -218,7 +218,6 @@ func RunTwinProjector(ctx context.Context, cfg WorkbenchConfig, scadaReader Simo
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
-	metrics.RequireBrokerConnections("measured-state-input", "simulated-result-state-input")
 	if scadaReader == nil {
 		created, err := NewWorkbenchKafkaReader(cfg, cfg.ScadaTopic, cfg.TwinProjectorScadaGroup)
 		if err != nil {
@@ -236,7 +235,7 @@ func RunTwinProjector(ctx context.Context, cfg WorkbenchConfig, scadaReader Simo
 		defer resultReader.Close()
 	}
 
-	return RunBackgroundConsumers(ctx,
+	return runBackgroundConsumers(ctx, metrics,
 		BackgroundConsumer{Name: "measured-state-input", Consume: func(ctx context.Context) error {
 			return projector.runScada(ctx, scadaReader, metrics)
 		}},
@@ -253,10 +252,10 @@ func (p *TwinProjector) runScada(ctx context.Context, reader SimopsKafkaReader, 
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			metrics.MarkBrokerConnection("measured-state-input", false)
+			metrics.MarkBrokerConnection(backgroundConsumerName(ctx), false)
 			return err
 		}
-		metrics.MarkBrokerConnection("measured-state-input", true)
+		metrics.MarkBrokerConnection(backgroundConsumerName(ctx), true)
 		source := WorkbenchProjectionPosition{Topic: msg.Topic, Partition: msg.Partition, Offset: msg.Offset}
 		if err := p.consumeScada(ctx, reader, metrics, msg, source); err != nil {
 			return err
@@ -271,10 +270,10 @@ func (p *TwinProjector) runResults(ctx context.Context, reader SimopsKafkaReader
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			metrics.MarkBrokerConnection("simulated-result-state-input", false)
+			metrics.MarkBrokerConnection(backgroundConsumerName(ctx), false)
 			return err
 		}
-		metrics.MarkBrokerConnection("simulated-result-state-input", true)
+		metrics.MarkBrokerConnection(backgroundConsumerName(ctx), true)
 		source := WorkbenchProjectionPosition{Topic: msg.Topic, Partition: msg.Partition, Offset: msg.Offset}
 		if err := p.consumeResult(ctx, reader, metrics, msg, source); err != nil {
 			return err

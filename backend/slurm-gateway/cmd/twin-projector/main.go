@@ -42,7 +42,7 @@ func run() error {
 				"output_topic": cfg.Workbench.TwinStateTopic,
 			}
 		},
-		Consumers: []gateway.BackgroundConsumer{{Name: "twin-state-and-lineage", Consume: func(ctx context.Context) error {
+		Consumers: []gateway.BackgroundConsumer{{Name: "twin-state-and-lineage", SkipReadiness: true, Consume: func(ctx context.Context) error {
 			return gateway.RunTwinProjector(ctx, cfg.Workbench, nil, nil, store, eventLog, metrics)
 		}}},
 	})

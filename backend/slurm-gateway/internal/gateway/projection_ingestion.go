@@ -66,7 +66,11 @@ func RunProjectionIngestion[T any](ctx context.Context, reader SimopsKafkaReader
 	if adapter.Stream == "" || adapter.Project == nil || adapter.Persist == nil {
 		return fmt.Errorf("projection ingestion requires a stream, projector, and persistence adapter")
 	}
-	metrics.RequireBrokerConnections(string(adapter.Stream))
+	connectionName := backgroundConsumerName(ctx)
+	if connectionName == "" {
+		connectionName = string(adapter.Stream)
+		metrics.RequireBrokerConnections(connectionName)
+	}
 	writeStage := adapter.WriteStage
 	if writeStage == "" {
 		writeStage = ProjectionIngestionPersist
@@ -78,21 +82,22 @@ func RunProjectionIngestion[T any](ctx context.Context, reader SimopsKafkaReader
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			return failProjectionIngestion(metrics, adapter.Stream, ProjectionIngestionFetch, nil, err, true)
+			metrics.MarkBrokerConnection(connectionName, false)
+			return failProjectionIngestion(metrics, adapter.Stream, ProjectionIngestionFetch, nil, err)
 		}
-		metrics.MarkBrokerConnection(string(adapter.Stream), true)
+		metrics.MarkBrokerConnection(connectionName, true)
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 
 		projection, err := adapter.Project(message)
 		if err != nil {
-			projectionErr := failProjectionIngestion(metrics, adapter.Stream, ProjectionIngestionProject, &message, err, false)
+			projectionErr := failProjectionIngestion(metrics, adapter.Stream, ProjectionIngestionProject, &message, err)
 			if !adapter.CommitProjectFailure {
 				return projectionErr
 			}
 			if err := reader.CommitMessages(ctx, message); err != nil {
-				return failProjectionIngestion(metrics, adapter.Stream, ProjectionIngestionCommit, &message, err, false)
+				return failProjectionIngestion(metrics, adapter.Stream, ProjectionIngestionCommit, &message, err)
 			}
 			metrics.MarkConsumed(message.Offset)
 			continue
@@ -103,7 +108,7 @@ func RunProjectionIngestion[T any](ctx context.Context, reader SimopsKafkaReader
 
 		written, err := adapter.Persist(projection)
 		if err != nil {
-			return failProjectionIngestion(metrics, adapter.Stream, writeStage, &message, err, false)
+			return failProjectionIngestion(metrics, adapter.Stream, writeStage, &message, err)
 		}
 		if written > 0 {
 			metrics.IncFramesWritten(written)
@@ -116,21 +121,18 @@ func RunProjectionIngestion[T any](ctx context.Context, reader SimopsKafkaReader
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
-			return failProjectionIngestion(metrics, adapter.Stream, ProjectionIngestionCommit, &message, err, false)
+			return failProjectionIngestion(metrics, adapter.Stream, ProjectionIngestionCommit, &message, err)
 		}
 		metrics.MarkConsumed(message.Offset)
 	}
 }
 
-func failProjectionIngestion(metrics *SimopsConsumerMetrics, stream ProjectionIngestionStream, stage ProjectionIngestionStage, message *SimopsBrokerMessage, cause error, disconnected bool) error {
+func failProjectionIngestion(metrics *SimopsConsumerMetrics, stream ProjectionIngestionStream, stage ProjectionIngestionStage, message *SimopsBrokerMessage, cause error) error {
 	err := &ProjectionIngestionError{
 		Stream: stream, Stage: stage, Cause: cause,
 	}
 	if message != nil {
 		err.Position = &WorkbenchProjectionPosition{Topic: message.Topic, Partition: message.Partition, Offset: message.Offset}
-	}
-	if disconnected {
-		metrics.MarkBrokerConnection(string(stream), false)
 	}
 	metrics.IncWriteFailures()
 	metrics.SetLastError(err)

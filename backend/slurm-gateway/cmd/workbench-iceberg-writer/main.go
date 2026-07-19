@@ -28,11 +28,6 @@ func run() error {
 		return fmt.Errorf("initialize workbench iceberg writer: %w", err)
 	}
 	metrics := gateway.NewSimopsConsumerMetrics()
-	metrics.RequireBrokerConnections(
-		string(gateway.ProjectionStreamMeasuredState),
-		string(gateway.ProjectionStreamSimulatedResultState),
-		string(gateway.ProjectionStreamTwinState),
-	)
 	addr := getenv("WORKBENCH_ICEBERG_WRITER_ADDR", ":9490")
 	process, err := gateway.NewBackgroundConsumerProcess(gateway.BackgroundConsumerProcessConfig{
 		Name: "workbench-iceberg-writer", Address: addr, MetricsPrefix: "workbench_iceberg_writer",

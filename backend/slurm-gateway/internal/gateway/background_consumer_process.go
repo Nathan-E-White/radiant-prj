@@ -23,8 +23,16 @@ type BackgroundConsumerProcessConfig struct {
 }
 
 type BackgroundConsumer struct {
-	Name    string
-	Consume func(context.Context) error
+	Name          string
+	Consume       func(context.Context) error
+	SkipReadiness bool
+}
+
+type backgroundConsumerContextKey struct{}
+
+func backgroundConsumerName(ctx context.Context) string {
+	name, _ := ctx.Value(backgroundConsumerContextKey{}).(string)
+	return name
 }
 
 type BackgroundConsumerError struct {
@@ -58,7 +66,7 @@ func validateBackgroundConsumers(consumers []BackgroundConsumer) error {
 	return nil
 }
 
-func startBackgroundConsumers(ctx context.Context, consumers []BackgroundConsumer) (*backgroundConsumerGroup, error) {
+func startBackgroundConsumers(ctx context.Context, metrics *SimopsConsumerMetrics, consumers []BackgroundConsumer) (*backgroundConsumerGroup, error) {
 	if err := validateBackgroundConsumers(consumers); err != nil {
 		return nil, err
 	}
@@ -66,8 +74,12 @@ func startBackgroundConsumers(ctx context.Context, consumers []BackgroundConsume
 	results := make(chan *BackgroundConsumerError, len(consumers))
 	for _, consumer := range consumers {
 		consumer := consumer
+		if metrics != nil && !consumer.SkipReadiness {
+			metrics.RequireBrokerConnections(consumer.Name)
+		}
 		go func() {
-			err := consumer.Consume(groupCtx)
+			consumerCtx := context.WithValue(groupCtx, backgroundConsumerContextKey{}, consumer.Name)
+			err := consumer.Consume(consumerCtx)
 			if err == nil && groupCtx.Err() == nil {
 				err = fmt.Errorf("exited unexpectedly")
 			}
@@ -78,7 +90,11 @@ func startBackgroundConsumers(ctx context.Context, consumers []BackgroundConsume
 }
 
 func RunBackgroundConsumers(ctx context.Context, consumers ...BackgroundConsumer) error {
-	group, err := startBackgroundConsumers(ctx, consumers)
+	return runBackgroundConsumers(ctx, nil, consumers...)
+}
+
+func runBackgroundConsumers(ctx context.Context, metrics *SimopsConsumerMetrics, consumers ...BackgroundConsumer) error {
+	group, err := startBackgroundConsumers(ctx, metrics, consumers)
 	if err != nil {
 		return err
 	}
@@ -170,7 +186,7 @@ func (p *BackgroundConsumerProcess) Run(ctx context.Context) error {
 	p.mu.Unlock()
 	close(p.started)
 
-	group, err := startBackgroundConsumers(context.Background(), p.cfg.Consumers)
+	group, err := startBackgroundConsumers(context.Background(), p.cfg.Metrics, p.cfg.Consumers)
 	if err != nil {
 		_ = listener.Close()
 		return fmt.Errorf("start background consumer %s group: %w", p.cfg.Name, err)

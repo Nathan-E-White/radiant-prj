@@ -158,6 +158,19 @@ func (m *SimopsConsumerMetrics) MarkBrokerConnected(connected bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.brokerConnected = connected
+	m.markSoleRequiredBrokerConnection(connected)
+}
+
+func (m *SimopsConsumerMetrics) markSoleRequiredBrokerConnection(connected bool) {
+	if len(m.requiredBrokerConnections) != 1 {
+		return
+	}
+	if m.brokerConnections == nil {
+		m.brokerConnections = make(map[string]bool)
+	}
+	for name := range m.requiredBrokerConnections {
+		m.brokerConnections[name] = connected
+	}
 }
 
 func (m *SimopsConsumerMetrics) RequireBrokerConnections(names ...string) {
@@ -189,6 +202,7 @@ func (m *SimopsConsumerMetrics) MarkConsumed(offset int64) {
 	defer m.mu.Unlock()
 	m.lastConsumedOffset = offset
 	m.brokerConnected = true
+	m.markSoleRequiredBrokerConnection(true)
 }
 
 func (m *SimopsConsumerMetrics) IncFramesWritten(delta uint64) {

@@ -28,11 +28,6 @@ func run() error {
 		return fmt.Errorf("initialize workbench postgres store: %w", err)
 	}
 	metrics := gateway.NewSimopsConsumerMetrics()
-	metrics.RequireBrokerConnections(
-		string(gateway.ProjectionStreamMeasuredState),
-		string(gateway.ProjectionStreamSimulatedResultState),
-		string(gateway.ProjectionStreamTwinState),
-	)
 	addr := getenv("WORKBENCH_PROJECTION_WRITER_ADDR", ":9470")
 	process, err := gateway.NewBackgroundConsumerProcess(gateway.BackgroundConsumerProcessConfig{
 		Name: "workbench-projection-writer", Address: addr, MetricsPrefix: "workbench_projection_writer",

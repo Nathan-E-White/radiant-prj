@@ -117,28 +117,40 @@ func TestBackgroundConsumerReadinessNamesTerminalStreamFailure(t *testing.T) {
 
 func TestBackgroundConsumerReadinessRequiresEveryNamedBrokerConnection(t *testing.T) {
 	metrics := NewSimopsConsumerMetrics()
-	metrics.RequireBrokerConnections("measured-state", "simulated-result-state", "twin-state-and-lineage")
-	metrics.MarkBrokerConnection("measured-state", true)
-	process, err := NewBackgroundConsumerProcess(BackgroundConsumerProcessConfig{
-		Name: "multi-stream", Address: "127.0.0.1:0", MetricsPrefix: "multi_stream",
-		Metrics: metrics, ShutdownTimeout: time.Second,
-		Consumers: testBackgroundConsumers("multi-stream", func(context.Context) error { return nil }),
+	firstConnected := make(chan struct{})
+	secondStarted := make(chan struct{})
+	allowSecondConnection := make(chan struct{})
+	group, err := startBackgroundConsumers(context.Background(), metrics, []BackgroundConsumer{
+		{Name: "measured-state", Consume: func(ctx context.Context) error {
+			metrics.MarkBrokerConnection(backgroundConsumerName(ctx), true)
+			close(firstConnected)
+			<-ctx.Done()
+			return ctx.Err()
+		}},
+		{Name: "simulated-result-state", Consume: func(ctx context.Context) error {
+			close(secondStarted)
+			<-allowSecondConnection
+			metrics.MarkBrokerConnection(backgroundConsumerName(ctx), true)
+			<-ctx.Done()
+			return ctx.Err()
+		}},
 	})
 	if err != nil {
-		t.Fatalf("construct process: %v", err)
+		t.Fatalf("start consumer group: %v", err)
 	}
-	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
-	response := httptest.NewRecorder()
-	process.handler().ServeHTTP(response, request)
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("one connected stream made three-stream process ready: status=%d body=%s", response.Code, response.Body.String())
+	<-firstConnected
+	<-secondStarted
+	if snapshot := metrics.Snapshot(); snapshot.Ready() {
+		t.Fatalf("one connected stream made two-stream group ready: %#v", snapshot)
 	}
-	metrics.MarkBrokerConnection("simulated-result-state", true)
-	metrics.MarkBrokerConnection("twin-state-and-lineage", true)
-	response = httptest.NewRecorder()
-	process.handler().ServeHTTP(response, request)
-	if response.Code != http.StatusOK {
-		t.Fatalf("all connected streams did not make process ready: status=%d body=%s", response.Code, response.Body.String())
+	close(allowSecondConnection)
+	for !metrics.Snapshot().Ready() {
+		time.Sleep(time.Millisecond)
+	}
+	group.cancel()
+	for group.remaining > 0 {
+		<-group.results
+		group.remaining--
 	}
 }
 
