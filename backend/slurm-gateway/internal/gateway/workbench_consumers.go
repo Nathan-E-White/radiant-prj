@@ -23,8 +23,8 @@ func RunWorkbenchScadaProjectionConsumer(ctx context.Context, cfg WorkbenchConfi
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
-	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[ScadaProjection]{
-		Stream: WorkbenchProjectionMeasured,
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[ScadaProjection]{
+		Stream: ProjectionStreamMeasuredState,
 		Project: func(message SimopsBrokerMessage) (ScadaProjection, error) {
 			return ProjectScadaFrame(message.Topic, message.Partition, message.Offset, message.Value)
 		},
@@ -47,8 +47,8 @@ func RunWorkbenchResultProjectionConsumer(ctx context.Context, cfg WorkbenchConf
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
-	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[SimopsResultProjection]{
-		Stream: WorkbenchProjectionSimulated,
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[SimopsResultProjection]{
+		Stream: ProjectionStreamSimulatedResultState,
 		Project: func(message SimopsBrokerMessage) (SimopsResultProjection, error) {
 			return ProjectSimopsResultFrame(message.Topic, message.Partition, message.Offset, message.Value)
 		},
@@ -71,8 +71,8 @@ func RunWorkbenchTwinProjectionConsumer(ctx context.Context, cfg WorkbenchConfig
 	if metrics == nil {
 		metrics = NewSimopsConsumerMetrics()
 	}
-	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[TwinStateProjection]{
-		Stream: WorkbenchProjectionTwin,
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[TwinStateProjection]{
+		Stream: ProjectionStreamTwinState,
 		Project: func(message SimopsBrokerMessage) (TwinStateProjection, error) {
 			return ProjectTwinState(message.Topic, message.Partition, message.Offset, message.Value, message.Headers...)
 		},
@@ -101,8 +101,8 @@ func RunWorkbenchScadaIcebergConsumer(ctx context.Context, cfg WorkbenchConfig, 
 	if writer == nil {
 		return fmt.Errorf("workbench measured-state iceberg ingestion requires a writer")
 	}
-	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[ScadaProjection]{
-		Stream: WorkbenchProjectionMeasured, WriteStage: WorkbenchProjectionIngestionAppend,
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[ScadaProjection]{
+		Stream: ProjectionStreamMeasuredState, WriteStage: ProjectionIngestionAppend,
 		Project: func(message SimopsBrokerMessage) (ScadaProjection, error) {
 			return ProjectScadaFrame(message.Topic, message.Partition, message.Offset, message.Value)
 		},
@@ -124,8 +124,8 @@ func RunWorkbenchResultIcebergConsumer(ctx context.Context, cfg WorkbenchConfig,
 	if writer == nil {
 		return fmt.Errorf("workbench simulated-result-state iceberg ingestion requires a writer")
 	}
-	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[SimopsResultProjection]{
-		Stream: WorkbenchProjectionSimulated, WriteStage: WorkbenchProjectionIngestionAppend,
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[SimopsResultProjection]{
+		Stream: ProjectionStreamSimulatedResultState, WriteStage: ProjectionIngestionAppend,
 		Project: func(message SimopsBrokerMessage) (SimopsResultProjection, error) {
 			return ProjectSimopsResultFrame(message.Topic, message.Partition, message.Offset, message.Value)
 		},
@@ -147,8 +147,8 @@ func RunWorkbenchTwinIcebergConsumer(ctx context.Context, cfg WorkbenchConfig, r
 	if writer == nil {
 		return fmt.Errorf("workbench twin-state iceberg ingestion requires a writer")
 	}
-	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[TwinStateProjection]{
-		Stream: WorkbenchProjectionTwin, WriteStage: WorkbenchProjectionIngestionAppend,
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[TwinStateProjection]{
+		Stream: ProjectionStreamTwinState, WriteStage: ProjectionIngestionAppend,
 		Project: func(message SimopsBrokerMessage) (TwinStateProjection, error) {
 			return ProjectTwinState(message.Topic, message.Partition, message.Offset, message.Value, message.Headers...)
 		},

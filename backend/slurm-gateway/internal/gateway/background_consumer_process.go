@@ -40,7 +40,13 @@ func (e *BackgroundConsumerError) Unwrap() error {
 	return e.Cause
 }
 
-func RunBackgroundConsumers(ctx context.Context, consumers ...BackgroundConsumer) error {
+type backgroundConsumerGroup struct {
+	cancel    context.CancelFunc
+	results   <-chan *BackgroundConsumerError
+	remaining int
+}
+
+func validateBackgroundConsumers(consumers []BackgroundConsumer) error {
 	if len(consumers) == 0 {
 		return fmt.Errorf("background consumer group requires at least one consumer")
 	}
@@ -49,9 +55,14 @@ func RunBackgroundConsumers(ctx context.Context, consumers ...BackgroundConsumer
 			return fmt.Errorf("background consumer group requires named consumers")
 		}
 	}
+	return nil
+}
 
+func startBackgroundConsumers(ctx context.Context, consumers []BackgroundConsumer) (*backgroundConsumerGroup, error) {
+	if err := validateBackgroundConsumers(consumers); err != nil {
+		return nil, err
+	}
 	groupCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	results := make(chan *BackgroundConsumerError, len(consumers))
 	for _, consumer := range consumers {
 		consumer := consumer
@@ -63,19 +74,33 @@ func RunBackgroundConsumers(ctx context.Context, consumers ...BackgroundConsumer
 			results <- &BackgroundConsumerError{Consumer: consumer.Name, Cause: err}
 		}()
 	}
+	return &backgroundConsumerGroup{cancel: cancel, results: results, remaining: len(consumers)}, nil
+}
 
-	remaining := len(consumers)
-	for remaining > 0 {
+func RunBackgroundConsumers(ctx context.Context, consumers ...BackgroundConsumer) error {
+	group, err := startBackgroundConsumers(ctx, consumers)
+	if err != nil {
+		return err
+	}
+	defer group.cancel()
+
+	var firstFailure error
+	done := ctx.Done()
+	for group.remaining > 0 {
 		select {
-		case result := <-results:
-			remaining--
-			if ctx.Err() == nil && result.Cause != nil && !errors.Is(result.Cause, context.Canceled) {
-				cancel()
-				return result
+		case result := <-group.results:
+			group.remaining--
+			if firstFailure == nil && ctx.Err() == nil && result.Cause != nil && !errors.Is(result.Cause, context.Canceled) {
+				firstFailure = result
+				group.cancel()
 			}
-		case <-ctx.Done():
-			cancel()
+		case <-done:
+			group.cancel()
+			done = nil
 		}
+	}
+	if firstFailure != nil {
+		return firstFailure
 	}
 	return ctx.Err()
 }
@@ -119,10 +144,8 @@ func NewBackgroundConsumerProcess(cfg BackgroundConsumerProcessConfig) (*Backgro
 	if len(cfg.Consumers) == 0 {
 		return nil, fmt.Errorf("background consumer process %s requires at least one consumer", cfg.Name)
 	}
-	for _, consumer := range cfg.Consumers {
-		if strings.TrimSpace(consumer.Name) == "" || consumer.Consume == nil {
-			return nil, fmt.Errorf("background consumer process %s requires named consumers", cfg.Name)
-		}
+	if err := validateBackgroundConsumers(cfg.Consumers); err != nil {
+		return nil, fmt.Errorf("background consumer process %s: %w", cfg.Name, err)
 	}
 	return &BackgroundConsumerProcess{cfg: cfg, started: make(chan struct{})}, nil
 }
@@ -147,63 +170,57 @@ func (p *BackgroundConsumerProcess) Run(ctx context.Context) error {
 	p.mu.Unlock()
 	close(p.started)
 
-	processCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	group, err := startBackgroundConsumers(context.Background(), p.cfg.Consumers)
+	if err != nil {
+		_ = listener.Close()
+		return fmt.Errorf("start background consumer %s group: %w", p.cfg.Name, err)
+	}
+	defer group.cancel()
 	server := &http.Server{
 		Handler:           p.handler(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	consumerResult := make(chan *BackgroundConsumerError, len(p.cfg.Consumers))
 	serverResult := make(chan error, 1)
-	for _, consumer := range p.cfg.Consumers {
-		consumer := consumer
-		go func() {
-			err := consumer.Consume(processCtx)
-			if err == nil && processCtx.Err() == nil {
-				err = fmt.Errorf("exited unexpectedly")
-			}
-			consumerResult <- &BackgroundConsumerError{Consumer: consumer.Name, Cause: err}
-		}()
-	}
 	go func() { serverResult <- server.Serve(listener) }()
 
 	select {
-	case consumerErr := <-consumerResult:
+	case consumerErr := <-group.results:
+		group.remaining--
 		if ctx.Err() != nil {
-			cancel()
-			return p.shutdown(server, consumerResult, len(p.cfg.Consumers)-1)
+			group.cancel()
+			return p.shutdown(server, group)
 		}
 		p.recordFailure(consumerErr)
-		cancel()
-		return errors.Join(consumerErr, p.shutdown(server, consumerResult, len(p.cfg.Consumers)-1))
+		group.cancel()
+		return errors.Join(consumerErr, p.shutdown(server, group))
 	case serverErr := <-serverResult:
 		if errors.Is(serverErr, http.ErrServerClosed) && ctx.Err() != nil {
-			cancel()
-			return p.shutdown(server, consumerResult, len(p.cfg.Consumers))
+			group.cancel()
+			return p.shutdown(server, group)
 		}
 		if serverErr == nil {
 			serverErr = fmt.Errorf("background consumer %s HTTP server exited unexpectedly", p.cfg.Name)
 		}
 		p.recordFailure(serverErr)
-		cancel()
-		return errors.Join(serverErr, p.shutdown(server, consumerResult, len(p.cfg.Consumers)))
+		group.cancel()
+		return errors.Join(serverErr, p.shutdown(server, group))
 	case <-ctx.Done():
-		cancel()
-		return p.shutdown(server, consumerResult, len(p.cfg.Consumers))
+		group.cancel()
+		return p.shutdown(server, group)
 	}
 }
 
-func (p *BackgroundConsumerProcess) shutdown(server *http.Server, consumerResult <-chan *BackgroundConsumerError, consumersRemaining int) error {
+func (p *BackgroundConsumerProcess) shutdown(server *http.Server, group *backgroundConsumerGroup) error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), p.cfg.ShutdownTimeout)
 	defer cancel()
 	serverDone := make(chan error, 1)
 	go func() { serverDone <- server.Shutdown(shutdownCtx) }()
 
 	var shutdownErr error
-	for consumersRemaining > 0 || serverDone != nil {
+	for group.remaining > 0 || serverDone != nil {
 		select {
-		case result := <-consumerResult:
-			consumersRemaining--
+		case result := <-group.results:
+			group.remaining--
 			if result.Cause != nil && !errors.Is(result.Cause, context.Canceled) && !errors.Is(result.Cause, context.DeadlineExceeded) {
 				shutdownErr = errors.Join(shutdownErr, result)
 			}
@@ -240,6 +257,10 @@ func (p *BackgroundConsumerProcess) recordFailure(err error) {
 func (p *BackgroundConsumerProcess) handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		if p.cfg.Metrics.Snapshot().LastError != "" {
+			writeBackgroundConsumerJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "failed"})
+			return
+		}
 		writeBackgroundConsumerJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {

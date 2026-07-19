@@ -115,25 +115,52 @@ func TestBackgroundConsumerReadinessNamesTerminalStreamFailure(t *testing.T) {
 	}
 }
 
+func TestBackgroundConsumerHealthRejectsTerminalStreamFailure(t *testing.T) {
+	metrics := NewSimopsConsumerMetrics()
+	metrics.SetLastError(&BackgroundConsumerError{Consumer: "measured-state", Cause: errors.New("append failed")})
+	process, err := NewBackgroundConsumerProcess(BackgroundConsumerProcessConfig{
+		Name: "failed-projection", Address: "127.0.0.1:0", MetricsPrefix: "failed_projection",
+		Metrics: metrics, ShutdownTimeout: time.Second,
+		Consumers: testBackgroundConsumers("measured-state", func(context.Context) error { return nil }),
+	})
+	if err != nil {
+		t.Fatalf("construct process: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	response := httptest.NewRecorder()
+	process.handler().ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable || !strings.Contains(response.Body.String(), `"status":"failed"`) {
+		t.Fatalf("health remained healthy after terminal failure: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestBackgroundConsumersNameTheFailedStreamAndCancelItsSiblings(t *testing.T) {
 	failure := errors.New("append failed")
 	siblingCanceled := make(chan struct{})
-	err := RunBackgroundConsumers(context.Background(),
-		BackgroundConsumer{Name: "measured-state", Consume: func(context.Context) error { return failure }},
-		BackgroundConsumer{Name: "simulated-result-state", Consume: func(ctx context.Context) error {
-			<-ctx.Done()
-			close(siblingCanceled)
-			return ctx.Err()
-		}},
-	)
+	releaseSibling := make(chan struct{})
+	result := make(chan error, 1)
+	go func() {
+		result <- RunBackgroundConsumers(context.Background(),
+			BackgroundConsumer{Name: "measured-state", Consume: func(context.Context) error { return failure }},
+			BackgroundConsumer{Name: "simulated-result-state", Consume: func(ctx context.Context) error {
+				<-ctx.Done()
+				close(siblingCanceled)
+				<-releaseSibling
+				return ctx.Err()
+			}},
+		)
+	}()
+	<-siblingCanceled
+	select {
+	case err := <-result:
+		t.Fatalf("consumer group returned before sibling stopped: %v", err)
+	default:
+	}
+	close(releaseSibling)
+	err := <-result
 	var consumerErr *BackgroundConsumerError
 	if !errors.As(err, &consumerErr) || consumerErr.Consumer != "measured-state" || !errors.Is(err, failure) {
 		t.Fatalf("expected named measured-state failure, got %T %v", err, err)
-	}
-	select {
-	case <-siblingCanceled:
-	case <-time.After(time.Second):
-		t.Fatal("failed consumer did not cancel its sibling")
 	}
 }
 

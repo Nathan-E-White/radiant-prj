@@ -93,8 +93,8 @@ func RunArtifactIntentConsumer(ctx context.Context, cfg SimopsConfig, reader Sim
 		reader = created
 	}
 	defer reader.Close()
-	return RunWorkbenchProjectionIngestion(ctx, reader, metrics, WorkbenchProjectionIngestionAdapter[SimopsEvent]{
-		Stream: WorkbenchProjectionOperational, WriteStage: WorkbenchProjectionIngestionAppend,
+	return RunProjectionIngestion(ctx, reader, metrics, ProjectionIngestionAdapter[SimopsEvent]{
+		Stream: ProjectionStreamOperationalTelemetry, WriteStage: ProjectionIngestionAppend, CommitProjectFailure: true,
 		Project: func(message SimopsBrokerMessage) (SimopsEvent, error) {
 			event, err := decodeSimopsKafkaEvent(message)
 			if err != nil {
