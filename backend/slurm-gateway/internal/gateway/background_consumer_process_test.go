@@ -115,6 +115,33 @@ func TestBackgroundConsumerReadinessNamesTerminalStreamFailure(t *testing.T) {
 	}
 }
 
+func TestBackgroundConsumerReadinessRequiresEveryNamedBrokerConnection(t *testing.T) {
+	metrics := NewSimopsConsumerMetrics()
+	metrics.RequireBrokerConnections("measured-state", "simulated-result-state", "twin-state-and-lineage")
+	metrics.MarkBrokerConnection("measured-state", true)
+	process, err := NewBackgroundConsumerProcess(BackgroundConsumerProcessConfig{
+		Name: "multi-stream", Address: "127.0.0.1:0", MetricsPrefix: "multi_stream",
+		Metrics: metrics, ShutdownTimeout: time.Second,
+		Consumers: testBackgroundConsumers("multi-stream", func(context.Context) error { return nil }),
+	})
+	if err != nil {
+		t.Fatalf("construct process: %v", err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	response := httptest.NewRecorder()
+	process.handler().ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("one connected stream made three-stream process ready: status=%d body=%s", response.Code, response.Body.String())
+	}
+	metrics.MarkBrokerConnection("simulated-result-state", true)
+	metrics.MarkBrokerConnection("twin-state-and-lineage", true)
+	response = httptest.NewRecorder()
+	process.handler().ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("all connected streams did not make process ready: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestBackgroundConsumerHealthRejectsTerminalStreamFailure(t *testing.T) {
 	metrics := NewSimopsConsumerMetrics()
 	metrics.SetLastError(&BackgroundConsumerError{Consumer: "measured-state", Cause: errors.New("append failed")})

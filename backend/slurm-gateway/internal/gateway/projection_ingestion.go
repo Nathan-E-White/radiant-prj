@@ -66,6 +66,7 @@ func RunProjectionIngestion[T any](ctx context.Context, reader SimopsKafkaReader
 	if adapter.Stream == "" || adapter.Project == nil || adapter.Persist == nil {
 		return fmt.Errorf("projection ingestion requires a stream, projector, and persistence adapter")
 	}
+	metrics.RequireBrokerConnections(string(adapter.Stream))
 	writeStage := adapter.WriteStage
 	if writeStage == "" {
 		writeStage = ProjectionIngestionPersist
@@ -79,7 +80,7 @@ func RunProjectionIngestion[T any](ctx context.Context, reader SimopsKafkaReader
 			}
 			return failProjectionIngestion(metrics, adapter.Stream, ProjectionIngestionFetch, nil, err, true)
 		}
-		metrics.MarkBrokerConnected(true)
+		metrics.MarkBrokerConnection(string(adapter.Stream), true)
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -129,7 +130,7 @@ func failProjectionIngestion(metrics *SimopsConsumerMetrics, stream ProjectionIn
 		err.Position = &WorkbenchProjectionPosition{Topic: message.Topic, Partition: message.Partition, Offset: message.Offset}
 	}
 	if disconnected {
-		metrics.MarkBrokerConnected(false)
+		metrics.MarkBrokerConnection(string(stream), false)
 	}
 	metrics.IncWriteFailures()
 	metrics.SetLastError(err)

@@ -134,24 +134,54 @@ func containsQualityField(raw json.RawMessage, name string) bool {
 }
 
 type SimopsConsumerMetrics struct {
-	mu                 sync.RWMutex
-	brokerConnected    bool
-	lastConsumedOffset int64
-	framesWritten      uint64
-	writeFailures      uint64
-	batchFlushes       uint64
-	subscriberCount    uint64
-	lastError          string
+	mu                        sync.RWMutex
+	brokerConnected           bool
+	requiredBrokerConnections map[string]struct{}
+	brokerConnections         map[string]bool
+	lastConsumedOffset        int64
+	framesWritten             uint64
+	writeFailures             uint64
+	batchFlushes              uint64
+	subscriberCount           uint64
+	lastError                 string
 }
 
 func NewSimopsConsumerMetrics() *SimopsConsumerMetrics {
-	return &SimopsConsumerMetrics{lastConsumedOffset: -1}
+	return &SimopsConsumerMetrics{
+		requiredBrokerConnections: make(map[string]struct{}),
+		brokerConnections:         make(map[string]bool),
+		lastConsumedOffset:        -1,
+	}
 }
 
 func (m *SimopsConsumerMetrics) MarkBrokerConnected(connected bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.brokerConnected = connected
+}
+
+func (m *SimopsConsumerMetrics) RequireBrokerConnections(names ...string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.requiredBrokerConnections == nil {
+		m.requiredBrokerConnections = make(map[string]struct{})
+	}
+	for _, name := range names {
+		if name != "" {
+			m.requiredBrokerConnections[name] = struct{}{}
+		}
+	}
+}
+
+func (m *SimopsConsumerMetrics) MarkBrokerConnection(name string, connected bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if name != "" {
+		if m.brokerConnections == nil {
+			m.brokerConnections = make(map[string]bool)
+		}
+		m.brokerConnections[name] = connected
+	}
 }
 
 func (m *SimopsConsumerMetrics) MarkConsumed(offset int64) {
@@ -198,8 +228,19 @@ func (m *SimopsConsumerMetrics) SetLastError(err error) {
 func (m *SimopsConsumerMetrics) Snapshot() SimopsConsumerMetricsSnapshot {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+	brokerConnected := m.brokerConnected
+	connections := make(map[string]bool, len(m.requiredBrokerConnections))
+	if len(m.requiredBrokerConnections) > 0 {
+		brokerConnected = true
+		for name := range m.requiredBrokerConnections {
+			connected := m.brokerConnections[name]
+			connections[name] = connected
+			brokerConnected = brokerConnected && connected
+		}
+	}
 	return SimopsConsumerMetricsSnapshot{
-		BrokerConnected:    m.brokerConnected,
+		BrokerConnected:    brokerConnected,
+		BrokerConnections:  connections,
 		LastConsumedOffset: m.lastConsumedOffset,
 		FramesWritten:      m.framesWritten,
 		WriteFailures:      m.writeFailures,
@@ -210,13 +251,14 @@ func (m *SimopsConsumerMetrics) Snapshot() SimopsConsumerMetricsSnapshot {
 }
 
 type SimopsConsumerMetricsSnapshot struct {
-	BrokerConnected    bool   `json:"broker_connected"`
-	LastConsumedOffset int64  `json:"last_consumed_offset"`
-	FramesWritten      uint64 `json:"frames_written"`
-	WriteFailures      uint64 `json:"write_failures"`
-	BatchFlushes       uint64 `json:"batch_flush_count"`
-	SubscriberCount    uint64 `json:"subscriber_count"`
-	LastError          string `json:"last_error,omitempty"`
+	BrokerConnected    bool            `json:"broker_connected"`
+	BrokerConnections  map[string]bool `json:"broker_connections,omitempty"`
+	LastConsumedOffset int64           `json:"last_consumed_offset"`
+	FramesWritten      uint64          `json:"frames_written"`
+	WriteFailures      uint64          `json:"write_failures"`
+	BatchFlushes       uint64          `json:"batch_flush_count"`
+	SubscriberCount    uint64          `json:"subscriber_count"`
+	LastError          string          `json:"last_error,omitempty"`
 }
 
 func (s SimopsConsumerMetricsSnapshot) Ready() bool {
