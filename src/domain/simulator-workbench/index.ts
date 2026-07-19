@@ -11,6 +11,7 @@ export {
 } from "./fixtureAdapter";
 export {
   buildWorkbenchProjection,
+  buildWorkbenchProjectionResult,
   type ProjectedFleetUnit,
   type ProjectedWorkbenchValue,
   type TwinViewportLayer,
@@ -21,6 +22,7 @@ export {
   type WorkbenchHealthSummary,
   type WorkbenchLineageStep,
   type WorkbenchProjection,
+  type WorkbenchProjectionResult,
   type WorkbenchProjectionInput,
   type WorkbenchSelection
 } from "./projection";
@@ -33,19 +35,18 @@ export { createHealthTickDriver } from "./workbenchHealthTickDriver";
 export {
   WorkbenchReadError,
   createHttpWorkbenchDataAdapter,
-  initialWorkbenchReadState,
-  refreshWorkbenchReadState,
-  workbenchReadLabel,
   type AcceptedWorkbenchSnapshot,
   type LiveWorkbenchSnapshot,
   type WorkbenchReadErrorKind,
-  type WorkbenchReadModel,
-  type WorkbenchReadState,
   type WorkbenchSnapshotAdapter
 } from "./liveWorkbench";
 export {
   createBrowserWorkbenchSnapshotSession,
   createWorkbenchSnapshotSession,
+  workbenchReadLabel,
+  type WorkbenchReadModel,
+  type WorkbenchReadState,
   type WorkbenchSnapshotSession,
+  type WorkbenchSnapshotSessionResult,
   type WorkbenchSnapshotSessionOptions
 } from "./workbenchSnapshotSession";

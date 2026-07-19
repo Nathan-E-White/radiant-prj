@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Document ID | VVM-001 |
-| Revision | 3.0 |
+| Revision | 3.1 |
 | Status | Draft for v3.0 review |
 | Owner | Quality |
 | Baseline | v3.0 candidate |
@@ -42,6 +42,7 @@
 | SW-021 | Demonstration | Kind/OrbStack proof covers API-driven Kubernetes Job launch, required labels, gateway-only worker inputs, frame ingest, runtime lifecycle sync, TTL, failure retention, and forced cleanup | `bun run simops:smoke:kind:check`, `bun run simops:smoke:json:test`, elevated `bun run simops:smoke:kind -- --timeout 300 --build auto` | SIMOPS-KIND-E2E-001 |
 | SW-022 | Configuration audit | OpenTofu module and no-mutation preflight cover namespace, gateway/worker service accounts, scoped Job/Pod RBAC, runtime adapter ConfigMap values, and the explicit absence of per-run Jobs | `bun run simops:tofu:check`, `bun run simops:tofu:preflight` | SIMOPS-TOFU-SUBSTRATE-001 |
 | SW-023 | Review and demonstration | Consolidated runtime docs match implemented RunConnectionProfile, Docker SDK, SyncRun, client-go/Kind, OpenTofu, credential and cleanup boundaries; final local commands cover both runtime smokes and no-mutation substrate plan | `bun run simops:runtime:closeout:check`, `bun run backend:test`, elevated `bun run simops:smoke:docker-orbstack`, elevated `bun run simops:smoke:kind -- --timeout 300 --build auto`, `bun run simops:tofu:preflight`, `bun run ci`, `bun run build` | SIMOPS-RUNTIME-CLOSEOUT-001 |
+| SW-024 | Test and demonstration | Authoritative browser Snapshot-session module, deterministic read outcomes, atomic projection/selection/health publication, credential-free HTTP request, fallback/stale/recovery presentation, invalid-selection replacement, unmount cancellation, and health fault containment | `bun run test`, `bun run test:mutation:workbench`, `bunx playwright test tests/e2e/workbench-live-read.spec.ts tests/e2e/workbench-health-chaos.spec.ts`, `bun run ci`, `bun run build` | VVR-WORKBENCH-SNAPSHOT-SESSION-001 |
 
 ## Acceptance Scenario
 

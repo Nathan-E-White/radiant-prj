@@ -1,6 +1,8 @@
 /** @type {import('@stryker-mutator/api/core').PartialStrykerOptions} */
 export default {
-  mutate: ["src/domain/simulator-workbench/workbenchSnapshotSession.ts:33-120"],
+  mutate: [
+    "src/domain/simulator-workbench/workbenchSnapshotSession.ts:89-333"
+  ],
   testRunner: "vitest",
   vitest: {
     configFile: "vite.config.ts"

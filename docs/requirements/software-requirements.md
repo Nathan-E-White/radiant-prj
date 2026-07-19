@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Document ID | REQ-002 |
-| Revision | 3.0 |
+| Revision | 3.1 |
 | Status | Draft for v3.0 review |
 | Owner | Software |
 | Baseline | v3.0 candidate |
@@ -30,6 +30,7 @@ This document defines software and deployment requirements for the interview dem
 | SW-016 | The Status Workbench front-end shall consolidate the prior Compute Workbench queue and SimOps Control surface below the value-basis workbench, with a queue-driven four-panel HPC status bay. | The app should present one operational status surface instead of scattering related compute, orchestration, and simulation state across top-level tabs. | Test | Verified |
 | SW-017 | The Simulation Ops Docker worker launcher shall use a Docker SDK runtime adapter that consumes run connection profiles, preserves run/worker labels and metadata, and stops only matching run-scoped worker containers. | Local Docker/OrbStack startup must avoid shell-command assembly while keeping the control-plane contract and cleanup targeting traceable. | Test | Verified |
 | SW-018 | The Simulation Ops runtime adapter shall support run synchronization that reports runtime-neutral observed worker lifecycle separately from worker telemetry, artifact status, and data-plane health. | Runtime resource observation needs a narrow control-plane contract without turning telemetry, Redpanda, Postgres, or Iceberg status into worker lifecycle. | Test | Verified |
+| SW-024 | The browser shall consume one authoritative Workbench Snapshot session that owns acceptance, generation monotonicity, cancellation, initial fixture fallback, stale recovery, projection, selection, and Simulation Health derivation while preserving the read-only credential boundary. | Visible Workbench state must never combine generations or live Snapshot truth with fixture-derived health. | Test and demonstration | Verified |
 
 ## Interface Summary
 

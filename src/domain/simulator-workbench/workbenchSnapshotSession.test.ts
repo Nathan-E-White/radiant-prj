@@ -8,6 +8,157 @@ import {
 } from "./workbenchSnapshotSession";
 
 describe("Workbench Snapshot session", () => {
+  it("exposes render-ready projection and selection commands in its result", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(1, fixtureInput)]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
+
+    await session.start();
+    expect(session.getResult()).toMatchObject({
+      readState: { phase: "live", model: { generation: 1 } },
+      selection: {
+        selectedUnitId: "KAL-01",
+        selectedValueId: "VAL-KAL-01-IMPUTED-CORE-DISTRIBUTION"
+      },
+      projection: {
+        selectedUnit: { unitId: "KAL-01" },
+        selectedValue: { valueId: "VAL-KAL-01-IMPUTED-CORE-DISTRIBUTION" }
+      }
+    });
+    expect(session.getResult().selection).not.toHaveProperty("selectedCommercialBasisId");
+
+    session.getResult().selectUnit("KAL-03", "CDB-KAL-03-DESALINATION");
+    expect(session.getResult()).toMatchObject({
+      selection: {
+        selectedUnitId: "KAL-03",
+        selectedValueId: expect.stringContaining("KAL-03"),
+        selectedCommercialBasisId: "CDB-KAL-03-DESALINATION"
+      },
+      projection: {
+        selectedUnit: { unitId: "KAL-03" },
+        explanation: { kind: "commercial" }
+      }
+    });
+
+    session.getResult().selectValue("VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT");
+    expect(session.getResult().projection?.selectedValue?.valueId).toBe("VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT");
+
+    session.getResult().selectCommercialBasis(undefined);
+    expect(session.getResult().projection?.explanation.kind).toBe("engineering");
+    expect(session.getResult().selection).toEqual({
+      selectedUnitId: "KAL-03",
+      selectedValueId: "VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT"
+    });
+
+    session.getResult().selectCommercialBasis("CDB-KAL-01-PPA");
+    expect(session.getResult().selection).not.toHaveProperty("selectedCommercialBasisId");
+    expect(session.getResult().projection?.explanation.kind).toBe("engineering");
+
+    session.getResult().selectCommercialBasis("CDB-KAL-03-DESALINATION");
+    expect(session.getResult().selection.selectedCommercialBasisId).toBe("CDB-KAL-03-DESALINATION");
+    expect(session.getResult().projection?.explanation.kind).toBe("commercial");
+    session.dispose();
+  });
+
+  it("accepts selection commands before the first Snapshot and reconciles them on acceptance", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(1, fixtureInput)]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
+
+    session.getResult().selectUnit("KAL-03", "CDB-KAL-03-DESALINATION");
+    expect(session.getResult()).toMatchObject({
+      readState: { phase: "loading", model: null },
+      projection: null,
+      selection: {
+        selectedUnitId: "KAL-03",
+        selectedCommercialBasisId: "CDB-KAL-03-DESALINATION"
+      }
+    });
+
+    session.getResult().selectCommercialBasis(undefined);
+    expect(session.getResult().selection).toEqual({ selectedUnitId: "KAL-03" });
+    expect(session.getResult().selection).not.toHaveProperty("selectedCommercialBasisId");
+    session.getResult().selectUnit("KAL-03", "CDB-KAL-03-DESALINATION");
+
+    await session.start();
+    expect(session.getResult()).toMatchObject({
+      readState: { phase: "live", model: { generation: 1 } },
+      projection: { selectedUnit: { unitId: "KAL-03" } },
+      selection: {
+        selectedUnitId: "KAL-03",
+        selectedCommercialBasisId: "CDB-KAL-03-DESALINATION"
+      }
+    });
+    session.dispose();
+  });
+
+  it("accepts a Snapshot with no selectable value without inventing a selection", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([accepted(1, withoutValues(fixtureInput))]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
+
+    await session.start();
+    expect(session.getResult()).toMatchObject({
+      readState: { phase: "live", model: { generation: 1 } },
+      projection: { selectedValue: null },
+      selection: { selectedUnitId: "KAL-01" }
+    });
+    expect(session.getResult().selection).not.toHaveProperty("selectedValueId");
+    session.dispose();
+  });
+
+  it("publishes one reconciled result when a replacement Snapshot changes available entities", async () => {
+    const fixtureInput = loadFixtureWorkbenchData();
+    const withoutKal03 = withoutUnit(fixtureInput, "KAL-03");
+    const session = createWorkbenchSnapshotSession(sequenceAdapter([
+      accepted(8, fixtureInput),
+      accepted(9, fixtureInput),
+      accepted(10, withoutKal03)
+    ]), {
+      allowFixtureFallback: false,
+      fixtureInput,
+      refreshIntervalMs: 60_000
+    });
+    const observations: WorkbenchSnapshotSessionResult[] = [];
+    session.subscribe((result) => observations.push(result));
+
+    await session.start();
+    session.getResult().selectUnit("KAL-03", "CDB-KAL-03-DESALINATION");
+    session.getResult().selectValue("VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT");
+    await session.refresh();
+    expect(session.getResult()).toMatchObject({
+      readState: { model: { generation: 9 } },
+      selection: {
+        selectedUnitId: "KAL-03",
+        selectedValueId: "VAL-KAL-03-MEASURED-ELECTRIC-OUTPUT",
+        selectedCommercialBasisId: "CDB-KAL-03-DESALINATION"
+      },
+      projection: { selectedUnit: { unitId: "KAL-03" } }
+    });
+
+    await session.refresh();
+    expect(session.getResult()).toMatchObject({
+      readState: { model: { generation: 10 } },
+      selection: { selectedUnitId: "KAL-01" },
+      projection: { selectedUnit: { unitId: "KAL-01" } }
+    });
+    expect(session.getResult().selection).not.toHaveProperty("selectedCommercialBasisId");
+    expect(observations.at(-1)).toBe(session.getResult());
+    expect(observations.some((result) =>
+      result.readState.model?.generation === 10 && result.projection?.selectedUnit.unitId === "KAL-03"
+    )).toBe(false);
+    session.dispose();
+  });
+
   it("owns initial loading, scheduled refresh, and manual refresh", async () => {
     const scheduler = createTestScheduler();
     const fixtureInput = loadFixtureWorkbenchData();
@@ -24,13 +175,13 @@ describe("Workbench Snapshot session", () => {
       scheduler
     });
     const observations: string[] = [];
-    session.subscribe((state) => observations.push(`${state.phase}:${state.message}`));
+    session.subscribe(({ readState }) => observations.push(`${readState.phase}:${readState.message}`));
 
     await session.refresh();
     expect(adapter.load).not.toHaveBeenCalled();
 
     await session.start();
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 1 } });
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 1 } });
     await session.start();
     expect(adapter.load).toHaveBeenCalledTimes(1);
 
@@ -104,6 +255,7 @@ describe("Workbench Snapshot session", () => {
     const fixtureInput = loadFixtureWorkbenchData();
     const adapter = sequenceAdapter([
       new WorkbenchReadError("unavailable", "offline"),
+      new WorkbenchReadError("unavailable", "offline still"),
       new WorkbenchReadError("auth", "denied"),
       accepted(4, fixtureInput)
     ]);
@@ -122,10 +274,10 @@ describe("Workbench Snapshot session", () => {
     });
 
     await session.refresh();
-    expect(session.getState()).toMatchObject({ phase: "error", errorKind: "auth", model: { source: "fixture" } });
+    expect(session.getResult().readState).toMatchObject({ phase: "error", errorKind: "auth", model: { source: "fixture" } });
 
     await session.refresh();
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 4, source: "live" } });
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 4, source: "live" } });
     session.dispose();
 
     const emptySession = createWorkbenchSnapshotSession(
@@ -133,7 +285,7 @@ describe("Workbench Snapshot session", () => {
       { allowFixtureFallback: true, fixtureInput, refreshIntervalMs: 60_000 }
     );
     await emptySession.start();
-    expect(emptySession.getState()).toMatchObject({ phase: "fixture", errorKind: "empty", model: { source: "fixture" } });
+    expect(emptySession.getResult().readState).toMatchObject({ phase: "fixture", errorKind: "empty", model: { source: "fixture" } });
     emptySession.dispose();
 
     const rejectedSession = createWorkbenchSnapshotSession(
@@ -144,9 +296,10 @@ describe("Workbench Snapshot session", () => {
       { allowFixtureFallback: true, fixtureInput, refreshIntervalMs: 60_000 }
     );
     await rejectedSession.start();
-    expect(rejectedSession.getState()).toMatchObject({ phase: "error", errorKind: "auth", model: null });
+    expect(rejectedSession.getResult().readState).toMatchObject({ phase: "error", errorKind: "auth", model: null });
+    expect(rejectedSession.getResult().projection).toBeNull();
     await rejectedSession.refresh();
-    expect(rejectedSession.getState()).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
+    expect(rejectedSession.getResult().readState).toMatchObject({ phase: "error", errorKind: "unavailable", model: null });
     rejectedSession.dispose();
   });
 
@@ -215,13 +368,13 @@ describe("Workbench Snapshot session", () => {
     });
 
     await session.start();
-    const acceptedModel = session.getState().model;
+    const acceptedModel = session.getResult().readState.model;
     await session.refresh();
-    expect(session.getState()).toMatchObject({ phase: "stale", errorKind: "partial", model: { generation: 8 } });
-    expect(session.getState().model).toBe(acceptedModel);
+    expect(session.getResult().readState).toMatchObject({ phase: "stale", errorKind: "partial", model: { generation: 8 } });
+    expect(session.getResult().readState.model).toBe(acceptedModel);
 
     await session.refresh();
-    expect(session.getState()).toMatchObject({ phase: "stale", errorKind: "generation", model: { generation: 8 } });
+    expect(session.getResult().readState).toMatchObject({ phase: "stale", errorKind: "generation", model: { generation: 8 } });
 
     await session.refresh();
     expect(session.getState()).toMatchObject({
@@ -257,16 +410,16 @@ describe("Workbench Snapshot session", () => {
     const second = session.refresh();
     expect(pending[0]?.signal.aborted).toBe(true);
     await first;
-    expect(session.getState().phase).toBe("loading");
+    expect(session.getResult().readState.phase).toBe("loading");
     pending[1]?.resolve(accepted(12, fixtureInput));
     await second;
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 12 } });
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 12 } });
 
     const third = session.refresh();
     session.dispose();
     expect(pending[2]?.signal.aborted).toBe(true);
     await third;
-    expect(session.getState()).toMatchObject({ phase: "live", model: { generation: 12 } });
+    expect(session.getResult().readState).toMatchObject({ phase: "live", model: { generation: 12 } });
   });
 
   it("stops publishing to unsubscribed listeners", async () => {
@@ -316,6 +469,46 @@ describe("Workbench Snapshot session", () => {
 
 function accepted(generation: number, input: ReturnType<typeof loadFixtureWorkbenchData>): AcceptedWorkbenchSnapshot {
   return { generation, source: "live", input };
+}
+
+function withHealthState(
+  input: ReturnType<typeof loadFixtureWorkbenchData>,
+  state: Pick<ReturnType<typeof loadFixtureWorkbenchData>["state"], "generatedAt" | "activeSimulationRuns">
+): ReturnType<typeof loadFixtureWorkbenchData> {
+  return { ...input, state: { ...input.state, ...state } };
+}
+
+function withoutUnit(
+  input: ReturnType<typeof loadFixtureWorkbenchData>,
+  unitId: string
+): ReturnType<typeof loadFixtureWorkbenchData> {
+  return {
+    ...input,
+    state: {
+      ...input.state,
+      selectedUnitId: input.state.selectedUnitId === unitId ? undefined : input.state.selectedUnitId,
+      fleetUnitRefs: input.state.fleetUnitRefs?.filter((ref) => ref !== unitId)
+    },
+    measured: input.measured.filter((frame) => frame.reactorId !== unitId),
+    twin: {
+      ...input.twin,
+      entities: input.twin.entities.filter((entity) => entity.unitId !== unitId)
+    },
+    fleetUnits: input.fleetUnits.filter((unit) => unit.unitId !== unitId),
+    commercialDisplayBasis: input.commercialDisplayBasis.filter((basis) => basis.unitId !== unitId)
+  };
+}
+
+function withoutValues(
+  input: ReturnType<typeof loadFixtureWorkbenchData>
+): ReturnType<typeof loadFixtureWorkbenchData> {
+  return {
+    ...input,
+    twin: {
+      ...input.twin,
+      entities: input.twin.entities.map((entity) => ({ ...entity, values: [] }))
+    }
+  };
 }
 
 function sequenceAdapter(
