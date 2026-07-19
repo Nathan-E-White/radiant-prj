@@ -1,0 +1,19 @@
+{
+  "measuredAt": "2026-07-19",
+  "buildContextBytes": 502340000,
+  "images": {
+    "console": { "sizeBytes": 24063136 },
+    "mock-worker": { "sizeBytes": 160774805 },
+    "shared-go-full-runtime": { "sizeBytes": 197064767 }
+  },
+  "builderCache": {
+    "aggregateBytesAfterAttempt": 1827000000,
+    "reclaimableBytesAfterAttempt": 443100000,
+    "attemptVerdict": "failed",
+    "failure": "Concurrent mock-worker and full-runtime builds exhausted the bounded OrbStack builder and both sessions ended with an EOF."
+  },
+  "browserAssets": {
+    "totalRawBytes": 3538359,
+    "totalGzipBytes": 2235932
+  }
+}

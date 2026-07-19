@@ -45,6 +45,7 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 | Production build | `bun run build` | Build output |
 | Full local CI | `bun run ci` | Combined command output |
 | Docker/OrbStack storage policy | `bun run docker:storage:check`, `bun run hygiene:size:check`, `bun run docker:prune:check` | Read-only report and scoped cleanup guard output |
+| Docker packaging budgets | `bun run docker:packaging:contract:check`, `bun run docker:packaging:verify` | Context bytes, per-role image bytes and contents, builder-cache growth/aggregate/reclaimable bytes, raw/gzip browser assets, and uploaded JSON evidence |
 
 ## Acceptance Criteria
 

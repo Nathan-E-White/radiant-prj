@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "workflowRunId": 29680581898,
+    "workflowRunUrl": "https://github.com/Nathan-E-White/radiant-prj/actions/runs/29680581898",
+    "artifactId": 8440465157,
+    "measuredAt": "2026-07-19T08:57:18.495Z"
+  },
+  "dockerContext": "default",
+  "buildContextBytes": 8540000,
+  "images": {
+    "console": { "architecture": "amd64", "sizeBytes": 51754658 },
+    "mock-worker": { "architecture": "amd64", "sizeBytes": 211705592 },
+    "slurm-gateway": { "architecture": "amd64", "sizeBytes": 106193485 },
+    "simops-moq-gateway": { "architecture": "amd64", "sizeBytes": 18751849 },
+    "simops-webtransport-probe": { "architecture": "amd64", "sizeBytes": 15257961 },
+    "simops-timescale-writer": { "architecture": "amd64", "sizeBytes": 20189545 },
+    "simops-iceberg-writer": { "architecture": "amd64", "sizeBytes": 93167977 },
+    "workbench-projection-writer": { "architecture": "amd64", "sizeBytes": 20242793 },
+    "twin-projector": { "architecture": "amd64", "sizeBytes": 20545897 },
+    "workbench-iceberg-writer": { "architecture": "amd64", "sizeBytes": 92934505 }
+  },
+  "builderCache": {
+    "beforeBytes": 172300000,
+    "aggregateBytes": 3275000000,
+    "growthBytes": 3102700000,
+    "reclaimableBytes": 3275000000
+  },
+  "browserAssets": {
+    "totalRawBytes": 3538388,
+    "totalGzipBytes": 2237876,
+    "maxJavaScriptChunkBytes": 1388349,
+    "maxSingleAssetBytes": 1767513
+  },
+  "contentAssertions": {
+    "mockWorkerDependencyTreeAbsent": true,
+    "dockerCliRoles": ["slurm-gateway"],
+    "oneRoleBinaryPerGoImage": true
+  }
+}

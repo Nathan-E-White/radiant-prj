@@ -51,10 +51,25 @@ jobs:
       - name: Build Reactor Telemetry worker image
         run: docker build -f deploy/scada-standins.Dockerfile -t radiant-scada-standins:ci .
 
+      - name: Verify Docker packaging budgets
+        run: bun run docker:packaging:verify
+        env:
+          DOCKER_CONTEXT: default
+
+      - name: Upload Docker packaging evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-packaging-evidence
+          path: .local/docker-packaging-evidence/latest.json
+
       - name: Backend gateway tests
         run: bun run backend:test
         env:
           REACTOR_TELEMETRY_TEST_IMAGE: radiant-scada-standins:ci
+
+      - name: Backend dataplane and Iceberg tests
+        run: bun run backend:dataplane:test
 
       - name: Postgres coherent Snapshot tests
         run: bun run backend:snapshot:postgres:test
