@@ -220,7 +220,7 @@ type SimopsConsumerMetricsSnapshot struct {
 }
 
 func (s SimopsConsumerMetricsSnapshot) Ready() bool {
-	return s.BrokerConnected && s.WriteFailures == 0
+	return s.BrokerConnected && s.WriteFailures == 0 && s.LastError == ""
 }
 
 func (s SimopsConsumerMetricsSnapshot) Prometheus(prefix string) string {

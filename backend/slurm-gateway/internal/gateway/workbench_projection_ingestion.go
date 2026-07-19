@@ -8,9 +8,10 @@ import (
 type WorkbenchProjectionStream string
 
 const (
-	WorkbenchProjectionMeasured  WorkbenchProjectionStream = "measured_state"
-	WorkbenchProjectionSimulated WorkbenchProjectionStream = "simulated_result_state"
-	WorkbenchProjectionTwin      WorkbenchProjectionStream = "twin_state"
+	WorkbenchProjectionOperational WorkbenchProjectionStream = "simops_telemetry"
+	WorkbenchProjectionMeasured    WorkbenchProjectionStream = "measured_state"
+	WorkbenchProjectionSimulated   WorkbenchProjectionStream = "simulated_result_state"
+	WorkbenchProjectionTwin        WorkbenchProjectionStream = "twin_state"
 )
 
 type WorkbenchProjectionIngestionStage string
@@ -18,6 +19,7 @@ type WorkbenchProjectionIngestionStage string
 const (
 	WorkbenchProjectionIngestionFetch   WorkbenchProjectionIngestionStage = "fetch"
 	WorkbenchProjectionIngestionProject WorkbenchProjectionIngestionStage = "project"
+	WorkbenchProjectionIngestionAppend  WorkbenchProjectionIngestionStage = "append"
 	WorkbenchProjectionIngestionPersist WorkbenchProjectionIngestionStage = "persist"
 	WorkbenchProjectionIngestionCommit  WorkbenchProjectionIngestionStage = "commit"
 )
@@ -47,9 +49,10 @@ func (e *WorkbenchProjectionIngestionError) Unwrap() error {
 }
 
 type WorkbenchProjectionIngestionAdapter[T any] struct {
-	Stream  WorkbenchProjectionStream
-	Project func(SimopsBrokerMessage) (T, error)
-	Persist func(T) (bool, error)
+	Stream     WorkbenchProjectionStream
+	WriteStage WorkbenchProjectionIngestionStage
+	Project    func(SimopsBrokerMessage) (T, error)
+	Persist    func(T) (uint64, error)
 }
 
 func RunWorkbenchProjectionIngestion[T any](ctx context.Context, reader SimopsKafkaReader, metrics *SimopsConsumerMetrics, adapter WorkbenchProjectionIngestionAdapter[T]) error {
@@ -61,6 +64,10 @@ func RunWorkbenchProjectionIngestion[T any](ctx context.Context, reader SimopsKa
 	}
 	if adapter.Stream == "" || adapter.Project == nil || adapter.Persist == nil {
 		return fmt.Errorf("workbench projection ingestion requires a stream, projector, and persistence adapter")
+	}
+	writeStage := adapter.WriteStage
+	if writeStage == "" {
+		writeStage = WorkbenchProjectionIngestionPersist
 	}
 
 	for {
@@ -86,10 +93,10 @@ func RunWorkbenchProjectionIngestion[T any](ctx context.Context, reader SimopsKa
 
 		written, err := adapter.Persist(projection)
 		if err != nil {
-			return failWorkbenchProjectionIngestion(metrics, adapter.Stream, WorkbenchProjectionIngestionPersist, &message, err, false)
+			return failWorkbenchProjectionIngestion(metrics, adapter.Stream, writeStage, &message, err, false)
 		}
-		if written {
-			metrics.IncFramesWritten(1)
+		if written > 0 {
+			metrics.IncFramesWritten(written)
 		}
 		if err := ctx.Err(); err != nil {
 			return err

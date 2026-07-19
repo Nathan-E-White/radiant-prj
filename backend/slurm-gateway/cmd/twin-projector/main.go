@@ -2,9 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
+	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -14,73 +13,46 @@ import (
 )
 
 func main() {
-	cfg, err := gateway.LoadConfigFromEnv()
-	if err != nil {
-		log.Fatalf("invalid twin projector configuration: %v", err)
-	}
-	store, err := gateway.NewPostgresWorkbenchStore(cfg.Workbench.PostgresDSN)
-	if err != nil {
-		log.Fatalf("initialize workbench postgres store: %v", err)
-	}
-	eventLog, err := gateway.NewRedpandaWorkbenchEventLog(cfg.Workbench)
-	if err != nil {
-		log.Fatalf("initialize workbench redpanda event log: %v", err)
-	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-	metrics := gateway.NewSimopsConsumerMetrics()
-	go func() {
-		if err := gateway.RunTwinProjector(ctx, cfg.Workbench, nil, nil, store, eventLog, metrics); err != nil && ctx.Err() == nil {
-			log.Printf("twin projector stopped: %v", err)
-			metrics.MarkBrokerConnected(false)
-			metrics.SetLastError(err)
-		}
-	}()
-
-	addr := getenv("TWIN_PROJECTOR_ADDR", ":9480")
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
-	})
-	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-		snapshot := metrics.Snapshot()
-		status := http.StatusOK
-		state := "ready"
-		if !snapshot.Ready() {
-			status = http.StatusServiceUnavailable
-			state = "starting"
-		}
-		writeJSON(w, status, map[string]any{
-			"status":       state,
-			"input_topics": []string{cfg.Workbench.ScadaTopic, cfg.Workbench.ResultsTopic},
-			"output_topic": cfg.Workbench.TwinStateTopic,
-			"metrics":      snapshot,
-		})
-	})
-	mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4")
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(metrics.Snapshot().Prometheus("twin_projector")))
-	})
-
-	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = server.Shutdown(shutdownCtx)
-	}()
-	log.Printf("twin projector listening on %s", addr)
-	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+	if err := run(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-func writeJSON(w http.ResponseWriter, status int, payload any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(payload)
+func run() error {
+	cfg, err := gateway.LoadConfigFromEnv()
+	if err != nil {
+		return fmt.Errorf("invalid twin projector configuration: %w", err)
+	}
+	store, err := gateway.NewPostgresWorkbenchStore(cfg.Workbench.PostgresDSN)
+	if err != nil {
+		return fmt.Errorf("initialize workbench postgres store: %w", err)
+	}
+	eventLog, err := gateway.NewRedpandaWorkbenchEventLog(cfg.Workbench)
+	if err != nil {
+		return fmt.Errorf("initialize workbench redpanda event log: %w", err)
+	}
+	metrics := gateway.NewSimopsConsumerMetrics()
+	addr := getenv("TWIN_PROJECTOR_ADDR", ":9480")
+	process, err := gateway.NewBackgroundConsumerProcess(gateway.BackgroundConsumerProcessConfig{
+		Name: "twin-projector", Address: addr, MetricsPrefix: "twin_projector",
+		Metrics: metrics, ShutdownTimeout: 5 * time.Second,
+		ReadyDetails: func() map[string]any {
+			return map[string]any{
+				"input_topics": []string{cfg.Workbench.ScadaTopic, cfg.Workbench.ResultsTopic},
+				"output_topic": cfg.Workbench.TwinStateTopic,
+			}
+		},
+		Consumers: []gateway.BackgroundConsumer{{Name: "twin-state-and-lineage", Consume: func(ctx context.Context) error {
+			return gateway.RunTwinProjector(ctx, cfg.Workbench, nil, nil, store, eventLog, metrics)
+		}}},
+	})
+	if err != nil {
+		return fmt.Errorf("configure twin projector process: %w", err)
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	log.Printf("twin projector listening on %s", addr)
+	return process.Run(ctx)
 }
 
 func getenv(key string, fallback string) string {
