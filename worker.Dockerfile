@@ -1,7 +1,5 @@
 FROM oven/bun:1.3.14
 WORKDIR /worker
-COPY package.json bun.lockb* ./
-RUN bun install
-COPY scripts ./scripts
-COPY src/data ./src/data
-CMD ["bun", "run", "mock:worker"]
+COPY scripts/mock-worker.mjs scripts/mock-worker.mjs
+COPY src/data/readiness-fixtures.json src/data/readiness-fixtures.json
+CMD ["bun", "scripts/mock-worker.mjs"]

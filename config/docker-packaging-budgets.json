@@ -1,0 +1,28 @@
+{
+  "buildContext": {
+    "maxBytes": 20971520
+  },
+  "builderCache": {
+    "maxGrowthBytes": 4294967296,
+    "maxAggregateBytes": 6442450944,
+    "maxReclaimableBytes": 4294967296
+  },
+  "browserAssets": {
+    "maxTotalRawBytes": 4194304,
+    "maxTotalGzipBytes": 3145728,
+    "maxJavaScriptChunkBytes": 1572864,
+    "maxSingleAssetBytes": 2097152
+  },
+  "images": {
+    "console": { "maxBytes": 30408704, "maxBytesByArchitecture": { "amd64": 67108864 } },
+    "mock-worker": { "maxBytes": 109051904, "maxBytesByArchitecture": { "amd64": 268435456 } },
+    "slurm-gateway": { "maxBytes": 41943040, "maxBytesByArchitecture": { "amd64": 134217728 } },
+    "simops-moq-gateway": { "maxBytes": 10485760, "maxBytesByArchitecture": { "amd64": 25165824 } },
+    "simops-webtransport-probe": { "maxBytes": 8912896, "maxBytesByArchitecture": { "amd64": 20971520 } },
+    "simops-timescale-writer": { "maxBytes": 10485760, "maxBytesByArchitecture": { "amd64": 26214400 } },
+    "simops-iceberg-writer": { "maxBytes": 32505856, "maxBytesByArchitecture": { "amd64": 117440512 } },
+    "workbench-projection-writer": { "maxBytes": 10485760, "maxBytesByArchitecture": { "amd64": 26214400 } },
+    "twin-projector": { "maxBytes": 10485760, "maxBytesByArchitecture": { "amd64": 26214400 } },
+    "workbench-iceberg-writer": { "maxBytes": 32505856, "maxBytesByArchitecture": { "amd64": 117440512 } }
+  }
+}

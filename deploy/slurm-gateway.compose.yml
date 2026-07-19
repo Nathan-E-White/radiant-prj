@@ -102,6 +102,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/slurm-gateway.Dockerfile
+      target: simops-stream-gateway-runtime
       args:
         SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
         SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
@@ -141,10 +142,28 @@ services:
       org.opencontainers.image.title: "Kaleidos SimOps MoQ Gateway"
       org.opencontainers.image.description: "Redpanda-backed WebTransport telemetry track gateway"
 
+  simops-webtransport-probe:
+    profiles: ["simops-probes"]
+    build:
+      context: ..
+      dockerfile: deploy/slurm-gateway.Dockerfile
+      target: simops-webtransport-probe-runtime
+      args:
+        SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
+        SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
+    secrets:
+      - simops_moq_gateway_ca_crt
+    security_opt:
+      - no-new-privileges:true
+    labels:
+      org.opencontainers.image.title: "Kaleidos SimOps WebTransport Probe"
+      org.opencontainers.image.description: "One-shot WebTransport verification client"
+
   simops-timescale-writer:
     build:
       context: ..
       dockerfile: deploy/slurm-gateway.Dockerfile
+      target: simops-timescale-writer-runtime
       args:
         SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
         SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
@@ -181,6 +200,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/slurm-gateway.Dockerfile
+      target: simops-iceberg-writer-runtime
       args:
         SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
         SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
@@ -235,6 +255,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/slurm-gateway.Dockerfile
+      target: workbench-projection-writer-runtime
       args:
         SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
         SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
@@ -280,6 +301,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/slurm-gateway.Dockerfile
+      target: twin-projector-runtime
       args:
         SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
         SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"
@@ -324,6 +346,7 @@ services:
     build:
       context: ..
       dockerfile: deploy/slurm-gateway.Dockerfile
+      target: workbench-iceberg-writer-runtime
       args:
         SIMOPS_GO_BUILDER_IMAGE: "${SIMOPS_GO_BUILDER_IMAGE:-golang:1.26-alpine}"
         SIMOPS_GATEWAY_RUNTIME_IMAGE: "${SIMOPS_GATEWAY_RUNTIME_IMAGE:-alpine:3.21}"

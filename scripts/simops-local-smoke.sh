@@ -233,7 +233,7 @@ echo "Checking Docker image content before SimOps services start..."
 for image in "${preflight_images[@]}"; do
   pull_image_content "$image"
 done
-run "${compose[@]}" --profile simops-buckets build slurm-gateway simops-bucket-scheduler simops-timescale-writer simops-moq-gateway simops-iceberg-writer
+run "${compose[@]}" --profile simops-buckets build slurm-gateway simops-bucket-scheduler simops-timescale-writer simops-moq-gateway simops-webtransport-probe simops-iceberg-writer
 deadline=$((SECONDS + TIMEOUT))
 run "${compose[@]}" up -d postgres redpanda minio
 wait_for_ready "Postgres" postgres_ready
@@ -280,7 +280,7 @@ while [[ "$SECONDS" -lt "$deadline" ]]; do
     timescale_rows="$(psql_scalar "SELECT COUNT(*) FROM simops_telemetry_frames WHERE run_id = '${run_id}';" || true)"
     iceberg_tables="$(psql_scalar "SELECT COUNT(*) FROM iceberg_tables WHERE table_namespace = 'simops' AND table_name = 'telemetry_frames' AND metadata_location IS NOT NULL;" || true)"
     parquet_files="$(minio_parquet_count || true)"
-    if ! "${compose[@]}" run --rm --no-deps --entrypoint /app/simops-webtransport-probe simops-moq-gateway --endpoint https://simops-moq-gateway:9443/moq/simops --run-id "$run_id" --timeout 10s --ca-cert /run/secrets/simops_moq_gateway_ca_crt --server-name simops-moq-gateway; then
+    if ! "${compose[@]}" run --rm --no-deps simops-webtransport-probe --endpoint https://simops-moq-gateway:9443/moq/simops --run-id "$run_id" --timeout 10s --ca-cert /run/secrets/simops_moq_gateway_ca_crt --server-name simops-moq-gateway; then
       sleep 2
       continue
     fi
