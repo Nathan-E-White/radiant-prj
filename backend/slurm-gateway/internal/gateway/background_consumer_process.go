@@ -72,11 +72,15 @@ func startBackgroundConsumers(ctx context.Context, metrics *SimopsConsumerMetric
 	}
 	groupCtx, cancel := context.WithCancel(ctx)
 	results := make(chan *BackgroundConsumerError, len(consumers))
+	if metrics != nil {
+		for _, consumer := range consumers {
+			if !consumer.SkipReadiness {
+				metrics.RequireBrokerConnections(consumer.Name)
+			}
+		}
+	}
 	for _, consumer := range consumers {
 		consumer := consumer
-		if metrics != nil && !consumer.SkipReadiness {
-			metrics.RequireBrokerConnections(consumer.Name)
-		}
 		go func() {
 			consumerCtx := context.WithValue(groupCtx, backgroundConsumerContextKey{}, consumer.Name)
 			err := consumer.Consume(consumerCtx)
