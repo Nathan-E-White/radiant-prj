@@ -43,7 +43,7 @@ bun run simops:smoke:local
 bun run simulator-workbench:dataflow:smoke
 ```
 
-`bun run ci` runs the full local verification chain.
+`bun run repository:verify` is the stable repository-claim verification surface used locally and in CI. It reports each claim's evidence source, expected invariant, and observed result, and exits non-zero when any claim fails. Use `bun run repository:verify -- --claim <claim-id>` for a focused claim. `bun run ci` runs the full local verification chain, including the repository verifier and its adapter tests.
 `bun run simops:smoke:local` and `bun run simulator-workbench:dataflow:smoke` are Docker-dependent and intentionally stay outside default CI.
 
 Worker Rust tests use named external Cargo target directories by default:

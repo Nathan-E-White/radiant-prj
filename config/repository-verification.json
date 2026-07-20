@@ -1,0 +1,462 @@
+{
+  "schemaVersion": "radiant.repository-verification.v1",
+  "claims": [
+    {
+      "id": "verification.local-invocation",
+      "title": "Local repository verification has one stable package command",
+      "evidence": {
+        "adapter": "json",
+        "source": "package.json"
+      },
+      "expected": "scripts.repository:verify equals the repository verification CLI",
+      "assertions": [
+        {
+          "path": "scripts.repository:verify",
+          "equals": "node scripts/repository-verification/cli.mjs"
+        }
+      ]
+    },
+    {
+      "id": "verification.ci-invocation",
+      "title": "CI uses the same repository verification command",
+      "evidence": {
+        "adapter": "yaml",
+        "source": ".github/workflows/ci.yml"
+      },
+      "expected": "the CI workflow invokes bun run repository:verify",
+      "assertions": [
+        {
+          "path": "permissions.contents",
+          "equals": "read"
+        },
+        {
+          "path": "jobs.verify.steps",
+          "some": { "run": "bun run repository:verify" }
+        }
+      ]
+    },
+    {
+      "id": "artifact-forge.behavior",
+      "title": "Artifact Forge eligibility, recovery, and outcome mapping remain executable behavior",
+      "evidence": {
+        "adapter": "command",
+        "source": "backend/slurm-gateway/internal/gateway/*artifact_forge*_test.go and fleet_board_intents_test.go",
+        "cwd": "backend/slurm-gateway",
+        "env": {
+          "GOCACHE": "/tmp/radiant-go-cache",
+          "GOMODCACHE": "/tmp/radiant-go-mod-cache"
+        },
+        "command": [
+          "go",
+          "test",
+          "./internal/gateway",
+          "-run",
+          "^(TestArtifactForge|TestInMemoryArtifactForge|TestFleetBoardArtifactForge)",
+          "-count=1"
+        ]
+      },
+      "expected": "public Artifact Forge contract tests pass without depending on production source filenames"
+    },
+    {
+      "id": "configured-data-flush.behavior",
+      "title": "Configured Data Flush remains dry-run-first, guarded, coherent, and recoverable",
+      "evidence": {
+        "adapter": "command",
+        "source": "backend/slurm-gateway/internal/gateway/configured_data_flush_test.go",
+        "cwd": "backend/slurm-gateway",
+        "env": {
+          "GOCACHE": "/tmp/radiant-go-cache",
+          "GOMODCACHE": "/tmp/radiant-go-mod-cache"
+        },
+        "command": [
+          "go",
+          "test",
+          "./internal/gateway",
+          "-run",
+          "^TestConfiguredDataFlush",
+          "-count=1"
+        ]
+      },
+      "expected": "public Configured Data Flush plan and apply contract tests pass"
+    },
+    {
+      "id": "configured-data-flush.operator-contract",
+      "title": "Configured Data Flush operator wording remains explicit",
+      "evidence": {
+        "adapter": "document",
+        "source": "docs/operations/configured-data-flush.md"
+      },
+      "expected": "the guide identifies the dry-run plan, protected resources, recovery, and apply command",
+      "requiredText": [
+        "Dry-run plan",
+        "Protected resources",
+        "Recovery and verification",
+        "--apply-plan"
+      ]
+    },
+    {
+      "id": "configured-data-flush.production-safety",
+      "title": "Configured Data Flush production code retains its transaction and protection boundary",
+      "evidence": {
+        "adapter": "source-set",
+        "source": "backend/slurm-gateway/internal/gateway",
+        "extensions": [".go"],
+        "excludeSuffixes": ["_test.go"]
+      },
+      "expected": "the module retains serializable stale-plan protection and protected resources without destructive broad operations",
+      "requiredText": [
+        "sql.LevelSerializable",
+        "ErrConfiguredDataFlushStalePlan",
+        "workbench-resident-sources",
+        "consumer-recovery-cursors",
+        "required-redpanda-topics"
+      ],
+      "forbiddenPatterns": [
+        "TRUNCATE",
+        "DROP\\s+(TABLE|SCHEMA|DATABASE)",
+        "DELETE\\s+FROM\\s+simops_runs",
+        "DELETE\\s+FROM\\s+workbench_resident_",
+        "docker\\s+compose\\s+down",
+        "volume\\s+prune"
+      ]
+    },
+    {
+      "id": "configured-data-flush.postgres-behavior",
+      "title": "Configured Data Flush preserves production data boundaries transactionally",
+      "evidence": {
+        "adapter": "command",
+        "source": "backend/slurm-gateway/internal/gateway/configured_data_flush_postgres_integration_test.go",
+        "cwd": "backend/slurm-gateway",
+        "whenEnvironment": "SIMOPS_POSTGRES_TEST_DSN",
+        "env": {
+          "GOCACHE": "/tmp/radiant-go-cache",
+          "GOMODCACHE": "/tmp/radiant-go-mod-cache"
+        },
+        "command": [
+          "go",
+          "test",
+          "-tags",
+          "postgresintegration",
+          "./internal/gateway",
+          "-run",
+          "^TestPostgresConfiguredDataFlush",
+          "-count=1"
+        ]
+      },
+      "expected": "Postgres integration tests preserve protected data, rollback failures, reject active resources, and start a coherent next generation"
+    },
+    {
+      "id": "infrastructure.required-artifacts",
+      "title": "Repository-owned infrastructure inputs remain present",
+      "evidence": {
+        "adapter": "files",
+        "source": "infrastructure artifact inventory",
+        "sources": [
+          "docker-compose.yml",
+          "Dockerfile",
+          "worker.Dockerfile",
+          ".github/workflows/ci.yml",
+          "backend/slurm-gateway/go.mod",
+          "deploy/slurm-gateway.Dockerfile",
+          "deploy/slurm-gateway.compose.yml",
+          "deploy/simops-generator.Dockerfile",
+          "deploy/postgres-init/001_simops.sql",
+          "deploy/prometheus.yml",
+          "scripts/simops-smoke-json.mjs",
+          "scripts/simops-docker-orbstack-smoke.sh",
+          "scripts/create-local-gateway-certs.sh",
+          "docs/operations/configured-data-flush.md",
+          "infra/terraform/main.tf",
+          "infra/terraform/variables.tf",
+          "infra/terraform/outputs.tf",
+          "infra/terraform/vault.sh",
+          "infra/ansible/inventory.ini",
+          "infra/ansible/site.yml",
+          "infra/ansible/templates/scheduler.conf.j2",
+          "infra/ansible/templates/worker.service.j2",
+          "infra/ansible/templates/logrotate.conf.j2"
+        ]
+      },
+      "expected": "all declared repository-owned infrastructure inputs exist"
+    },
+    {
+      "id": "infrastructure.ansible-structure",
+      "title": "The Ansible baseline parses into the expected dry-run play and tasks",
+      "evidence": {
+        "adapter": "yaml",
+        "source": "infra/ansible/site.yml"
+      },
+      "expected": "the play targets all hosts without facts and retains file, template, copy, and assertion tasks",
+      "assertions": [
+        { "path": "0.hosts", "equals": "all" },
+        { "path": "0.gather_facts", "equals": false },
+        { "path": "0.tasks", "some": { "ansible.builtin.file": {} } },
+        { "path": "0.tasks", "some": { "ansible.builtin.template": {} } },
+        { "path": "0.tasks", "some": { "ansible.builtin.copy": {} } },
+        { "path": "0.tasks", "some": { "ansible.builtin.assert": {} } }
+      ]
+    },
+    {
+      "id": "infrastructure.prometheus-topology",
+      "title": "Prometheus parses the required local scrape topology",
+      "evidence": {
+        "adapter": "yaml",
+        "source": "deploy/prometheus.yml"
+      },
+      "expected": "gateway, writer, stream, and broker scrape targets are present",
+      "assertions": [
+        { "path": "scrape_configs", "some": { "static_configs": [{ "targets": ["slurm-gateway:8080"] }] } },
+        { "path": "scrape_configs", "some": { "static_configs": [{ "targets": ["simops-moq-gateway:9443"] }] } },
+        { "path": "scrape_configs", "some": { "static_configs": [{ "targets": ["simops-timescale-writer:9450"] }] } },
+        { "path": "scrape_configs", "some": { "static_configs": [{ "targets": ["simops-iceberg-writer:9460"] }] } },
+        { "path": "scrape_configs", "some": { "static_configs": [{ "targets": ["redpanda:9644"] }] } }
+      ]
+    },
+    {
+      "id": "infrastructure.tls-behavior",
+      "title": "Gateway TLS loading trusts the configured CA and rejects invalid identity evidence",
+      "evidence": {
+        "adapter": "command",
+        "source": "backend/slurm-gateway/internal/gateway web transport and handler tests",
+        "cwd": "backend/slurm-gateway",
+        "env": {
+          "GOCACHE": "/tmp/radiant-go-cache",
+          "GOMODCACHE": "/tmp/radiant-go-mod-cache"
+        },
+        "command": [
+          "go",
+          "test",
+          "./internal/gateway",
+          "-run",
+          "^(TestLoadWebTransport.*TLSConfig|TestSubmitRequiresClientCertificate)$",
+          "-count=1"
+        ]
+      },
+      "expected": "TLS behavior tests pass"
+    },
+    {
+      "id": "infrastructure.vault-contract",
+      "title": "The Vault helper retains its non-development credential boundary",
+      "evidence": {
+        "adapter": "source-set",
+        "source": "infra/terraform/vault.sh"
+      },
+      "expected": "the helper uses operator-supplied Vault credentials and contains no development root-token bypass",
+      "requiredText": ["VAULT_ADDR", "VAULT_TOKEN", ".local/vault", "client_flag=true"],
+      "forbiddenPatterns": ["root_dev_token", "allow_any_name=true", "VAULT_DEV_ROOT_TOKEN_ID"]
+    },
+    {
+      "id": "infrastructure.postgres-schema-contract",
+      "title": "The Postgres initialization contract retains required platform objects",
+      "evidence": {
+        "adapter": "source-set",
+        "source": "deploy/postgres-init",
+        "extensions": [".sql"]
+      },
+      "expected": "Timescale, SimOps, Workbench, reactor telemetry, and Iceberg catalog objects remain declared",
+      "requiredText": [
+        "timescaledb",
+        "create_hypertable",
+        "simops_runs",
+        "simops_workers",
+        "simops_events",
+        "simops_artifacts",
+        "simops_telemetry_frames",
+        "simops_consumer_offsets",
+        "simops_processed_messages",
+        "workbench_twin_publications",
+        "reactor_telemetry_worker_sets",
+        "iceberg_catalog",
+        "iceberg_tables",
+        "iceberg_namespace_properties"
+      ],
+      "forbiddenPatterns": []
+    },
+    {
+      "id": "infrastructure.compose-topology",
+      "title": "Compose resolves the intended service topology and narrow runtime images",
+      "evidence": {
+        "adapter": "compose",
+        "source": "deploy/slurm-gateway.compose.yml"
+      },
+      "expected": "Compose resolves the Radiant network, narrow Go targets, gateway-only worker ingest, and hardened service settings",
+      "assertions": [
+        { "path": "networks.default.name", "equals": "radiant-simops-local" },
+        { "path": "services.slurm-gateway.build.target", "equals": "gateway-runtime" },
+        { "path": "services.simops-moq-gateway.build.target", "equals": "simops-stream-gateway-runtime" },
+        { "path": "services.simops-timescale-writer.build.target", "equals": "simops-timescale-writer-runtime" },
+        { "path": "services.simops-iceberg-writer.build.target", "equals": "simops-iceberg-writer-runtime" },
+        { "path": "services.workbench-projection-writer.build.target", "equals": "workbench-projection-writer-runtime" },
+        { "path": "services.twin-projector.build.target", "equals": "twin-projector-runtime" },
+        { "path": "services.workbench-iceberg-writer.build.target", "equals": "workbench-iceberg-writer-runtime" },
+        { "path": "services.slurm-gateway.environment.SIMOPS_WORKER_INGEST_BASE_URL", "equals": "http://slurm-gateway:8080" },
+        { "path": "services.slurm-gateway.environment.SIMOPS_WORKER_RUNTIME", "equals": "docker" },
+        { "path": "services.slurm-gateway.environment.SIMOPS_WORKER_NETWORK", "equals": "radiant-simops-local" },
+        { "path": "services.slurm-gateway.environment.SIMOPS_WORKER_KUBERNETES_NAMESPACE", "equals": "radiant-simops" },
+        { "path": "services.slurm-gateway.environment.SIMOPS_WORKER_FRAME_OVERRIDE", "equals": "2" },
+        { "path": "services.slurm-gateway.environment.SIMOPS_WORKER_CLEANUP_TTL", "equals": "10m" },
+        { "path": "services.slurm-gateway.environment.SIMOPS_WORKER_AUTO_REMOVE", "equals": "false" },
+        { "path": "services.slurm-gateway.environment.REACTOR_TELEMETRY_ENABLED", "equals": "true" },
+        { "path": "services.slurm-gateway.environment.REACTOR_TELEMETRY_CONTROL_STORE", "equals": "postgres" },
+        { "path": "services.slurm-gateway.environment.REACTOR_TELEMETRY_RUNTIME", "equals": "docker" },
+        { "path": "services.slurm-gateway.environment.REACTOR_TELEMETRY_WORKERS_PER_SET", "equals": "3" },
+        { "path": "services.slurm-gateway.environment.SIMOPS_TELEMETRY_LOG", "equals": "redpanda" },
+        { "path": "services.simops-iceberg-writer.environment.SIMOPS_ICEBERG_WRITER_MODE", "equals": "iceberg-go" },
+        { "path": "services.simops-moq-gateway.environment.SIMOPS_STREAM_GATEWAY_TLS_CERT_FILE", "equals": "/run/secrets/simops_moq_gateway_server_crt" },
+        { "path": "services.simops-moq-gateway.environment.SIMOPS_STREAM_GATEWAY_TLS_KEY_FILE", "equals": "/run/secrets/simops_moq_gateway_server_key" },
+        { "path": "services.simops-moq-gateway.secrets", "some": { "source": "simops_moq_gateway_ca_crt" } },
+        { "path": "services.redpanda.image", "equals": "docker.redpanda.com/redpandadata/redpanda:latest" },
+        { "path": "services.postgres.image", "equals": "timescale/timescaledb:latest-pg17" },
+        { "path": "services.minio.image", "equals": "quay.io/minio/minio:latest" },
+        { "path": "services.slurm-gateway.read_only", "equals": true },
+        { "path": "services.slurm-gateway.security_opt", "equals": ["no-new-privileges:true"] },
+        { "path": "services.workbench-projection-writer.security_opt", "equals": ["no-new-privileges:true"] }
+      ]
+    },
+    {
+      "id": "infrastructure.opentofu-contract",
+      "title": "The core OpenTofu module retains the scheduler, worker, artifact, and monitoring roles",
+      "evidence": {
+        "adapter": "source-set",
+        "source": "infra/terraform",
+        "extensions": [".tf"]
+      },
+      "expected": "the module owns scheduler, worker pool, artifact bucket, and monitoring endpoint contracts",
+      "requiredText": ["scheduler", "worker_pool", "artifact_bucket", "monitoring_endpoint"],
+      "forbiddenPatterns": []
+    },
+    {
+      "id": "infrastructure.opentofu-format",
+      "title": "The core OpenTofu environment remains parseable and canonically formatted",
+      "evidence": {
+        "adapter": "opentofu",
+        "source": "infra/terraform",
+        "mode": "format"
+      },
+      "expected": "OpenTofu parses every core configuration file and fmt -check succeeds"
+    },
+    {
+      "id": "infrastructure.opentofu-valid",
+      "title": "The core OpenTofu environment parses and validates",
+      "evidence": {
+        "adapter": "opentofu",
+        "source": "infra/terraform"
+      },
+      "expected": "OpenTofu validate reports valid=true"
+    },
+    {
+      "id": "infrastructure.certificate-helper-contract",
+      "title": "The local certificate helper retains separate authorized and unauthorized identities",
+      "evidence": {
+        "adapter": "source-set",
+        "source": "scripts/create-local-gateway-certs.sh"
+      },
+      "expected": "the helper writes local and Compose secrets with SANs for the gateway and distinct client identities",
+      "requiredText": [
+        ".local/certs",
+        ".local/compose-secrets",
+        "client-authorized",
+        "client-unauthorized",
+        "subjectAltName",
+        "simops-moq-gateway"
+      ],
+      "forbiddenPatterns": []
+    },
+    {
+      "id": "simops.opentofu-substrate-syntax",
+      "title": "The SimOps OpenTofu substrate remains parseable and canonically formatted",
+      "evidence": {
+        "adapter": "opentofu",
+        "source": "infra/opentofu/simops-kind-substrate",
+        "mode": "format"
+      },
+      "expected": "OpenTofu parses every substrate file and fmt -check succeeds"
+    },
+    {
+      "id": "simops.opentofu-substrate-boundary",
+      "title": "The SimOps OpenTofu module owns static substrate but no run-scoped Jobs",
+      "evidence": {
+        "adapter": "source-set",
+        "source": "infra/opentofu/simops-kind-substrate",
+        "extensions": [".tf"]
+      },
+      "expected": "the module declares namespace, service account, RBAC, and runtime configuration resources but no Kubernetes Job",
+      "requiredText": [
+        "kubernetes_namespace_v1",
+        "kubernetes_service_account_v1",
+        "kubernetes_role_v1",
+        "kubernetes_role_binding_v1",
+        "kubernetes_config_map_v1"
+      ],
+      "forbiddenPatterns": ["resource\\s+\"kubernetes_job"]
+    },
+    {
+      "id": "simops.opentofu-preflight-contract",
+      "title": "The SimOps OpenTofu preflight remains plan-only",
+      "evidence": {
+        "adapter": "source-set",
+        "source": "scripts/simops-opentofu-preflight.sh"
+      },
+      "expected": "the preflight formats, initializes, validates, and plans without applying",
+      "requiredText": [
+        "tofu fmt -check",
+        "tofu init -backend=false",
+        "tofu validate",
+        "tofu plan",
+        "-refresh=false",
+        "plan_summary=",
+        "namespace=",
+        "service_account="
+      ],
+      "forbiddenPatterns": ["\\btofu\\s+apply\\b"]
+    },
+    {
+      "id": "simops.structured-contract",
+      "title": "SimOps schemas and example evidence retain their semantic contract",
+      "evidence": {
+        "adapter": "command",
+        "source": "docs/schemas/simulation-ops and examples/simulation-ops",
+        "command": ["node", "scripts/check-simops-contract.mjs"]
+      },
+      "expected": "schema, manifest, NDJSON, and cross-record semantic checks pass"
+    },
+    {
+      "id": "simulator-workbench.structured-contract",
+      "title": "Simulator Workbench schemas and examples retain provenance semantics",
+      "evidence": {
+        "adapter": "command",
+        "source": "docs/schemas/simulator-workbench and examples/simulator-workbench",
+        "command": ["node", "scripts/check-simulator-workbench-contract.mjs"]
+      },
+      "expected": "schema, example, lineage, Value Basis, and projection semantic checks pass"
+    },
+    {
+      "id": "simops.runtime-closeout-traceability",
+      "title": "SimOps runtime closeout remains traceable in controlled documents",
+      "evidence": {
+        "adapter": "document",
+        "source": "docs/design/simops-runtime-adapters.md"
+      },
+      "expected": "the design records both runtime adapters, gateway-only ingest, and verification commands",
+      "requiredText": [
+        "RunConnectionProfile",
+        "Docker SDK",
+        "client-go",
+        "Gateway-Only Worker Ingest",
+        "simops:smoke:docker-orbstack",
+        "simops:smoke:kind",
+        "simops:tofu:preflight"
+      ]
+    },
+    {
+      "id": "docker-packaging.structured-budgets",
+      "title": "Docker and browser delivery budgets remain valid structured evidence",
+      "evidence": {
+        "adapter": "command",
+        "source": "config/docker-packaging-budgets.json and Docker packaging contract tests",
+        "command": ["node", "--test", "scripts/docker-packaging.node-test.mjs"]
+      },
+      "expected": "packaging manifest, Compose targets, evidence, and budgets pass their executable contract"
+    }
+  ]
+}

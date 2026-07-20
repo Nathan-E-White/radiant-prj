@@ -30,12 +30,12 @@ This document identifies internal and operational interfaces that are controlled
 | --- | --- | --- |
 | `scripts/validate-fixtures.mjs` | Controlled fixtures | Pass/fail fixture validation |
 | `scripts/generate-evidence.mjs` | Controlled fixtures | `generated/evidence-index.json` |
-| `scripts/check-infra.mjs` | Infrastructure files | Pass/fail static and optional native checks |
+| `bun run repository:verify` | Repository claim manifest plus structured, executable, and document evidence | Deterministic pass/fail report with claim, source, invariant, and observation |
 | `scripts/check-quality-docs.mjs` | Controlled markdown docs | Pass/fail documentation structure check |
 | `scripts/check-simops-contract.mjs` | Simulation Ops schemas and examples | Pass/fail contract example validation |
 | `scripts/check-simulator-workbench-contract.mjs` | Simulator Workbench, SCADA stand-in, and digital twin schemas/examples | Pass/fail scaffold contract validation |
 | `bun run configured-data-flush` | PostgreSQL DSN and, for mutation, an exact reviewed `planId` | Dry-run target/protection plan or one atomic monotonic generation transition |
-| `scripts/check-configured-data-flush.mjs` | Flush implementation, command, and operations guide | Pass/fail targeted-mutation and protected-resource boundary validation |
+| `bun run configured-data-flush:check` | Flush behavior tests and operations guide | Pass/fail plan/apply behavior plus contractual operator wording |
 | `scripts/simops-smoke-json.mjs` | SimOps smoke JSON from API responses and Docker inspect | Pass/fail runtime proof parsing, gateway-ingest credential checks, and redacted evidence output |
 | `scripts/simops-docker-orbstack-smoke.sh` | Local Docker/OrbStack compose platform and optional `SIMOPS_SMOKE_BUILD=auto\|always\|never` image build mode | Pass/fail SimOps Runtime Proof for Docker worker launch, gateway-only ingest, observed lifecycle, zero-TTL success cleanup, failed-run retention, and smoke-forced cleanup |
 | `scripts/simops-kind-smoke.sh` | Local Kind cluster on OrbStack, gateway and worker images, optional build mode | Pass/fail client-go Job launch, Gateway-Only Worker Ingest, lifecycle sync, TTL, failed-Job retention, and forced cleanup evidence |

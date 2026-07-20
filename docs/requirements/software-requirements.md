@@ -38,7 +38,7 @@ This document defines software and deployment requirements for the interview dem
 - `bun run test` runs deterministic solver and traceability tests.
 - `bun run validate:fixtures` validates public facts, jobs, requirements, evidence packs, and deployment checks.
 - `bun run evidence:generate` creates a generated evidence index in `generated/evidence-index.json`.
-- `bun run infra:check` statically checks Docker, Terraform, and Ansible artifacts, and runs optional tool-native checks when those CLIs are present.
+- `bun run repository:verify` checks repository claims through executable behavior, parsed Compose/OpenTofu/JSON evidence, and textual evidence only where wording or traceability is the contract.
 - `bun run quality:check` verifies the v3.0 controlled documentation and traceability package.
 - `bun run backend:test` runs the Go Slurm gateway handler and spooler tests.
 - `bun run simops:contract:check` validates Simulation Ops schemas and example telemetry.

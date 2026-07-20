@@ -25,9 +25,10 @@ This procedure defines the standard local test sequence for the v2 baseline.
 git status --short --branch
 bun run typecheck
 bun run test
+bun run repository:verify:test
+bun run repository:verify
 bun run validate:fixtures
 bun run evidence:generate
-bun run infra:check
 bun run quality:check
 bun run simops:contract:check
 bun run simulator-workbench:contract:check
@@ -40,7 +41,7 @@ bun run ci
 
 ## Expected Result
 
-All commands shall exit with status 0. Any skipped optional native infrastructure checks shall be explicitly reported by `scripts/check-infra.mjs`. Docker-dependent smoke commands shall report service readiness and the final observed evidence counts.
+All commands shall exit with status 0. Repository claim failures shall identify the claim, evidence source, expected invariant, and observed result. Docker-dependent smoke commands shall report service readiness and the final observed evidence counts.
 
 ## Failure Handling
 

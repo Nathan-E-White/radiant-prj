@@ -3,7 +3,7 @@
 | Field | Value |
 | --- | --- |
 | Document ID | CLOG-001 |
-| Revision | 3.1 |
+| Revision | 3.2 |
 | Status | Draft for v3.0 review |
 | Owner | Quality |
 | Baseline | v3.0 candidate |
@@ -35,6 +35,7 @@
 | CHG-023 | 2026-07-12 | Added the OpenTofu Kubernetes substrate lane for namespace, service accounts, scoped RBAC, and runtime adapter config, with a no-mutation plan preflight. | SW-022, SIMOPS-TOFU-SUBSTRATE-001, #26 | `bun run simops:tofu:check`, `bun run simops:tofu:preflight`, `bun run ci` |
 | CHG-024 | 2026-07-12 | Closed the v3 runtime adapter documentation and verification spine across profile, Docker SDK, SyncRun, client-go/Kind, OpenTofu, credential, cleanup, and deferred-scope boundaries. | SW-023, SIMOPS-RUNTIME-CLOSEOUT-001, #27 | `bun run simops:runtime:closeout:check`, `bun run backend:test`, elevated Docker/Kind smokes, `bun run simops:tofu:preflight`, `bun run ci`, `bun run build` |
 | CHG-025 | 2026-07-18 | Concentrated browser Workbench Snapshot acceptance, generation, cancellation, fallback, stale recovery, projection, selection, and Simulation Health policy in one session with assembled recovery and mutation evidence. | SW-024, WORKBENCH-SNAPSHOT-SESSION-001, VVR-WORKBENCH-SNAPSHOT-SESSION-001, #88 | `bun run test`, `bun run test:mutation:workbench`, targeted Playwright Workbench tests, `bun run ci`, `bun run build` |
+| CHG-026 | 2026-07-20 | Replaced source-layout token checks with one manifest-driven repository verifier using executable behavior, parsed Compose/OpenTofu/JSON evidence, and contractual document wording. | #136 | `bun run repository:verify:test`, `bun run repository:verify`, `bun run ci` |
 
 ## Control Note
 
