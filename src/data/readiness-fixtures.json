@@ -597,7 +597,8 @@
         "deploy/slurm-gateway.compose.yml",
         "deploy/prometheus.yml",
         "scripts/create-local-gateway-certs.sh",
-        "scripts/check-infra.mjs",
+        "config/repository-verification.json",
+        "scripts/repository-verification/",
         "scripts/check-quality-docs.mjs"
       ],
       "summary": "The v3.0 Go gateway provides core backend handlers, mTLS identity enforcement, request validation, deterministic mock spooling, opt-in sbatch spooling, and Prometheus-format counters.",
@@ -619,7 +620,8 @@
         "deploy/postgres-init/001_simops.sql",
         "deploy/slurm-gateway.compose.yml",
         "workers/simops-generator/",
-        "scripts/check-infra.mjs",
+        "config/repository-verification.json",
+        "scripts/repository-verification/",
         "scripts/check-simops-contract.mjs"
       ],
       "summary": "The Simulation Ops backend slice provides bounded run control, idempotent launch records, token-gated telemetry ingest, Redpanda-backed fanout, WebTransport live-track delivery, Timescale projection, Iceberg-Go append/readback mode, Docker metadata/content smoke preflights, and Rust bucket container topology.",

@@ -25,9 +25,10 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 | Backend gateway tests | `bun run backend:test` | Go test output |
 | Fixture validation | `bun run validate:fixtures` | Validation output |
 | Evidence generation | `bun run evidence:generate` | Generated index under `generated/` |
-| Infrastructure checks | `bun run infra:check` | Static and optional native check output |
+| Infrastructure checks | `bun run infra:check` | Required artifact inventory, parsed Ansible/Compose/Prometheus configuration, TLS behavior, source-set safety contracts, and OpenTofu parser/validation output |
 | Quality documentation checks | `bun run quality:check` | Documentation check output |
-| Simulation Ops contract checks | `bun run simops:contract:check` | Contract validation output |
+| Repository architecture and delivery claims | `bun run repository:verify` | Deterministic claim report covering executable, Compose, OpenTofu, schema/manifest, and contractual document evidence |
+| Simulation Ops contract checks | `bun run repository:verify -- --claim simops.structured-contract` | Contract validation output |
 | SimOps smoke JSON helper tests | `bun run simops:smoke:json:test` | Node test output for runtime proof parsing and redaction |
 | Status Workbench contract checks | `bun run simulator-workbench:contract:check` | Contract validation output |
 | Resident SCADA stand-in tests | `bun run scada:standins:test` | Rust test output |

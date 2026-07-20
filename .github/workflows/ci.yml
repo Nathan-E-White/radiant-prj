@@ -36,6 +36,14 @@ jobs:
         with:
           go-version-file: backend/slurm-gateway/go.mod
 
+      - name: Setup OpenTofu
+        uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_wrapper: false
+
+      - name: Initialize core OpenTofu providers
+        run: tofu -chdir=infra/terraform init -backend=false -input=false
+
       - name: Install dependencies
         run: bun install
 
@@ -44,6 +52,14 @@ jobs:
 
       - name: Unit tests
         run: bun run test
+
+      - name: Repository verification module tests
+        run: bun run repository:verify:test
+
+      - name: Verify repository claims
+        run: bun run repository:verify
+        env:
+          SIMOPS_POSTGRES_TEST_DSN: postgres://radiant:radiant@127.0.0.1:5432/radiant?sslmode=disable
 
       - name: Check Fleet Board V2 simulation assets
         run: bun run fleet-board:v2-assets:check
@@ -81,9 +97,6 @@ jobs:
 
       - name: Generate objective evidence index
         run: bun run evidence:generate
-
-      - name: Check infrastructure artifacts
-        run: bun run infra:check
 
       - name: Check quality documentation package
         run: bun run quality:check

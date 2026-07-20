@@ -86,9 +86,14 @@ test("Docker packaging stays narrow, reproducible, and budgeted", () => {
   }
 
   const packageJson = JSON.parse(read("package.json"));
+  const repositoryVerification = JSON.parse(read("config/repository-verification.json"));
   assert.equal(packageJson.scripts["docker:packaging:contract:check"], "node --test scripts/docker-packaging.node-test.mjs");
   assert.equal(packageJson.scripts["docker:packaging:verify"], "node scripts/verify-docker-packaging.mjs");
-  assert.match(packageJson.scripts.ci, /docker:packaging:contract:check/);
+  assert.match(packageJson.scripts.ci, /repository:verify/);
+  assert.deepEqual(
+    repositoryVerification.claims.find(({ id }) => id === "docker-packaging.structured-budgets")?.evidence.command,
+    ["node", "--test", "scripts/docker-packaging.node-test.mjs"],
+  );
   assert.match(packageJson.scripts.ci, /backend:dataplane:test/);
 
   const workflow = read(".github/workflows/ci.yml");
