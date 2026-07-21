@@ -1,8 +1,0 @@
-go 1.22
-
-use (
-    ./apps/orchestrator
-    ./libs/container-runtime
-    ./libs/k8s-runtime
-    ./libs/surveillance-runtime
-)
