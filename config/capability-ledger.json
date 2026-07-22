@@ -1,0 +1,29 @@
+{
+  "schemaVersion": "radiant.capability-ledger.v1",
+  "capabilities": [
+    {
+      "id": "ci-verification-invocation", "title": "Repository verification CI invocation", "lifecycle": "active", "ownerRole": "Software", "decisionRef": "https://github.com/Nathan-E-White/radiant-prj/issues/173",
+      "documentationRefs": ["docs/quality/configuration-management.md", "docs/verification/verification-plan.md"],
+      "surfaces": [{ "kind": "artifact", "path": ".github/workflows/ci.yml" }, { "kind": "source-set", "root": "scripts/repository-verification", "extensions": [".mjs"] }],
+      "verificationClaim": "verification.ci-invocation", "operationalConstraints": ["local and CI invoke the same Repository Verification command", "pull-request workflow remains read-only"], "lastVerificationEvidence": { "revision": "controlled-baseline", "reference": "verification.ci-invocation" }
+    },
+    {
+      "id": "browser-delivery", "title": "Browser delivery verification", "lifecycle": "active", "ownerRole": "Software", "decisionRef": "https://github.com/Nathan-E-White/radiant-prj/issues/139",
+      "documentationRefs": ["docs/verification/verification-plan.md", "docs/requirements/verification-matrix.md"],
+      "surfaces": [{ "kind": "source-set", "root": "src", "extensions": [".ts", ".tsx", ".css"] }, { "kind": "artifact", "path": "package.json" }],
+      "verificationClaim": "browser.delivery", "operationalConstraints": ["one claim includes typecheck, frontend suite, production build, and output budgets"], "lastVerificationEvidence": { "revision": "controlled-baseline", "reference": "browser.delivery" }
+    },
+    {
+      "id": "simops-runtime-adapters", "title": "SimOps runtime adapter closeout", "lifecycle": "active", "ownerRole": "Software", "decisionRef": "docs/adr/adr-0007.md",
+      "documentationRefs": ["docs/design/simops-runtime-adapters.md", "docs/requirements/verification-matrix.md"],
+      "surfaces": [{ "kind": "source-set", "root": "backend/slurm-gateway/internal/gateway", "extensions": [".go"] }, { "kind": "artifact", "path": "deploy/slurm-gateway.compose.yml" }],
+      "verificationClaim": "simops.runtime-closeout-traceability", "operationalConstraints": ["runtime adapters preserve gateway-only worker ingest", "OpenTofu remains static substrate only"], "lastVerificationEvidence": { "revision": "controlled-baseline", "reference": "simops.runtime-closeout-traceability" }
+    },
+    {
+      "id": "simulator-workbench-dataflow", "title": "Simulator Workbench dataflow contract", "lifecycle": "active", "ownerRole": "Software", "decisionRef": "docs/adr/adr-0005.md",
+      "documentationRefs": ["docs/design/simulator-workbench-backend-dataflow-slice.md", "docs/verification/verification-plan.md"],
+      "surfaces": [{ "kind": "source-set", "root": "docs/schemas/simulator-workbench", "extensions": [".json"] }, { "kind": "source-set", "root": "examples/simulator-workbench", "extensions": [".json"] }],
+      "verificationClaim": "simulator-workbench.structured-contract", "operationalConstraints": ["measured, simulated, imputed, and lineage semantics remain distinct", "browser reads only coherent snapshots"], "lastVerificationEvidence": { "revision": "controlled-baseline", "reference": "simulator-workbench.structured-contract" }
+    }
+  ]
+}
