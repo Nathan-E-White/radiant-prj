@@ -2,10 +2,11 @@ import { affectedCapabilities } from "../capability-ledger/ledger.mjs";
 
 const actions = new Set(["preserve", "retire", "supersede"]);
 
-export function evaluateCapabilityRemovalPolicy({ previousLedger, currentLedger, currentManifest, changes = [], evidence = {} } = {}) {
+export function evaluateCapabilityRemovalPolicy({ previousLedger, currentLedger, currentManifest, verifiedClaimIds, changes = [], evidence = {} } = {}) {
   const declarations = evidence.declarations ?? [];
   const currentById = new Map((currentLedger?.capabilities ?? []).map((capability) => [capability.id, capability]));
   const claimIds = new Set((currentManifest?.claims ?? []).map(({ id }) => id));
+  const verified = new Set(verifiedClaimIds ?? claimIds);
   const paths = changes.flatMap((change) => [change.path, change.oldPath].filter(Boolean));
   const affected = affectedCapabilities(previousLedger, paths);
   const removals = [];
@@ -33,8 +34,8 @@ export function evaluateCapabilityRemovalPolicy({ previousLedger, currentLedger,
     if (declaration.action === "retire" && current.lifecycle === "intentionally-retired") return pass(removal, declaration.action);
     if (declaration.action === "supersede" && current.lifecycle === "superseded" && current.successorId) {
       const successor = currentById.get(current.successorId);
-      if (successor?.lifecycle === "active" && claimIds.has(successor.verificationClaim)) return pass(removal, declaration.action);
-      return fail(removal, "supersession requires an active successor with a current verification claim");
+      if (successor?.lifecycle === "active" && claimIds.has(successor.verificationClaim) && verified.has(successor.verificationClaim)) return pass(removal, declaration.action);
+      return fail(removal, "supersession requires an active successor with a passing current verification claim");
     }
     return fail(removal, `${declaration.action} evidence does not match the current lifecycle record`);
   });

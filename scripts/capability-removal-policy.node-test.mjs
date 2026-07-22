@@ -6,7 +6,7 @@ import { evaluateCapabilityRemovalPolicy } from "./capability-removal-policy/pol
 const capability = { id: "delivery", lifecycle: "active", verificationClaim: "delivery.claim", surfaces: [{ kind: "artifact", path: ".github/workflows/delivery.yml" }, { kind: "source-set", root: "scripts/delivery", extensions: [".mjs"] }] };
 const manifest = { claims: [{ id: "delivery.claim" }, { id: "replacement.claim" }] };
 const change = [{ status: "D", path: ".github/workflows/delivery.yml" }];
-const evaluate = ({ currentLedger = { capabilities: [capability] }, currentManifest = manifest, evidence = { declarations: [] }, changes = change } = {}) => evaluateCapabilityRemovalPolicy({ previousLedger: { capabilities: [capability] }, currentLedger, currentManifest, evidence, changes });
+const evaluate = ({ currentLedger = { capabilities: [capability] }, currentManifest = manifest, verifiedClaimIds, evidence = { declarations: [] }, changes = change } = {}) => evaluateCapabilityRemovalPolicy({ previousLedger: { capabilities: [capability] }, currentLedger, currentManifest, verifiedClaimIds, evidence, changes });
 
 test("fails an undeclared mapped artifact deletion actionably", () => {
   const report = evaluate();
@@ -39,8 +39,10 @@ test("permits retirement and verified supersession, but rejects a missing succes
   assert.equal(evaluate({ currentLedger: { capabilities: [{ ...capability, lifecycle: "intentionally-retired" }] }, evidence }).exitCode, 0);
   const supersede = { declarations: [{ capabilityId: "delivery", action: "supersede", removed: { kind: "artifact", path: ".github/workflows/delivery.yml" } }] };
   const successor = { ...capability, id: "delivery-v2", verificationClaim: "replacement.claim" };
-  assert.equal(evaluate({ currentLedger: { capabilities: [{ ...capability, lifecycle: "superseded", successorId: successor.id }, successor] }, evidence: supersede }).exitCode, 0);
-  assert.equal(evaluate({ currentLedger: { capabilities: [{ ...capability, lifecycle: "superseded", successorId: successor.id }, successor] }, currentManifest: { claims: [] }, evidence: supersede }).exitCode, 1);
+  const currentLedger = { capabilities: [{ ...capability, lifecycle: "superseded", successorId: successor.id }, successor] };
+  assert.equal(evaluate({ currentLedger, evidence: supersede, verifiedClaimIds: ["replacement.claim"] }).exitCode, 0);
+  assert.equal(evaluate({ currentLedger, evidence: supersede, verifiedClaimIds: [] }).exitCode, 1);
+  assert.equal(evaluate({ currentLedger, currentManifest: { claims: [] }, evidence: supersede }).exitCode, 1);
 });
 
 test("does not gate unrelated changes or a source-set internal refactor", () => {
