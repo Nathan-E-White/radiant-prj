@@ -138,6 +138,22 @@ _Avoid_: Environment teardown, volume pruning, factory reset
 One coherent read generation of independently labeled Measured State, Simulated Result State, Twin State, and Lineage returned through the read-only Workbench interface. Live, stale, recovering, and fixture Snapshots must never be field-wise mixed.
 _Avoid_: Best-effort aggregate, mixed-generation response, fixture patch
 
+**Trust Lens**:
+A focused Simulator Workbench review mode that keeps the selected value's Value Basis, freshness, confidence, Workbench Snapshot generation, and Lineage visible together.
+_Avoid_: Generic details panel, metric inspector, provenance tooltip
+
+**Review Playback**:
+A user-controlled replay of coherent Workbench Snapshots or local Fleet Board transitions for explaining what changed without merging generations or creating new Objective Evidence.
+_Avoid_: Evidence recording, live telemetry stream, mixed-state timeline
+
+**Board Navigator**:
+The non-canvas representation of Fleet Board tiles, facilities, routes, pawns, and available local-game actions that stays synchronized with the rendered board and supports keyboard review.
+_Avoid_: Screen-reader fallback, alternate game state, control console
+
+**Experience Scenario**:
+A coherent, named product state used to preview and verify a user journey across visual, semantic, and interaction conditions. It is test and design material, not a live Workbench Snapshot or a SimOps Run.
+_Avoid_: Fixture blob, test case only, demo mode
+
 **Insight Token**:
 A reactor-scoped Fleet Board local-game reward produced when a Simulation Job completes. One token automatically absorbs one Inspector or Trouble non-refueling outage for its reactor; fuel-driven refueling never spends it. This is a game rule, not a safety claim, operating recommendation, or backend simulation result.
 _Avoid_: Safety credit, validated result, operational recommendation, backend artifact

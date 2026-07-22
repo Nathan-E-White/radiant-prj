@@ -65,6 +65,9 @@ jobs:
       - name: Capability Ledger module tests
         run: bun run capability:ledger:test
 
+      - name: Capability reconciliation module tests
+        run: bun run capability:reconcile:test
+
       - name: Verify repository claims
         run: bun run repository:verify
         env:
@@ -72,6 +75,15 @@ jobs:
 
       - name: Validate capability ledger
         run: bun run capability:ledger:check
+
+      - name: Record capability reconciliation evidence
+        run: bun run capability:reconcile -- HEAD > capability-reconciliation-evidence.json
+
+      - name: Upload capability reconciliation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: capability-reconciliation-evidence
+          path: capability-reconciliation-evidence.json
 
       - name: Check Fleet Board V2 simulation assets
         run: bun run fleet-board:v2-assets:check
