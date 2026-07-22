@@ -42,6 +42,7 @@
 | Repository Verification Module | Software | Active capability |
 | Browser Delivery Verification Module | Software | Active capability |
 | Docker Packaging and Delivery Verification Module | Software | Active capability |
+| Pipeline Policy Module | Software | Active capability |
 | ADR-0008 Repository Verification Capability Contract | Software | Accepted |
 | ADR-0009 Browser and Docker Delivery Verification Direction | Software | Accepted |
 | ADR-0010 SimOps Control Plane and Runtime Adapter Seam | Software | Accepted |

@@ -14,6 +14,12 @@
       "verificationClaim": "browser.delivery", "operationalConstraints": ["one claim includes typecheck, frontend suite, production build, and output budgets"], "lastVerificationEvidence": { "revision": "controlled-baseline", "reference": "browser.delivery" }
     },
     {
+      "id": "docker-packaging-delivery", "title": "Docker packaging and trusted delivery", "lifecycle": "active", "ownerRole": "Software", "decisionRef": "docs/adr/adr-0009.md",
+      "documentationRefs": ["docs/design/docker-packaging-delivery-verification-module.md", "docs/verification/verification-plan.md"],
+      "surfaces": [{ "kind": "artifact", "path": ".github/workflows/docker-packaging-publish.yml" }, { "kind": "artifact", "path": "docker-bake.hcl" }],
+      "verificationClaim": "docker-packaging.structured-budgets", "operationalConstraints": ["untrusted pull requests remain read-only", "trusted main publication has declared package-write authority"], "lastVerificationEvidence": { "revision": "controlled-baseline", "reference": "docker-packaging.structured-budgets" }
+    },
+    {
       "id": "simops-runtime-adapters", "title": "SimOps runtime adapter closeout", "lifecycle": "active", "ownerRole": "Software", "decisionRef": "docs/adr/adr-0007.md",
       "documentationRefs": ["docs/design/simops-runtime-adapters.md", "docs/requirements/verification-matrix.md"],
       "surfaces": [{ "kind": "source-set", "root": "backend/slurm-gateway/internal/gateway", "extensions": [".go"] }, { "kind": "artifact", "path": "deploy/slurm-gateway.compose.yml" }],

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "radiant.pipeline-policy.v1",
+  "policies": [
+    {
+      "id": "ci-verification", "capabilityId": "ci-verification-invocation", "workflow": ".github/workflows/ci.yml",
+      "permissions": { "contents": "read", "packages": "read" }, "requiredRuns": ["bun run repository:verify", "bun run pipeline:policy:check"],
+      "untrustedPullRequest": { "allowActionWhen": { "docker/login-action@v3": "github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository" } }
+    },
+    {
+      "id": "docker-packaging-publication", "capabilityId": "docker-packaging-delivery", "workflow": ".github/workflows/docker-packaging-publish.yml",
+      "permissions": { "contents": "read", "packages": "write" }, "requiredRuns": ["bun run docker:packaging:verify"],
+      "trustedPublication": { "event": "push", "branches": ["main"] }
+    }
+  ]
+}
