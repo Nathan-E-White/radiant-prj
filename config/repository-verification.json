@@ -42,6 +42,13 @@
       "expected": "least privilege, untrusted pull-request restrictions, trusted publication paths, and required invocations pass their declared policy"
     },
     {
+      "id": "capability-reconciliation.baseline-record",
+      "title": "Initial high-risk capability reconciliation has a controlled, classified baseline record",
+      "evidence": { "adapter": "document", "source": "docs/verification/capability-reconciliation-baseline.md" },
+      "expected": "the baseline records CI/CD, deployment/runtime, data-plane, and browser scopes with deterministic findings and an explicit disposition",
+      "requiredText": ["CI/CD", "Deployment/runtime adapter", "Data-plane guarantee", "Browser delivery", "no finding" ]
+    },
+    {
       "id": "browser.delivery",
       "title": "Browser delivery passes its TypeScript, feature, API, production-build, and output-budget evidence together",
       "evidence": {
@@ -489,10 +496,11 @@
           "docs/design/repository-verification-module.md",
           "docs/design/browser-delivery-verification-module.md",
           "docs/design/docker-packaging-delivery-verification-module.md",
-          "docs/design/pipeline-policy-module.md"
+          "docs/design/pipeline-policy-module.md",
+          "docs/verification/capability-reconciliation-baseline.md"
         ]
       },
-      "expected": "accepted lifecycle decisions and active Repository, Browser Delivery, Docker Packaging/Delivery, Pipeline Policy, SimOps, data-plane, and gateway module records exist"
+      "expected": "accepted lifecycle decisions, active module records, and the classified capability-reconciliation baseline exist"
     }
   ]
 }
