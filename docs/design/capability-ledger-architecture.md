@@ -37,3 +37,5 @@ Valid states are `active`, `superseded`, `intentionally-retired`, and `under-rec
 ## Verification And Failure Model
 
 The named-capability operation validates the Ledger first, resolves the declared claim, and invokes the existing Repository Verification seam with that claim ID. It returns the standard claim report rather than reinterpret command, Compose, OpenTofu, or document evidence. Unknown capability IDs, malformed records, and missing claim references are deterministic, actionable failures.
+
+The [initial reconciliation baseline](../verification/capability-reconciliation-baseline.md) records the first controlled high-risk audit and its present evidence. It is a dated evidence record, not a replacement for the Ledger or for subsequent reconciliation runs.
