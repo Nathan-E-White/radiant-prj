@@ -21,6 +21,8 @@
     "capability:reconcile:test": "node --test scripts/capability-reconciliation.node-test.mjs",
     "capability:removal:check": "node scripts/capability-removal-policy/cli.mjs --base",
     "capability:removal:test": "node --test scripts/capability-removal-policy.node-test.mjs",
+    "pipeline:policy:check": "node scripts/pipeline-policy/cli.mjs",
+    "pipeline:policy:test": "node --test scripts/pipeline-policy.node-test.mjs",
     "test:mutation:capability-ledger": "stryker run stryker.capability-ledger.config.mjs",
     "test:mutation:workbench": "stryker run",
     "test:e2e": "playwright test",

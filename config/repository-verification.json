@@ -36,6 +36,12 @@
       ]
     },
     {
+      "id": "pipeline-policy.contract",
+      "title": "Declared CI/CD policy remains consistent with workflow adapters and Ledger capabilities",
+      "evidence": { "adapter": "command", "source": "bun run pipeline:policy:check", "command": ["bun", "run", "pipeline:policy:check"] },
+      "expected": "least privilege, untrusted pull-request restrictions, trusted publication paths, and required invocations pass their declared policy"
+    },
+    {
       "id": "browser.delivery",
       "title": "Browser delivery passes its TypeScript, feature, API, production-build, and output-budget evidence together",
       "evidence": {
@@ -482,10 +488,11 @@
           "docs/adr/adr-0012.md",
           "docs/design/repository-verification-module.md",
           "docs/design/browser-delivery-verification-module.md",
-          "docs/design/docker-packaging-delivery-verification-module.md"
+          "docs/design/docker-packaging-delivery-verification-module.md",
+          "docs/design/pipeline-policy-module.md"
         ]
       },
-      "expected": "accepted lifecycle decisions and active Repository, Browser Delivery, Docker Packaging/Delivery, SimOps, data-plane, and gateway module records exist"
+      "expected": "accepted lifecycle decisions and active Repository, Browser Delivery, Docker Packaging/Delivery, Pipeline Policy, SimOps, data-plane, and gateway module records exist"
     }
   ]
 }

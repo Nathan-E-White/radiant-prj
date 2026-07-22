@@ -53,4 +53,5 @@ test("does not gate unrelated changes or a source-set internal refactor", () => 
 test("CI invokes the same change-impact command as local users", () => {
   const workflow = readFileSync(".github/workflows/ci.yml", "utf8");
   assert.match(workflow, /bun run capability:removal:check -- \$\{\{ github.event.pull_request.base.sha \|\| github.event.before \}\}/);
+  assert.match(workflow, /if: github.event_name == 'pull_request' \|\| github.event.before != '0000000000000000000000000000000000000000'/);
 });

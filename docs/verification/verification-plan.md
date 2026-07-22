@@ -30,6 +30,7 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 | Capability Ledger | `bun run capability:ledger:check`, `bun run capability:verify -- <id>`, `bun run capability:affected -- <path>` | Deterministic retained-capability validation, named Repository Verification result, and active changed-path lookup |
 | Capability reconciliation | `bun run capability:reconcile -- <baseline>` or `node scripts/capability-reconciliation/cli.mjs --range <from>..<to>` | Local-Git historical commitment comparison with deterministic finding IDs, mapped Ledger evidence, and delegated Repository Verification results |
 | Capability removal policy | `bun run capability:removal:check -- <base>` | Local-Git change-impact report and mandatory preserve, retirement, or supersession evidence for mapped artifact or verification-claim removal |
+| Pipeline policy | `bun run pipeline:policy:check` | Declared least-privilege, untrusted pull-request, trusted-publication, and required-command policy evaluated against workflow adapters and Ledger records |
 | Simulation Ops contract checks | `bun run repository:verify -- --claim simops.structured-contract` | Contract validation output |
 | SimOps smoke JSON helper tests | `bun run simops:smoke:json:test` | Node test output for runtime proof parsing and redaction |
 | Status Workbench contract checks | `bun run simulator-workbench:contract:check` | Contract validation output |

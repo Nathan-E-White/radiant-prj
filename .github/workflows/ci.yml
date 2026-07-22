@@ -73,6 +73,9 @@ jobs:
       - name: Capability removal policy tests
         run: bun run capability:removal:test
 
+      - name: Pipeline policy tests
+        run: bun run pipeline:policy:test
+
       - name: Verify repository claims
         run: bun run repository:verify
         env:
@@ -81,7 +84,11 @@ jobs:
       - name: Validate capability ledger
         run: bun run capability:ledger:check
 
+      - name: Verify pipeline policy
+        run: bun run pipeline:policy:check
+
       - name: Gate capability removal
+        if: github.event_name == 'pull_request' || github.event.before != '0000000000000000000000000000000000000000'
         run: bun run capability:removal:check -- ${{ github.event.pull_request.base.sha || github.event.before }}
 
       - name: Record capability reconciliation evidence
