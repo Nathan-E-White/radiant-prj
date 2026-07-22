@@ -20,7 +20,7 @@ export function validateLedger(ledger, { manifest, root = process.cwd() } = {}) 
     if (!lifecycleStates.has(capability?.lifecycle)) problems.push(`${prefix}.lifecycle must be one of ${[...lifecycleStates].join(", ")}`);
     if (!claimIds.has(capability?.verificationClaim)) problems.push(`${prefix}.verificationClaim references missing claim ${capability?.verificationClaim}`);
     validateReferences(capability?.documentationRefs, prefix, root, problems);
-    validateSurfaces(capability?.surfaces, prefix, root, problems);
+    validateSurfaces(capability?.surfaces, prefix, root, problems, capability?.lifecycle === "active");
     if (!Array.isArray(capability?.operationalConstraints)) problems.push(`${prefix}.operationalConstraints must be an array`);
     if (!nonEmpty(capability?.lastVerificationEvidence?.revision) || !nonEmpty(capability?.lastVerificationEvidence?.reference)) problems.push(`${prefix}.lastVerificationEvidence requires revision and reference`);
     if (capability?.lifecycle === "superseded" && !nonEmpty(capability.successorId)) problems.push(`${prefix}.successorId is required for superseded capability`);
@@ -61,14 +61,14 @@ function validateReferences(references, prefix, root, problems) {
   references.forEach((reference) => { if (!nonEmpty(reference) || !existsSync(path.resolve(root, reference))) problems.push(`${prefix}.documentationRefs contains missing controlled document ${reference}`); });
 }
 
-function validateSurfaces(surfaces, prefix, root, problems) {
+function validateSurfaces(surfaces, prefix, root, problems, requirePresent) {
   if (!Array.isArray(surfaces) || surfaces.length === 0) return problems.push(`${prefix}.surfaces must be a non-empty array`);
   surfaces.forEach((surface, index) => {
     const item = `${prefix}.surfaces[${index}]`;
     if (!surface || !["artifact", "source-set"].includes(surface.kind)) problems.push(`${item}.kind must be artifact or source-set`);
     if (!nonEmpty(surface?.path ?? surface?.root)) problems.push(`${item} requires path or root`);
-    if (surface?.kind === "artifact" && !existsSync(path.resolve(root, surface.path))) problems.push(`${item}.path is missing: ${surface.path}`);
-    if (surface?.kind === "source-set" && !existsSync(path.resolve(root, surface.root))) problems.push(`${item}.root is missing: ${surface.root}`);
+    if (requirePresent && surface?.kind === "artifact" && !existsSync(path.resolve(root, surface.path))) problems.push(`${item}.path is missing: ${surface.path}`);
+    if (requirePresent && surface?.kind === "source-set" && !existsSync(path.resolve(root, surface.root))) problems.push(`${item}.root is missing: ${surface.root}`);
     if (surface?.extensions && (!Array.isArray(surface.extensions) || surface.extensions.some((extension) => !nonEmpty(extension)))) problems.push(`${item}.extensions must be an array of strings`);
   });
 }

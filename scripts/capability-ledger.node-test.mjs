@@ -44,6 +44,13 @@ test("requires a successor for a superseded capability", () => {
   assert.ok(validateLedger(invalid, { manifest, root: process.cwd() }).some((problem) => problem.includes("successorId")));
 });
 
+test("retains historical surface mappings after an intentional retirement", () => {
+  const retired = structuredClone(ledger);
+  retired.capabilities[0].lifecycle = "intentionally-retired";
+  retired.capabilities[0].surfaces = [{ kind: "artifact", path: "removed-delivery-workflow.yml" }];
+  assert.deepEqual(validateLedger(retired, { manifest, root: process.cwd() }), []);
+});
+
 test("accepts a superseded capability only when its successor exists", () => {
   const superseded = structuredClone(ledger);
   superseded.capabilities[0].lifecycle = "superseded";

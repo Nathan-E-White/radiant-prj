@@ -28,6 +28,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -68,6 +70,9 @@ jobs:
       - name: Capability reconciliation module tests
         run: bun run capability:reconcile:test
 
+      - name: Capability removal policy tests
+        run: bun run capability:removal:test
+
       - name: Verify repository claims
         run: bun run repository:verify
         env:
@@ -75,6 +80,9 @@ jobs:
 
       - name: Validate capability ledger
         run: bun run capability:ledger:check
+
+      - name: Gate capability removal
+        run: bun run capability:removal:check -- ${{ github.event.pull_request.base.sha || github.event.before }}
 
       - name: Record capability reconciliation evidence
         run: bun run capability:reconcile -- HEAD > capability-reconciliation-evidence.json
