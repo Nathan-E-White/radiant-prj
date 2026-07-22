@@ -27,6 +27,7 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 | Infrastructure checks | `bun run infra:check` | Required artifact inventory, parsed Ansible/Compose/Prometheus configuration, TLS behavior, source-set safety contracts, and OpenTofu parser/validation output |
 | Quality documentation checks | `bun run quality:check` | Documentation check output |
 | Repository architecture and delivery claims | `bun run repository:verify` | Deterministic claim report covering executable, Compose, OpenTofu, schema/manifest, and contractual document evidence |
+| Capability Ledger | `bun run capability:ledger:check`, `bun run capability:verify -- <id>`, `bun run capability:affected -- <path>` | Deterministic retained-capability validation, named Repository Verification result, and active changed-path lookup |
 | Simulation Ops contract checks | `bun run repository:verify -- --claim simops.structured-contract` | Contract validation output |
 | SimOps smoke JSON helper tests | `bun run simops:smoke:json:test` | Node test output for runtime proof parsing and redaction |
 | Status Workbench contract checks | `bun run simulator-workbench:contract:check` | Contract validation output |
