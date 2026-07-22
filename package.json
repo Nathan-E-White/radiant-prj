@@ -17,6 +17,8 @@
     "capability:verify": "node scripts/capability-ledger/cli.mjs --capability",
     "capability:affected": "node scripts/capability-ledger/cli.mjs --changed-path",
     "capability:ledger:test": "node --test scripts/capability-ledger.node-test.mjs",
+    "capability:reconcile": "node scripts/capability-reconciliation/cli.mjs --baseline",
+    "capability:reconcile:test": "node --test scripts/capability-reconciliation.node-test.mjs",
     "test:mutation:capability-ledger": "stryker run stryker.capability-ledger.config.mjs",
     "test:mutation:workbench": "stryker run",
     "test:e2e": "playwright test",
@@ -72,7 +74,7 @@
     "fold:v2": "scripts/archive/fold-v2-to-main.sh",
     "checkpoint:v2": "scripts/archive/checkpoint-v2.sh",
     "cleanup:v2": "scripts/archive/cleanup-v2-hygiene.sh",
-    "ci": "\"$npm_execpath\" run repository:verify:test && \"$npm_execpath\" run capability:ledger:test && \"$npm_execpath\" run capability:ledger:check && \"$npm_execpath\" run repository:verify && \"$npm_execpath\" run test:mutation:workbench && \"$npm_execpath\" run fleet-board:v2-assets:check && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run backend:dataplane:test && \"$npm_execpath\" run backend:deps:check && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run docker:prune:check && \"$npm_execpath\" run docker:storage:check && \"$npm_execpath\" run hygiene:size:check && \"$npm_execpath\" run hygiene:clean:check && \"$npm_execpath\" run simops:smoke:json:test && \"$npm_execpath\" run simops:smoke:kind:check && \"$npm_execpath\" run simops:runtime:closeout:check && \"$npm_execpath\" run simops:generator:test && \"$npm_execpath\" run scada:standins:test",
+    "ci": "\"$npm_execpath\" run repository:verify:test && \"$npm_execpath\" run capability:ledger:test && \"$npm_execpath\" run capability:reconcile:test && \"$npm_execpath\" run capability:ledger:check && \"$npm_execpath\" run repository:verify && \"$npm_execpath\" run test:mutation:workbench && \"$npm_execpath\" run fleet-board:v2-assets:check && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run backend:dataplane:test && \"$npm_execpath\" run backend:deps:check && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run docker:prune:check && \"$npm_execpath\" run docker:storage:check && \"$npm_execpath\" run hygiene:size:check && \"$npm_execpath\" run hygiene:clean:check && \"$npm_execpath\" run simops:smoke:json:test && \"$npm_execpath\" run simops:smoke:kind:check && \"$npm_execpath\" run simops:runtime:closeout:check && \"$npm_execpath\" run simops:generator:test && \"$npm_execpath\" run scada:standins:test",
     "ci:full": "\"$npm_execpath\" run ci && \"$npm_execpath\" run compose:smoke"
   },
   "dependencies": {
