@@ -62,10 +62,16 @@ jobs:
       - name: Repository verification module tests
         run: bun run repository:verify:test
 
+      - name: Capability Ledger module tests
+        run: bun run capability:ledger:test
+
       - name: Verify repository claims
         run: bun run repository:verify
         env:
           SIMOPS_POSTGRES_TEST_DSN: postgres://radiant:radiant@127.0.0.1:5432/radiant?sslmode=disable
+
+      - name: Validate capability ledger
+        run: bun run capability:ledger:check
 
       - name: Check Fleet Board V2 simulation assets
         run: bun run fleet-board:v2-assets:check
