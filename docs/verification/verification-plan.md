@@ -20,8 +20,7 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 
 | Activity | Command | Evidence |
 | --- | --- | --- |
-| Type checking | `bun run typecheck` | Command output |
-| Unit tests | `bun run test` | Vitest output |
+| Browser delivery | `bun run browser:verify` | One claim runs TypeScript checking, the complete frontend suite, one production build, and entry/lazy/raster/total output budgets |
 | Backend gateway tests | `bun run backend:test` | Go test output |
 | Fixture validation | `bun run validate:fixtures` | Validation output |
 | Evidence generation | `bun run evidence:generate` | Generated index under `generated/` |

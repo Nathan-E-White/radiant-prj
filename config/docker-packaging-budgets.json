@@ -16,6 +16,8 @@
   "images": {
     "console": { "maxBytes": 30408704, "maxBytesByArchitecture": { "amd64": 67108864 } },
     "mock-worker": { "maxBytes": 109051904, "maxBytesByArchitecture": { "amd64": 268435456 } },
+    "reactor-telemetry-worker": { "maxBytes": 33554432, "maxBytesByArchitecture": { "amd64": 67108864 } },
+    "simops-generator": { "maxBytes": 33554432, "maxBytesByArchitecture": { "amd64": 67108864 } },
     "slurm-gateway": { "maxBytes": 41943040, "maxBytesByArchitecture": { "amd64": 134217728 } },
     "simops-moq-gateway": { "maxBytes": 10485760, "maxBytesByArchitecture": { "amd64": 25165824 } },
     "simops-webtransport-probe": { "maxBytes": 8912896, "maxBytesByArchitecture": { "amd64": 20971520 } },

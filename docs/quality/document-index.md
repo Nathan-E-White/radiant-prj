@@ -39,6 +39,14 @@
 | Browser Workbench Snapshot Session (WORKBENCH-SNAPSHOT-SESSION-001) | Software | Implemented Issue #88 design |
 | Issue 88 Workbench Snapshot Session Verification Record | Quality | Completed |
 | Docker/OrbStack Storage Policy (DOP-001) | Software | Draft for v3.0 review |
+| Repository Verification Module | Software | Active capability |
+| Browser Delivery Verification Module | Software | Active capability |
+| Docker Packaging and Delivery Verification Module | Software | Active capability |
+| ADR-0008 Repository Verification Capability Contract | Software | Accepted |
+| ADR-0009 Browser and Docker Delivery Verification Direction | Software | Accepted |
+| ADR-0010 SimOps Control Plane and Runtime Adapter Seam | Software | Accepted |
+| ADR-0011 Data-Plane Storage Authority | Software | Accepted |
+| ADR-0012 Gateway Execution and Credential Authority | Software | Accepted |
 | Verification Plan | Quality | Draft for v3.0 review |
 | Test Report Template | Quality | Template |
 | Release Checklist | Quality | Template |
