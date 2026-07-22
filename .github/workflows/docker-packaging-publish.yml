@@ -1,0 +1,58 @@
+name: docker-packaging-publish
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Publish reusable Docker packaging images
+        run: bun run docker:packaging:verify
+        env:
+          DOCKER_CONTEXT: default
+          DOCKER_PACKAGING_PLATFORM: linux/amd64
+          DOCKER_PACKAGING_REGISTRY_REUSE: "true"
+          DOCKER_PACKAGING_REGISTRY_PUBLISH: "true"
+          DOCKER_BAKE_CACHE_FROM_CONSOLE: type=gha,scope=radiant-console-main
+          DOCKER_BAKE_CACHE_FROM_MOCK_WORKER: type=gha,scope=radiant-mock-worker-main
+          DOCKER_BAKE_CACHE_FROM_REACTOR_TELEMETRY_WORKER: type=gha,scope=radiant-reactor-telemetry-worker-main
+          DOCKER_BAKE_CACHE_FROM_SIMOPS_GENERATOR: type=gha,scope=radiant-simops-generator-main
+          DOCKER_BAKE_CACHE_FROM_GO_RUNTIME: type=gha,scope=radiant-go-runtime-main
+          DOCKER_BAKE_CACHE_TO_CONSOLE: type=gha,scope=radiant-console-main,mode=max,ignore-error=true
+          DOCKER_BAKE_CACHE_TO_MOCK_WORKER: type=gha,scope=radiant-mock-worker-main,mode=max,ignore-error=true
+          DOCKER_BAKE_CACHE_TO_REACTOR_TELEMETRY_WORKER: type=gha,scope=radiant-reactor-telemetry-worker-main,mode=max,ignore-error=true
+          DOCKER_BAKE_CACHE_TO_SIMOPS_GENERATOR: type=gha,scope=radiant-simops-generator-main,mode=max,ignore-error=true
+          DOCKER_BAKE_CACHE_TO_GO_RUNTIME: type=gha,scope=radiant-go-runtime-main,mode=max,ignore-error=true
+
+      - name: Upload Docker packaging evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-packaging-publish-evidence
+          path: .local/docker-packaging-evidence/

@@ -10,31 +10,31 @@ COPY backend/slurm-gateway backend/slurm-gateway
 WORKDIR /src/backend/slurm-gateway
 
 FROM builder-base AS test
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build go test -p 2 -tags dataplane,iceberggo ./...
+RUN --mount=type=cache,id=simops-go-modules,target=/go/pkg/mod,sharing=locked --mount=type=cache,id=simops-go-build,target=/root/.cache/go-build,sharing=locked go test -p 2 -tags dataplane,iceberggo ./...
 
 FROM builder-base AS gateway-builder
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane -trimpath -ldflags="-s -w" -o /out/slurm-gateway ./cmd/server
+RUN --mount=type=cache,id=simops-go-modules,target=/go/pkg/mod,sharing=locked --mount=type=cache,id=simops-go-build,target=/root/.cache/go-build,sharing=locked CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane -trimpath -ldflags="-s -w" -o /out/slurm-gateway ./cmd/server
 
 FROM builder-base AS simops-stream-gateway-builder
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane -trimpath -ldflags="-s -w" -o /out/simops-stream-gateway ./cmd/simops-stream-gateway
+RUN --mount=type=cache,id=simops-go-modules,target=/go/pkg/mod,sharing=locked --mount=type=cache,id=simops-go-build,target=/root/.cache/go-build,sharing=locked CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane -trimpath -ldflags="-s -w" -o /out/simops-stream-gateway ./cmd/simops-stream-gateway
 
 FROM builder-base AS simops-timescale-writer-builder
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane -trimpath -ldflags="-s -w" -o /out/simops-timescale-writer ./cmd/simops-timescale-writer
+RUN --mount=type=cache,id=simops-go-modules,target=/go/pkg/mod,sharing=locked --mount=type=cache,id=simops-go-build,target=/root/.cache/go-build,sharing=locked CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane -trimpath -ldflags="-s -w" -o /out/simops-timescale-writer ./cmd/simops-timescale-writer
 
 FROM builder-base AS simops-iceberg-writer-builder
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane,iceberggo -trimpath -ldflags="-s -w" -o /out/simops-iceberg-writer ./cmd/simops-iceberg-writer
+RUN --mount=type=cache,id=simops-go-modules,target=/go/pkg/mod,sharing=locked --mount=type=cache,id=simops-go-build,target=/root/.cache/go-build,sharing=locked CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane,iceberggo -trimpath -ldflags="-s -w" -o /out/simops-iceberg-writer ./cmd/simops-iceberg-writer
 
 FROM builder-base AS simops-webtransport-probe-builder
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux go build -p 2 -trimpath -ldflags="-s -w" -o /out/simops-webtransport-probe ./cmd/simops-webtransport-probe
+RUN --mount=type=cache,id=simops-go-modules,target=/go/pkg/mod,sharing=locked --mount=type=cache,id=simops-go-build,target=/root/.cache/go-build,sharing=locked CGO_ENABLED=0 GOOS=linux go build -p 2 -trimpath -ldflags="-s -w" -o /out/simops-webtransport-probe ./cmd/simops-webtransport-probe
 
 FROM builder-base AS workbench-projection-writer-builder
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane -trimpath -ldflags="-s -w" -o /out/workbench-projection-writer ./cmd/workbench-projection-writer
+RUN --mount=type=cache,id=simops-go-modules,target=/go/pkg/mod,sharing=locked --mount=type=cache,id=simops-go-build,target=/root/.cache/go-build,sharing=locked CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane -trimpath -ldflags="-s -w" -o /out/workbench-projection-writer ./cmd/workbench-projection-writer
 
 FROM builder-base AS twin-projector-builder
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane -trimpath -ldflags="-s -w" -o /out/twin-projector ./cmd/twin-projector
+RUN --mount=type=cache,id=simops-go-modules,target=/go/pkg/mod,sharing=locked --mount=type=cache,id=simops-go-build,target=/root/.cache/go-build,sharing=locked CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane -trimpath -ldflags="-s -w" -o /out/twin-projector ./cmd/twin-projector
 
 FROM builder-base AS workbench-iceberg-writer-builder
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane,iceberggo -trimpath -ldflags="-s -w" -o /out/workbench-iceberg-writer ./cmd/workbench-iceberg-writer
+RUN --mount=type=cache,id=simops-go-modules,target=/go/pkg/mod,sharing=locked --mount=type=cache,id=simops-go-build,target=/root/.cache/go-build,sharing=locked CGO_ENABLED=0 GOOS=linux go build -p 2 -tags dataplane,iceberggo -trimpath -ldflags="-s -w" -o /out/workbench-iceberg-writer ./cmd/workbench-iceberg-writer
 
 FROM ${SIMOPS_GATEWAY_RUNTIME_IMAGE} AS runtime-base
 

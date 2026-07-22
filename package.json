@@ -7,10 +7,12 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
+    "build:production": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "PATH=/opt/homebrew/bin:/usr/local/bin:$PATH vitest run",
+    "browser:verify": "node scripts/verify-browser-delivery.mjs",
     "repository:verify": "node scripts/repository-verification/cli.mjs",
-    "repository:verify:test": "node --test scripts/repository-verification.node-test.mjs",
+    "repository:verify:test": "node --test scripts/repository-verification.node-test.mjs scripts/browser-delivery-verifier.node-test.mjs",
     "test:mutation:workbench": "stryker run",
     "test:e2e": "playwright test",
     "fleet-board:prototype": "bun scripts/fleet-board-prototype.ts",
@@ -65,7 +67,7 @@
     "fold:v2": "scripts/archive/fold-v2-to-main.sh",
     "checkpoint:v2": "scripts/archive/checkpoint-v2.sh",
     "cleanup:v2": "scripts/archive/cleanup-v2-hygiene.sh",
-    "ci": "\"$npm_execpath\" run typecheck && \"$npm_execpath\" run test && \"$npm_execpath\" run repository:verify:test && \"$npm_execpath\" run repository:verify && \"$npm_execpath\" run test:mutation:workbench && \"$npm_execpath\" run fleet-board:v2-assets:check && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run backend:dataplane:test && \"$npm_execpath\" run backend:deps:check && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run docker:prune:check && \"$npm_execpath\" run docker:storage:check && \"$npm_execpath\" run hygiene:size:check && \"$npm_execpath\" run hygiene:clean:check && \"$npm_execpath\" run simops:smoke:json:test && \"$npm_execpath\" run simops:smoke:kind:check && \"$npm_execpath\" run simops:runtime:closeout:check && \"$npm_execpath\" run simops:generator:test && \"$npm_execpath\" run scada:standins:test",
+    "ci": "\"$npm_execpath\" run repository:verify:test && \"$npm_execpath\" run repository:verify && \"$npm_execpath\" run test:mutation:workbench && \"$npm_execpath\" run fleet-board:v2-assets:check && \"$npm_execpath\" run backend:test && \"$npm_execpath\" run backend:dataplane:test && \"$npm_execpath\" run backend:deps:check && \"$npm_execpath\" run validate:fixtures && \"$npm_execpath\" run evidence:generate && \"$npm_execpath\" run quality:check && \"$npm_execpath\" run adr:check && \"$npm_execpath\" run docker:prune:check && \"$npm_execpath\" run docker:storage:check && \"$npm_execpath\" run hygiene:size:check && \"$npm_execpath\" run hygiene:clean:check && \"$npm_execpath\" run simops:smoke:json:test && \"$npm_execpath\" run simops:smoke:kind:check && \"$npm_execpath\" run simops:runtime:closeout:check && \"$npm_execpath\" run simops:generator:test && \"$npm_execpath\" run scada:standins:test",
     "ci:full": "\"$npm_execpath\" run ci && \"$npm_execpath\" run compose:smoke"
   },
   "dependencies": {

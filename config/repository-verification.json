@@ -36,6 +36,16 @@
       ]
     },
     {
+      "id": "browser.delivery",
+      "title": "Browser delivery passes its TypeScript, feature, API, production-build, and output-budget evidence together",
+      "evidence": {
+        "adapter": "command",
+        "source": "bun run browser:verify",
+        "command": ["bun", "run", "browser:verify"]
+      },
+      "expected": "type checking, the complete frontend suite, one production build, and entry/lazy/raster/total output budgets pass"
+    },
+    {
       "id": "artifact-forge.behavior",
       "title": "Artifact Forge eligibility, recovery, and outcome mapping remain executable behavior",
       "evidence": {
@@ -457,6 +467,25 @@
         "command": ["node", "--test", "scripts/docker-packaging.node-test.mjs"]
       },
       "expected": "packaging manifest, Compose targets, evidence, and budgets pass their executable contract"
+    },
+    {
+      "id": "capability-lifecycle.documentation-inventory",
+      "title": "Capability lifecycle decisions and active verification module records remain present",
+      "evidence": {
+        "adapter": "files",
+        "source": "capability lifecycle documentation inventory",
+        "sources": [
+          "docs/adr/adr-0008.md",
+          "docs/adr/adr-0009.md",
+          "docs/adr/adr-0010.md",
+          "docs/adr/adr-0011.md",
+          "docs/adr/adr-0012.md",
+          "docs/design/repository-verification-module.md",
+          "docs/design/browser-delivery-verification-module.md",
+          "docs/design/docker-packaging-delivery-verification-module.md"
+        ]
+      },
+      "expected": "accepted lifecycle decisions and active Repository, Browser Delivery, Docker Packaging/Delivery, SimOps, data-plane, and gateway module records exist"
     }
   ]
 }

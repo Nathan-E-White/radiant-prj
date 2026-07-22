@@ -1,5 +1,15 @@
 import { describe, expect, test } from "vitest";
-import { evaluatePackagingEvidence, parseBuildContextBytes, parseByteSize } from "./docker-packaging-lib.mjs";
+import { writeFileSync } from "node:fs";
+import { mkdtemp } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import {
+  buildInputIdentity,
+  evaluatePackagingEvidence,
+  parseBuildContextBytes,
+  parseByteSize,
+  summarizeBuildxBake
+} from "./docker-packaging-lib.mjs";
 
 describe("Docker packaging budgets", () => {
   test("parses Docker and BuildKit byte units", () => {
@@ -139,5 +149,95 @@ describe("Docker packaging budgets", () => {
       images: { console: { sizeBytes: 10 } }
     };
     expect(evaluatePackagingEvidence(evidence, budgets)).toEqual(["Docker build context measurement is unavailable"]);
+  });
+
+  test("summarizes repeated Buildx Bake cache and Go build signals", () => {
+    const summary = summarizeBuildxBake(`
+      #10 CACHED
+      #11 DONE 1.0s
+      #12 DONE 2.0s
+      importing cache manifest from gha
+      cache hit from gha
+      exporting cache
+      preparing build cache for export
+      failed to export cache
+      RUN go build -p 2 ./cmd/server
+      RUN go build -p 2 ./cmd/twin-projector
+      RUN go test -p 2 ./...
+    `);
+
+    expect(summary).toEqual({
+      cachedStepCount: 1,
+      completedStepCount: 2,
+      cacheImportCount: 2,
+      cacheExportCount: 2,
+      cacheExportErrorCount: 1,
+      goBuildCommandCount: 2,
+      goTestCommandCount: 1
+    });
+  });
+
+  test("derives a stable completed-image identity from declared build inputs only", async () => {
+    const root = await mkdtemp(join(tmpdir(), "radiant-packaging-key-"));
+    writeFileSync(join(root, "Dockerfile"), "FROM base\nCOPY app.js app.js\n");
+    writeFileSync(join(root, "package.json"), "{\"name\":\"fixture\"}\n");
+    writeFileSync(join(root, "unrelated.md"), "first\n");
+    const manifest = {
+      registry: { host: "ghcr.io", owner: "example", repository: "repo", packagePrefix: "radiant-packaging" },
+      images: [
+        {
+          role: "console",
+          bakeTarget: "console",
+          dockerfile: "Dockerfile",
+          buildArgs: { BASE_IMAGE: "base@sha256:1234" },
+          platforms: ["linux/amd64"],
+          baseImages: [{ name: "base", ref: "base@sha256:1234" }],
+          inputs: [{ path: "Dockerfile" }, { path: "package.json" }]
+        }
+      ]
+    };
+
+    const initial = buildInputIdentity(manifest, "console", { root, platform: "linux/amd64" });
+    writeFileSync(join(root, "unrelated.md"), "second\n");
+    const unrelated = buildInputIdentity(manifest, "console", { root, platform: "linux/amd64" });
+    writeFileSync(join(root, "package.json"), "{\"name\":\"fixture\",\"version\":\"2\"}\n");
+    const changedInput = buildInputIdentity(manifest, "console", { root, platform: "linux/amd64" });
+
+    expect(unrelated.key).toBe(initial.key);
+    expect(changedInput.key).not.toBe(initial.key);
+    expect(initial.tag).toMatch(/^input-[a-f0-9]{64}$/);
+    expect(initial.registryRef).toBe(`ghcr.io/example/repo/radiant-packaging-console:${initial.tag}`);
+    expect(initial.files.map((file) => file.path)).toEqual(["Dockerfile", "package.json"]);
+  });
+
+  test("completed-image identity changes for platform, target, build args, and base image digest", async () => {
+    const root = await mkdtemp(join(tmpdir(), "radiant-packaging-key-"));
+    writeFileSync(join(root, "Dockerfile"), "FROM base\n");
+    const manifest = {
+      registry: { host: "ghcr.io", owner: "example", repository: "repo", packagePrefix: "radiant-packaging" },
+      images: [
+        {
+          role: "gateway",
+          bakeTarget: "gateway",
+          dockerfile: "Dockerfile",
+          target: "gateway-runtime",
+          buildArgs: { BASE_IMAGE: "base@sha256:1234" },
+          platforms: ["linux/amd64"],
+          baseImages: [{ name: "base", ref: "base@sha256:1234" }],
+          inputs: [{ path: "Dockerfile" }]
+        }
+      ]
+    };
+    const baseline = buildInputIdentity(manifest, "gateway", { root, platform: "linux/amd64" }).key;
+
+    expect(buildInputIdentity(manifest, "gateway", { root, platform: "linux/arm64" }).key).not.toBe(baseline);
+    manifest.images[0].target = "other-runtime";
+    expect(buildInputIdentity(manifest, "gateway", { root, platform: "linux/amd64" }).key).not.toBe(baseline);
+    manifest.images[0].target = "gateway-runtime";
+    manifest.images[0].buildArgs.BASE_IMAGE = "base@sha256:5678";
+    expect(buildInputIdentity(manifest, "gateway", { root, platform: "linux/amd64" }).key).not.toBe(baseline);
+    manifest.images[0].buildArgs.BASE_IMAGE = "base@sha256:1234";
+    manifest.images[0].baseImages[0].ref = "base@sha256:5678";
+    expect(buildInputIdentity(manifest, "gateway", { root, platform: "linux/amd64" }).key).not.toBe(baseline);
   });
 });

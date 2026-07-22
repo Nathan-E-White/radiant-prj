@@ -1,0 +1,280 @@
+{
+  "schemaVersion": "radiant.docker-packaging-inputs.v1",
+  "registry": {
+    "host": "ghcr.io",
+    "owner": "nathan-e-white",
+    "repository": "radiant-prj",
+    "packagePrefix": "radiant-packaging",
+    "retention": {
+      "maxVersionsPerImage": 20,
+      "staleVersionDays": 30,
+      "maxTotalBytes": 10737418240,
+      "reviewCadence": "monthly"
+    }
+  },
+  "defaults": {
+    "platforms": ["linux/amd64", "linux/arm64"]
+  },
+  "baseImages": {
+    "bun": {
+      "ref": "oven/bun:1.3.14",
+      "digestByPlatform": {
+        "linux/amd64": "sha256:50317d83cd5a5ae1d8b35b3379c69f57ce1a0dbf4def91f0965653d767851834",
+        "linux/arm64": "sha256:d8a4c24744b290bf789d58966a6f2521fc4d8bec36ec02cead6c541147b7d550"
+      }
+    },
+    "nginx": {
+      "ref": "nginx:1.27-alpine",
+      "digestByPlatform": {
+        "linux/amd64": "sha256:62223d644fa234c3a1cc785ee14242ec47a77364226f1c811d2f669f96dc2ac8",
+        "linux/arm64": "sha256:63ffc0d1f14e4082b832c6a42e606e9a0384a526f16ddd720af7c1f018f2f7c4"
+      }
+    },
+    "go-builder": {
+      "ref": "golang:1.26-alpine",
+      "digestByPlatform": {
+        "linux/amd64": "sha256:111d79159b2326f7e80c4a4706e1ba166acb0e2611df853955f3621828cd49e8",
+        "linux/arm64": "sha256:787328cefd7937073af18fc4b3a725f47e011ffdde9c2908239a25cae6b2f02b"
+      }
+    },
+    "go-runtime": {
+      "ref": "alpine:3.21",
+      "digestByPlatform": {
+        "linux/amd64": "sha256:f27cad9117495d32d067133afff942cb2dc745dfe9163e949f6bfe8a6a245339",
+        "linux/arm64": "sha256:1832327faf048390adc33852575d37c7ba155e064a339e78b9bd81983a8c7a00"
+      }
+    },
+    "rust-builder": {
+      "ref": "rust:1-alpine",
+      "digestByPlatform": {
+        "linux/amd64": "sha256:c5d6b2e15a5d94ee3ec8494c1ab0cbb8a12440bbe4dc9e5e3b4b0624d2efd668",
+        "linux/arm64": "sha256:58cc31b637500a7e9098d1592f698a79de86c4b8ffa523195e069399ed06cda3"
+      }
+    },
+    "distroless-static": {
+      "ref": "gcr.io/distroless/static-debian13:nonroot",
+      "digestByPlatform": {
+        "linux/amd64": "sha256:23795be0fe67b7d47d1ee62b19c7db750152db627d5bbfa31307e892a7575bec",
+        "linux/arm64": "sha256:42ae677c641858a6347005914586184474501cceb30dfecf4a20062b3bc00312"
+      }
+    }
+  },
+  "images": [
+    {
+      "role": "console",
+      "bakeTarget": "console",
+      "dockerfile": "Dockerfile",
+      "baseImages": ["bun", "nginx"],
+      "baseImageBuildArgs": {
+        "bun": "CONSOLE_BUN_IMAGE",
+        "nginx": "CONSOLE_NGINX_IMAGE"
+      },
+      "buildArgs": {
+        "CONSOLE_BUN_IMAGE": "oven/bun:1.3.14",
+        "CONSOLE_NGINX_IMAGE": "nginx:1.27-alpine"
+      },
+      "inputs": [
+        { "path": ".dockerignore" },
+        { "path": "Dockerfile" },
+        { "path": "package.json" },
+        { "path": "bun.lock" },
+        { "path": "index.html" },
+        { "path": "src" },
+        { "path": "vite.config.ts" },
+        { "path": "tsconfig.json" },
+        { "path": "tsconfig.node.json" }
+      ]
+    },
+    {
+      "role": "mock-worker",
+      "bakeTarget": "mock-worker",
+      "dockerfile": "worker.Dockerfile",
+      "baseImages": ["bun"],
+      "baseImageBuildArgs": {
+        "bun": "MOCK_WORKER_BUN_IMAGE"
+      },
+      "buildArgs": {
+        "MOCK_WORKER_BUN_IMAGE": "oven/bun:1.3.14"
+      },
+      "inputs": [
+        { "path": ".dockerignore" },
+        { "path": "worker.Dockerfile" },
+        { "path": "scripts/mock-worker.mjs" },
+        { "path": "src/data/readiness-fixtures.json" }
+      ]
+    },
+    {
+      "role": "reactor-telemetry-worker",
+      "bakeTarget": "reactor-telemetry-worker",
+      "dockerfile": "deploy/scada-standins.Dockerfile",
+      "baseImages": ["rust-builder", "distroless-static"],
+      "baseImageBuildArgs": {
+        "rust-builder": "SCADA_RUST_BUILDER_IMAGE",
+        "distroless-static": "SCADA_STANDINS_RUNTIME_IMAGE"
+      },
+      "buildArgs": {
+        "SCADA_RUST_BUILDER_IMAGE": "rust:1-alpine",
+        "SCADA_STANDINS_RUNTIME_IMAGE": "gcr.io/distroless/static-debian13:nonroot"
+      },
+      "inputs": [
+        { "path": ".dockerignore" },
+        { "path": "deploy/scada-standins.Dockerfile" },
+        { "path": "workers/scada-standins/Cargo.toml" },
+        { "path": "workers/scada-standins/Cargo.lock" },
+        { "path": "workers/scada-standins/src" },
+        { "path": "workers/scada-standins/tests" }
+      ]
+    },
+    {
+      "role": "simops-generator",
+      "bakeTarget": "simops-generator",
+      "dockerfile": "deploy/simops-generator.Dockerfile",
+      "baseImages": ["rust-builder", "distroless-static"],
+      "baseImageBuildArgs": {
+        "rust-builder": "SIMOPS_RUST_BUILDER_IMAGE",
+        "distroless-static": "SIMOPS_GENERATOR_RUNTIME_IMAGE"
+      },
+      "buildArgs": {
+        "SIMOPS_RUST_BUILDER_IMAGE": "rust:1-alpine",
+        "SIMOPS_GENERATOR_RUNTIME_IMAGE": "gcr.io/distroless/static-debian13:nonroot"
+      },
+      "inputs": [
+        { "path": ".dockerignore" },
+        { "path": "deploy/simops-generator.Dockerfile" },
+        { "path": "workers/simops-generator/Cargo.toml" },
+        { "path": "workers/simops-generator/Cargo.lock" },
+        { "path": "workers/simops-generator/src" },
+        { "path": "workers/simops-generator/tests" },
+        { "path": "examples/simulation-ops" }
+      ]
+    },
+    {
+      "role": "slurm-gateway",
+      "bakeTarget": "slurm-gateway",
+      "dockerfile": "deploy/slurm-gateway.Dockerfile",
+      "target": "gateway-runtime",
+      "baseImages": ["go-builder", "go-runtime"],
+      "baseImageBuildArgs": {
+        "go-builder": "SIMOPS_GO_BUILDER_IMAGE",
+        "go-runtime": "SIMOPS_GATEWAY_RUNTIME_IMAGE"
+      },
+      "buildArgs": {
+        "SIMOPS_GO_BUILDER_IMAGE": "golang:1.26-alpine",
+        "SIMOPS_GATEWAY_RUNTIME_IMAGE": "alpine:3.21"
+      },
+      "inputs": [{ "path": ".dockerignore" }, { "path": "deploy/slurm-gateway.Dockerfile" }, { "path": "backend/slurm-gateway" }]
+    },
+    {
+      "role": "simops-moq-gateway",
+      "bakeTarget": "simops-moq-gateway",
+      "dockerfile": "deploy/slurm-gateway.Dockerfile",
+      "target": "simops-stream-gateway-runtime",
+      "baseImages": ["go-builder", "go-runtime"],
+      "baseImageBuildArgs": {
+        "go-builder": "SIMOPS_GO_BUILDER_IMAGE",
+        "go-runtime": "SIMOPS_GATEWAY_RUNTIME_IMAGE"
+      },
+      "buildArgs": {
+        "SIMOPS_GO_BUILDER_IMAGE": "golang:1.26-alpine",
+        "SIMOPS_GATEWAY_RUNTIME_IMAGE": "alpine:3.21"
+      },
+      "inputs": [{ "path": ".dockerignore" }, { "path": "deploy/slurm-gateway.Dockerfile" }, { "path": "backend/slurm-gateway" }]
+    },
+    {
+      "role": "simops-webtransport-probe",
+      "bakeTarget": "simops-webtransport-probe",
+      "dockerfile": "deploy/slurm-gateway.Dockerfile",
+      "target": "simops-webtransport-probe-runtime",
+      "baseImages": ["go-builder", "go-runtime"],
+      "baseImageBuildArgs": {
+        "go-builder": "SIMOPS_GO_BUILDER_IMAGE",
+        "go-runtime": "SIMOPS_GATEWAY_RUNTIME_IMAGE"
+      },
+      "buildArgs": {
+        "SIMOPS_GO_BUILDER_IMAGE": "golang:1.26-alpine",
+        "SIMOPS_GATEWAY_RUNTIME_IMAGE": "alpine:3.21"
+      },
+      "inputs": [{ "path": ".dockerignore" }, { "path": "deploy/slurm-gateway.Dockerfile" }, { "path": "backend/slurm-gateway" }]
+    },
+    {
+      "role": "simops-timescale-writer",
+      "bakeTarget": "simops-timescale-writer",
+      "dockerfile": "deploy/slurm-gateway.Dockerfile",
+      "target": "simops-timescale-writer-runtime",
+      "baseImages": ["go-builder", "go-runtime"],
+      "baseImageBuildArgs": {
+        "go-builder": "SIMOPS_GO_BUILDER_IMAGE",
+        "go-runtime": "SIMOPS_GATEWAY_RUNTIME_IMAGE"
+      },
+      "buildArgs": {
+        "SIMOPS_GO_BUILDER_IMAGE": "golang:1.26-alpine",
+        "SIMOPS_GATEWAY_RUNTIME_IMAGE": "alpine:3.21"
+      },
+      "inputs": [{ "path": ".dockerignore" }, { "path": "deploy/slurm-gateway.Dockerfile" }, { "path": "backend/slurm-gateway" }]
+    },
+    {
+      "role": "simops-iceberg-writer",
+      "bakeTarget": "simops-iceberg-writer",
+      "dockerfile": "deploy/slurm-gateway.Dockerfile",
+      "target": "simops-iceberg-writer-runtime",
+      "baseImages": ["go-builder", "go-runtime"],
+      "baseImageBuildArgs": {
+        "go-builder": "SIMOPS_GO_BUILDER_IMAGE",
+        "go-runtime": "SIMOPS_GATEWAY_RUNTIME_IMAGE"
+      },
+      "buildArgs": {
+        "SIMOPS_GO_BUILDER_IMAGE": "golang:1.26-alpine",
+        "SIMOPS_GATEWAY_RUNTIME_IMAGE": "alpine:3.21"
+      },
+      "inputs": [{ "path": ".dockerignore" }, { "path": "deploy/slurm-gateway.Dockerfile" }, { "path": "backend/slurm-gateway" }]
+    },
+    {
+      "role": "workbench-projection-writer",
+      "bakeTarget": "workbench-projection-writer",
+      "dockerfile": "deploy/slurm-gateway.Dockerfile",
+      "target": "workbench-projection-writer-runtime",
+      "baseImages": ["go-builder", "go-runtime"],
+      "baseImageBuildArgs": {
+        "go-builder": "SIMOPS_GO_BUILDER_IMAGE",
+        "go-runtime": "SIMOPS_GATEWAY_RUNTIME_IMAGE"
+      },
+      "buildArgs": {
+        "SIMOPS_GO_BUILDER_IMAGE": "golang:1.26-alpine",
+        "SIMOPS_GATEWAY_RUNTIME_IMAGE": "alpine:3.21"
+      },
+      "inputs": [{ "path": ".dockerignore" }, { "path": "deploy/slurm-gateway.Dockerfile" }, { "path": "backend/slurm-gateway" }]
+    },
+    {
+      "role": "twin-projector",
+      "bakeTarget": "twin-projector",
+      "dockerfile": "deploy/slurm-gateway.Dockerfile",
+      "target": "twin-projector-runtime",
+      "baseImages": ["go-builder", "go-runtime"],
+      "baseImageBuildArgs": {
+        "go-builder": "SIMOPS_GO_BUILDER_IMAGE",
+        "go-runtime": "SIMOPS_GATEWAY_RUNTIME_IMAGE"
+      },
+      "buildArgs": {
+        "SIMOPS_GO_BUILDER_IMAGE": "golang:1.26-alpine",
+        "SIMOPS_GATEWAY_RUNTIME_IMAGE": "alpine:3.21"
+      },
+      "inputs": [{ "path": ".dockerignore" }, { "path": "deploy/slurm-gateway.Dockerfile" }, { "path": "backend/slurm-gateway" }]
+    },
+    {
+      "role": "workbench-iceberg-writer",
+      "bakeTarget": "workbench-iceberg-writer",
+      "dockerfile": "deploy/slurm-gateway.Dockerfile",
+      "target": "workbench-iceberg-writer-runtime",
+      "baseImages": ["go-builder", "go-runtime"],
+      "baseImageBuildArgs": {
+        "go-builder": "SIMOPS_GO_BUILDER_IMAGE",
+        "go-runtime": "SIMOPS_GATEWAY_RUNTIME_IMAGE"
+      },
+      "buildArgs": {
+        "SIMOPS_GO_BUILDER_IMAGE": "golang:1.26-alpine",
+        "SIMOPS_GATEWAY_RUNTIME_IMAGE": "alpine:3.21"
+      },
+      "inputs": [{ "path": ".dockerignore" }, { "path": "deploy/slurm-gateway.Dockerfile" }, { "path": "backend/slurm-gateway" }]
+    }
+  ]
+}
