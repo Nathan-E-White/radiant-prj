@@ -1,12 +1,17 @@
 name: readiness-console-ci
 
 on:
-  push:
   pull_request:
-
+  push:
+    branches: [main]
+    
 permissions:
   contents: read
   packages: read
+
+concurrency: 
+  group: readiness-console-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify:
