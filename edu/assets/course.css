@@ -1,0 +1,40 @@
+:root {
+  color-scheme: light;
+  --ink: #17202a;
+  --muted: #53606d;
+  --paper: #f8f6f1;
+  --panel: #fffdf9;
+  --line: #d9d2c4;
+  --accent: #0b6e69;
+  --accent-pale: #e0f1ee;
+  --warn: #9b4f00;
+  --code: #17212b;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 17px/1.55 Georgia, "Times New Roman", serif; }
+main { width: min(920px, calc(100% - 32px)); margin: 48px auto 72px; }
+header { border-bottom: 4px solid var(--ink); padding-bottom: 24px; margin-bottom: 32px; }
+.eyebrow { font: 700 12px/1.2 ui-sans-serif, system-ui, sans-serif; color: var(--accent); letter-spacing: .11em; text-transform: uppercase; }
+h1, h2, h3 { font-family: ui-sans-serif, system-ui, sans-serif; line-height: 1.12; }
+h1 { margin: 8px 0; font-size: clamp(2rem, 6vw, 4rem); max-width: 16ch; }
+h2 { margin-top: 42px; font-size: 1.45rem; }
+h3 { margin: 0 0 8px; font-size: 1.05rem; }
+p, li { max-width: 76ch; }
+.lede { color: var(--muted); font-size: 1.18rem; }
+.card, .exercise { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 22px 24px; margin: 18px 0; box-shadow: 0 2px 8px rgb(43 33 17 / 5%); }
+.card.good { border-left: 6px solid var(--accent); }
+.card.warn { border-left: 6px solid var(--warn); }
+pre { overflow-x: auto; background: var(--code); color: #e8edf0; padding: 18px; border-radius: 7px; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+code { font: .9em ui-monospace, SFMono-Regular, Menlo, monospace; }
+.flow { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0; }
+.flow > div { padding: 16px; background: var(--accent-pale); border-radius: 6px; font-family: ui-sans-serif, system-ui, sans-serif; font-weight: 650; }
+.flow span { display:block; color:var(--muted); font: 14px/1.35 Georgia, serif; margin-top: 5px; }
+label { display: block; margin: 15px 0 6px; font-weight: 700; }
+select, button { font: inherit; padding: 8px 10px; border-radius: 5px; }
+select { width: min(100%, 520px); border: 1px solid var(--line); background: white; }
+button { margin-top: 16px; border: 0; color: white; background: var(--accent); cursor: pointer; }
+.feedback { min-height: 1.5em; margin: 12px 0 0; font-weight: 700; }
+.source { color: var(--muted); font-size: .9rem; }
+footer { border-top: 1px solid var(--line); margin-top: 46px; padding-top: 18px; color: var(--muted); }
+@media (max-width: 620px) { .flow { grid-template-columns: 1fr; } main { margin-top: 28px; } }
