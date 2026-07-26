@@ -1,0 +1,13 @@
+go:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'backend/**/*.go'
+          - 'lib/iceberg-go/**'
+
+dependencies:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'package.json'
+          - 'bun.lock'
+          - 'backend/slurm-gateway/go.mod'
+          - 'backend/slurm-gateway/go.sum'
