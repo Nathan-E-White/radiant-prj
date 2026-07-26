@@ -9,8 +9,93 @@ permissions:
   packages: read
 
 jobs:
-  verify:
+  changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      docker:  ${{ steps.filter.outputs.docker }}
+      infra:   ${{ steps.filter.outputs.infra }}
+      shared:  ${{ steps.filter.outputs.shared }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'lib/iceberg-go/**'
+              - 'workers/scada-standins/**'
+              - 'workers/simpops-generator/**'
+            docker:
+              - 'Dockerfile'
+              - 'worker.Dockerfile'
+              - 'docker-bake.hcl'
+              - 'docker-compose.yml'
+              - 'workers/**'
+              - 'scripts/docker-**'
+            infra:
+              - 'infra/**'
+              - 'deploy/**'
+            shared:
+              - '.github/workflows/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'backend/slurm-gateway/go.mod'
+              - 'backend/slurm-gateway/go.sum'
+  fast:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      # checkout, Bun, install, frontend/repository/doc checks
+  
+  backend:
+    needs: changes
+    if: >-
+      needs.changes.outputs.backend == 'true' ||
+      needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    services: { postgres: ... }
+    steps:
+      # checkout, Go, Bun, backend:test, backend:dataplane:test
+
+  docker:
+    needs: changes
+    if: >-
+      needs.changes.outputs.docker == 'true' ||
+      needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # checkout, Buildx, GHCR login, docker:packaging:verify
+
+  infra:
+    needs: changes
+    if: >-
+      needs.changes.outputs.infra == 'true
+    runs-on: ubuntu-latest
+    steps:
+      # steps
+
+  verify:
+    name: verify
+    needs: [fast, backend, docker, infra]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce applicable CI jobs
+        env:
+          FAST:    ${{ needs.fast.result }}
+          BACKEND: ${{ needs.backend.result }}
+          DOCKER:  ${{ needs.docker.result }}
+          INFRA:   ${{ needs.infra.result }}
+    run: |
+      test "$FAST" = success
+      for result in "$BACKEND" "$DOCKER" "$INFRA"; do
+        test "$result" = sucess -o "$result" = skipped
+      done
     services:
       postgres:
         image: postgres:17-alpine
