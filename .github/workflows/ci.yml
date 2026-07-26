@@ -1,8 +1,14 @@
 name: readiness-console-ci
 
 on:
-  push:
   pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: readiness-console-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -16,12 +22,14 @@ jobs:
       pull-requests: read
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
-      docker:  ${{ steps.filter.outputs.docker }}
-      infra:   ${{ steps.filter.outputs.infra }}
-      shared:  ${{ steps.filter.outputs.shared }}
+      docker: ${{ steps.filter.outputs.docker }}
+      repository: ${{ steps.filter.outputs.repository }}
+      shared: ${{ steps.filter.outputs.shared }}
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
+
       - id: filter
         uses: dorny/paths-filter@v3
         with:
@@ -29,119 +37,50 @@ jobs:
             backend:
               - 'backend/**'
               - 'lib/iceberg-go/**'
-              - 'workers/scada-standins/**'
-              - 'workers/simpops-generator/**'
+              - 'workers/**'
+              - 'config/**'
+              - 'tests/**'
+              - 'generated/**'
             docker:
               - 'Dockerfile'
               - 'worker.Dockerfile'
               - 'docker-bake.hcl'
               - 'docker-compose.yml'
+              - 'src/**'
               - 'workers/**'
+              - 'backend/**'
               - 'scripts/docker-**'
-            infra:
-              - 'infra/**'
+            repository:
+              - 'backend/**'
+              - 'config/**'
               - 'deploy/**'
+              - 'docs/**'
+              - 'examples/**'
+              - 'infra/**'
+              - 'lib/**'
+              - 'scripts/**'
+              - 'tests/**'
+              - 'workers/**'
+              - 'generated/**'
             shared:
               - '.github/workflows/**'
               - 'package.json'
               - 'bun.lock'
               - 'backend/slurm-gateway/go.mod'
               - 'backend/slurm-gateway/go.sum'
+              - 'tsconfig.json'
+              - 'tsconfig.node.json'
+              - 'vite.config.ts'
+
   fast:
     needs: changes
     runs-on: ubuntu-latest
     steps:
-      # checkout, Bun, install, frontend/repository/doc checks
-  
-  backend:
-    needs: changes
-    if: >-
-      needs.changes.outputs.backend == 'true' ||
-      needs.changes.outputs.shared == 'true'
-    runs-on: ubuntu-latest
-    services: { postgres: ... }
-    steps:
-      # checkout, Go, Bun, backend:test, backend:dataplane:test
-
-  docker:
-    needs: changes
-    if: >-
-      needs.changes.outputs.docker == 'true' ||
-      needs.changes.outputs.shared == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      # checkout, Buildx, GHCR login, docker:packaging:verify
-
-  infra:
-    needs: changes
-    if: >-
-      needs.changes.outputs.infra == 'true
-    runs-on: ubuntu-latest
-    steps:
-      # steps
-
-  verify:
-    name: verify
-    needs: [fast, backend, docker, infra]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Enforce applicable CI jobs
-        env:
-          FAST:    ${{ needs.fast.result }}
-          BACKEND: ${{ needs.backend.result }}
-          DOCKER:  ${{ needs.docker.result }}
-          INFRA:   ${{ needs.infra.result }}
-    run: |
-      test "$FAST" = success
-      for result in "$BACKEND" "$DOCKER" "$INFRA"; do
-        test "$result" = sucess -o "$result" = skipped
-      done
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: radiant
-          POSTGRES_USER: radiant
-          POSTGRES_PASSWORD: radiant
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U radiant -d radiant"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: backend/slurm-gateway/go.mod
-
-      - name: Setup Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GHCR
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
-
-      - name: Setup OpenTofu
-        uses: opentofu/setup-opentofu@v1
-        with:
-          tofu_wrapper: false
-
-      - name: Initialize core OpenTofu providers
-        run: tofu -chdir=infra/terraform init -backend=false -input=false
+      - uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
         run: bun install
@@ -161,11 +100,6 @@ jobs:
       - name: Pipeline policy tests
         run: bun run pipeline:policy:test
 
-      - name: Verify repository claims
-        run: bun run repository:verify
-        env:
-          SIMOPS_POSTGRES_TEST_DSN: postgres://radiant:radiant@127.0.0.1:5432/radiant?sslmode=disable
-
       - name: Validate capability ledger
         run: bun run capability:ledger:check
 
@@ -176,6 +110,72 @@ jobs:
         if: github.event_name == 'pull_request' || github.event.before != '0000000000000000000000000000000000000000'
         run: bun run capability:removal:check -- ${{ github.event.pull_request.base.sha || github.event.before }}
 
+      - name: Check Fleet Board V2 simulation assets
+        run: bun run fleet-board:v2-assets:check
+
+      - name: Validate fixtures
+        run: bun run validate:fixtures
+
+      - name: Generate objective evidence index
+        run: bun run evidence:generate
+
+      - name: Check quality documentation package
+        run: bun run quality:check
+
+      - name: Check ADR style
+        run: bun run adr:check
+
+      - name: Check Docker prune hygiene helper
+        run: bun run docker:prune:check
+
+      - name: Check Docker storage policy
+        run: bun run docker:storage:check
+
+      - name: Check guarded hygiene cleanup helper
+        run: bun run hygiene:clean:check
+
+  repository:
+    needs: changes
+    if: >-
+      needs.changes.outputs.repository == 'true' ||
+      needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: radiant
+          POSTGRES_USER: radiant
+          POSTGRES_PASSWORD: radiant
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U radiant -d radiant"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_wrapper: false
+
+      - name: Initialize core OpenTofu providers
+        run: tofu -chdir=infra/terraform init -backend=false -input=false
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Verify repository claims
+        run: bun run repository:verify
+        env:
+          SIMOPS_POSTGRES_TEST_DSN: postgres://radiant:radiant@127.0.0.1:5432/radiant?sslmode=disable
+
       - name: Record capability reconciliation evidence
         run: bun run capability:reconcile -- HEAD > capability-reconciliation-evidence.json
 
@@ -185,8 +185,84 @@ jobs:
           name: capability-reconciliation-evidence
           path: capability-reconciliation-evidence.json
 
-      - name: Check Fleet Board V2 simulation assets
-        run: bun run fleet-board:v2-assets:check
+  backend:
+    needs: changes
+    if: >-
+      needs.changes.outputs.backend == 'true' ||
+      needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: radiant
+          POSTGRES_USER: radiant
+          POSTGRES_PASSWORD: radiant
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U radiant -d radiant"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/slurm-gateway/go.mod
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Backend gateway tests
+        run: bun run backend:test
+        env:
+          REACTOR_TELEMETRY_TEST_IMAGE: radiant-scada-standins:ci
+
+      - name: Backend dataplane and Iceberg tests
+        run: bun run backend:dataplane:test
+
+      - name: Postgres coherent Snapshot tests
+        run: bun run backend:snapshot:postgres:test
+        env:
+          SIMOPS_POSTGRES_TEST_DSN: postgres://radiant:radiant@127.0.0.1:5432/radiant?sslmode=disable
+
+  docker:
+    needs: changes
+    if: >-
+      needs.changes.outputs.docker == 'true' ||
+      needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Install dependencies
+        run: bun install
 
       - name: Verify Docker packaging budgets
         run: bun run docker:packaging:verify
@@ -213,36 +289,20 @@ jobs:
           name: docker-packaging-evidence
           path: .local/docker-packaging-evidence/
 
-      - name: Backend gateway tests
-        run: bun run backend:test
+  verify:
+    name: verify
+    needs: [fast, repository, backend, docker]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce applicable CI jobs
         env:
-          REACTOR_TELEMETRY_TEST_IMAGE: radiant-scada-standins:ci
-
-      - name: Backend dataplane and Iceberg tests
-        run: bun run backend:dataplane:test
-
-      - name: Postgres coherent Snapshot tests
-        run: bun run backend:snapshot:postgres:test
-        env:
-          SIMOPS_POSTGRES_TEST_DSN: postgres://radiant:radiant@127.0.0.1:5432/radiant?sslmode=disable
-
-      - name: Validate fixtures
-        run: bun run validate:fixtures
-
-      - name: Generate objective evidence index
-        run: bun run evidence:generate
-
-      - name: Check quality documentation package
-        run: bun run quality:check
-
-      - name: Check ADR style
-        run: bun run adr:check
-
-      - name: Check Docker prune hygiene helper
-        run: bun run docker:prune:check
-
-      - name: Check Docker storage policy
-        run: bun run docker:storage:check
-
-      - name: Check guarded hygiene cleanup helper
-        run: bun run hygiene:clean:check
+          FAST: ${{ needs.fast.result }}
+          REPOSITORY: ${{ needs.repository.result }}
+          BACKEND: ${{ needs.backend.result }}
+          DOCKER: ${{ needs.docker.result }}
+        run: |
+          test "$FAST" = success
+          for result in "$REPOSITORY" "$BACKEND" "$DOCKER"; do
+            test "$result" = success -o "$result" = skipped
+          done

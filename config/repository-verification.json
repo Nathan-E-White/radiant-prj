@@ -30,7 +30,7 @@
           "equals": "read"
         },
         {
-          "path": "jobs.verify.steps",
+          "path": "jobs.repository.steps",
           "some": { "run": "bun run repository:verify" }
         }
       ]
