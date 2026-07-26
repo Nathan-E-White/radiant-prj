@@ -175,6 +175,10 @@ test("Docker packaging stays narrow, reproducible, and budgeted", () => {
   assert.doesNotMatch(workflow, /Build Reactor Telemetry worker image/);
   assert.doesNotMatch(workflow, /run: docker build -f deploy\/scada-standins\.Dockerfile/);
   assert.match(workflow, /run: bun run docker:packaging:verify/);
+  assert.match(workflow, /needs: \[changes, docker\]/);
+  assert.match(workflow, /name: reactor-telemetry-image/);
+  assert.match(workflow, /docker save radiant-scada-standins:ci --output radiant-scada-standins\.tar/);
+  assert.match(workflow, /docker load --input \.local\/reactor-telemetry-image\/radiant-scada-standins\.tar/);
   assert.match(workflow, /DOCKER_BAKE_CACHE_FROM_GO_RUNTIME: type=gha,scope=radiant-go-runtime-main/);
   assert.match(workflow, /DOCKER_BAKE_CACHE_TO_GO_RUNTIME: \$\{\{ github\.ref == 'refs\/heads\/main' && 'type=gha,scope=radiant-go-runtime-main,mode=max,ignore-error=true' \|\| '' \}\}/);
   assert.match(workflow, /DOCKER_PACKAGING_REGISTRY_REUSE: "true"/);
