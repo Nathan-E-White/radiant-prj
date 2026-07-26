@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Lesson 1: Stop duplicate CI and preserve the gate</title><link rel="stylesheet" href="../assets/course.css">
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Radiant CI · Lesson 1 · 10 minutes</div>
+    <h1>Stop duplicate CI without weakening the gate</h1>
+    <p class="lede">Your immediate win is to make a PR commit produce one expensive verification, not two—while keeping main protected.</p>
+  </header>
+
+  <h2>What the repository does today</h2>
+  <p><code>.github/workflows/ci.yml</code> has both an unrestricted <code>push:</code> trigger and <code>pull_request:</code>. A commit pushed to a feature branch with an open PR therefore starts two <code>readiness-console-ci / verify</code> runs. Each one currently runs Docker packaging, integration tests, and the dataplane/Iceberg suite.</p>
+  <div class="flow"><div>Feature-branch push<span>matches unrestricted <code>push</code></span></div><div>Open PR<span>also matches <code>pull_request</code></span></div><div>Two full runs<span>same SHA, twice the spend</span></div></div>
+
+  <h2>The first safe edit</h2>
+  <p>Run PR validation for PRs, and run the full workflow again only once the change reaches <code>main</code>. Also cancel a run that has been made obsolete by a newer commit in the same PR.</p>
+  <pre><code>on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: readiness-console-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true</code></pre>
+  <div class="card good"><h3>Why this is safe</h3><p>The PR still gets one full check. After merge, <code>main</code> still gets a check. The only removed work is the duplicate feature-branch <code>push</code> run.</p></div>
+
+  <h2>The non-obvious constraint</h2>
+  <p>Radiant’s active <code>main-hygiene</code> ruleset requires the status context named <code>verify</code>. That is your contract with GitHub’s merge gate.</p>
+  <div class="card warn"><h3>Do not add <code>on.pull_request.paths</code> to this required workflow</h3><p>If GitHub skips a required workflow through event-level path filtering, its check remains pending and the PR cannot merge. Use path detection <em>inside</em> an always-triggered workflow instead. Make heavyweight jobs conditional; retain a final, always-running <code>verify</code> job.</p></div>
+
+  <h2>How the next refactor should look</h2>
+  <div class="flow"><div>detect changes<span>Output booleans such as <code>backend</code> and <code>docker</code></span></div><div>run relevant jobs<span>Fast always; dataplane only for backend changes</span></div><div>final <code>verify</code><span>Always concludes; gates only applicable jobs</span></div></div>
+  <p>Read the quick-reference decision table before making that refactor: <a href="../reference/github-actions-ci-map.html">Radiant CI: quick reference</a>.</p>
+
+  <h2>Retrieval practice</h2>
+  <form class="exercise" id="quiz">
+    <h3>Answer without scrolling back</h3>
+    <label for="q1">A PR commit currently starts two full runs because:</label>
+    <select id="q1" name="q1"><option value="">Choose one</option><option value="two-events">it matches both push and pull_request</option><option value="two-runners">GitHub allocates two runners by default</option><option value="two-checks">CodeQL duplicates the CI workflow</option></select>
+    <label for="q2">Where should path-based selectivity live for a required check?</label>
+    <select id="q2" name="q2"><option value="">Choose one</option><option value="workflow">on: paths at workflow level</option><option value="jobs">conditional jobs inside an always-triggered workflow</option><option value="ruleset">the branch ruleset only</option></select>
+    <label for="q3">What should the final required job be named?</label>
+    <select id="q3" name="q3"><option value="">Choose one</option><option value="verify">verify</option><option value="complete">complete</option><option value="ci-finished">ci-finished</option></select>
+    <button type="submit">Check my recall</button><p class="feedback" aria-live="polite"></p>
+  </form>
+
+  <h2>One real-world action</h2>
+  <p>Open a recent PR’s Checks tab. Confirm that the same commit SHA has both <code>readiness-console-ci / verify (pull_request)</code> and <code>readiness-console-ci / verify (push)</code>. After the trigger change lands, use the same comparison to prove the duplicate has disappeared.</p>
+  <p class="source">Primary source: <a href="https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax">GitHub Actions workflow syntax</a>. It documents both trigger filtering and the pending required-check caveat.</p>
+  <footer>Ask me a follow-up when you are ready for Lesson 2: implement changed-path detection and a final gate job.</footer>
+</main><script type="module">import { bindQuiz } from '../assets/quiz.js'; bindQuiz(document.querySelector('#quiz'), { q1: 'two-events', q2: 'jobs', q3: 'verify' });</script></body></html>

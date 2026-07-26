@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Lesson 2: Select heavyweight CI by changed path</title><link rel="stylesheet" href="../assets/course.css">
+</head>
+<body><main>
+  <header>
+    <div class="eyebrow">Radiant CI · Lesson 2 · 15 minutes</div>
+    <h1>Run expensive tests only when the change warrants them</h1>
+    <p class="lede">The technique is not “skip CI.” It is to classify the change, run the relevant checks, and let one cheap, dependable gate report the outcome.</p>
+  </header>
+
+  <h2>The design: classifier, workers, gate</h2>
+  <div class="flow"><div>1. <code>changes</code><span>Turns the diff into named booleans.</span></div><div>2. workers<span>Run only if their boolean—or a shared dependency—is true.</span></div><div>3. <code>verify</code><span>Always concludes and fails for failed applicable workers.</span></div></div>
+  <p>The classifier is deliberately conservative. When uncertain, include the heavyweight check. A false positive costs runner time; a false negative creates an untested merge.</p>
+
+  <h2>Choose Radiant’s first path groups</h2>
+  <p>Start coarse. Radiant’s current expensive groups are Docker packaging, Go integration tests, and the dataplane/Iceberg suite. The following groups make a frontend component change cheap while treating shared build files as an “all relevant checks” signal.</p>
+  <pre><code>jobs:
+  changes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      docker:  ${{ steps.filter.outputs.docker }}
+      infra:   ${{ steps.filter.outputs.infra }}
+      shared:  ${{ steps.filter.outputs.shared }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+              - 'lib/iceberg-go/**'
+              - 'workers/scada-standins/**'
+              - 'workers/simops-generator/**'
+            docker:
+              - 'Dockerfile'
+              - 'worker.Dockerfile'
+              - 'docker-bake.hcl'
+              - 'docker-compose.yml'
+              - 'workers/**'
+              - 'scripts/docker-**'
+            infra:
+              - 'infra/**'
+              - 'deploy/**'
+            shared:
+              - '.github/workflows/**'
+              - 'package.json'
+              - 'bun.lock'
+              - 'backend/slurm-gateway/go.mod'
+              - 'backend/slurm-gateway/go.sum'</code></pre>
+  <div class="card good"><h3>Interpret the groups as test ownership</h3><p>These are not a taxonomy of the repository. They are the list of files that can invalidate a particular test’s conclusion. Keep them close to the jobs they govern and tighten them only with evidence.</p></div>
+
+  <h2>Make workers conditional</h2>
+  <p>A fast job should run on every PR. A heavyweight job runs when its own area or a shared dependency changes. Give the jobs distinct names; only the final job retains the required <code>verify</code> context.</p>
+  <pre><code>  fast:
+    needs: changes
+    runs-on: ubuntu-latest
+    steps:
+      # checkout, Bun, install, frontend/repository/doc checks
+
+  backend:
+    needs: changes
+    if: >-
+      needs.changes.outputs.backend == 'true' ||
+      needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    services: { postgres: ... }
+    steps:
+      # checkout, Go, Bun, backend:test, backend:dataplane:test
+
+  docker:
+    needs: changes
+    if: >-
+      needs.changes.outputs.docker == 'true' ||
+      needs.changes.outputs.shared == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      # checkout, Buildx, GHCR login, docker:packaging:verify</code></pre>
+  <p>An irrelevant job is shown as <em>skipped</em>, which is the desired result. It is not a silent success: the final gate knows that it was not applicable.</p>
+
+  <h2>Preserve the required gate</h2>
+  <p>Radiant’s ruleset requires the context <code>verify</code>. Make it a small aggregator that always runs after all workers. It accepts only <code>success</code> or <code>skipped</code> from optional workers; cancellation or failure blocks the merge.</p>
+  <pre><code>  verify:
+    name: verify
+    needs: [fast, backend, docker, infra]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce applicable CI jobs
+        env:
+          FAST:    ${{ needs.fast.result }}
+          BACKEND: ${{ needs.backend.result }}
+          DOCKER:  ${{ needs.docker.result }}
+          INFRA:   ${{ needs.infra.result }}
+        run: |
+          test "$FAST" = success
+          for result in "$BACKEND" "$DOCKER" "$INFRA"; do
+            test "$result" = success -o "$result" = skipped
+          done</code></pre>
+  <div class="card warn"><h3>The sequencing rule</h3><p>Do this in one PR after the duplicate-trigger fix, not as a collection of unrelated workflow edits. First prove that <code>verify</code> still appears and passes for a frontend-only change, a backend change, and a Docker/build-file change. Then refine path groups from the evidence.</p></div>
+
+  <h2>Retrieval practice</h2>
+  <form class="exercise" id="quiz">
+    <h3>Classify these without looking back</h3>
+    <label for="q1">A change only to <code>src/components/Nav.tsx</code> should cause the dataplane job to:</label>
+    <select id="q1" name="q1"><option value="">Choose one</option><option value="skip">be skipped</option><option value="run">run unconditionally</option><option value="pending">remain pending</option></select>
+    <label for="q2">A change to <code>package.json</code> should be treated as:</label>
+    <select id="q2" name="q2"><option value="">Choose one</option><option value="shared">a shared dependency change</option><option value="frontend">a frontend-only change</option><option value="docs">a documentation-only change</option></select>
+    <label for="q3">Which optional-worker result should make the final gate fail?</label>
+    <select id="q3" name="q3"><option value="">Choose one</option><option value="failure">failure</option><option value="skipped">skipped</option><option value="success">success</option></select>
+    <button type="submit">Check my recall</button><p class="feedback" aria-live="polite"></p>
+  </form>
+
+  <h2>One real-world action</h2>
+  <p>Before writing this workflow, write down three representative files: one frontend component, one Go backend file, and one Dockerfile. For each, state which worker jobs must run and why. Those three examples become your first review test cases.</p>
+  <p class="source">Primary source: <a href="https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax">GitHub Actions workflow syntax</a>. The companion source is <a href="https://github.com/dorny/paths-filter">dorny/paths-filter documentation</a>, for the action syntax used in this lesson.</p>
+  <footer>Ask me when you are ready for Lesson 3: measure job duration and cache behaviour before tuning the path groups further.</footer>
+</main><script type="module">import { bindQuiz } from '../assets/quiz.js'; bindQuiz(document.querySelector('#quiz'), { q1: 'skip', q2: 'shared', q3: 'failure' });</script></body></html>

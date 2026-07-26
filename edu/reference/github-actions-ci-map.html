@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Radiant CI: quick reference</title><link rel="stylesheet" href="../assets/course.css">
+</head>
+<body><main>
+  <header><div class="eyebrow">Reference</div><h1>Radiant CI: quick reference</h1><p class="lede">The three rules to recall before editing a workflow.</p></header>
+  <div class="card good"><h3>1. PR commits can run twice</h3><p><code>pull_request:</code> runs for the PR; unfiltered <code>push:</code> also runs for every branch push. Restrict push validation to <code>main</code> (and any release branches).</p></div>
+  <div class="card warn"><h3>2. Required workflows must not be path-skipped</h3><p>A required workflow skipped by event-level <code>paths</code> filtering leaves its status pending. Keep the workflow running and conditionally skip only heavyweight jobs.</p></div>
+  <div class="card good"><h3>3. A required gate should always conclude</h3><p>Keep a final job called <code>verify</code>, give it <code>if: always()</code>, and make it fail when a job that was required for the changed paths failed.</p></div>
+  <h2>Decision table</h2>
+  <table><thead><tr><th>Changed area</th><th>Run</th></tr></thead><tbody><tr><td><code>src/**</code></td><td>fast/frontend checks</td></tr><tr><td><code>backend/**</code>, <code>lib/iceberg-go/**</code></td><td>Go, Postgres, dataplane/Iceberg</td></tr><tr><td>Dockerfiles, workers, Bake config</td><td>Docker packaging</td></tr><tr><td><code>infra/**</code></td><td>OpenTofu/infra validation</td></tr><tr><td>CI or dependency manifests</td><td>all affected groups</td></tr></tbody></table>
+  <footer>Primary source: <a href="https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax">GitHub Actions workflow syntax</a>.</footer>
+</main></body></html>
