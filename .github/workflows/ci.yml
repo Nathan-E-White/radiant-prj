@@ -312,7 +312,9 @@ jobs:
         run: bunx playwright install --with-deps chromium
 
       - name: Run browser acceptance
-        run: bun run test:e2e
+        run: bun run repository:verify -- --claim browser.acceptance
+        env:
+          RUN_BROWSER_ACCEPTANCE: "true"
 
       - name: Upload browser acceptance diagnostics
         if: always()

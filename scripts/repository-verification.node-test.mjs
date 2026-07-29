@@ -18,11 +18,12 @@ test("browser acceptance is an explicit repository claim and a tracked CI job", 
 
   const acceptance = manifest.claims.find(({ id }) => id === "browser.acceptance");
   assert.deepEqual(acceptance?.evidence.command, ["bun", "run", "test:e2e"]);
+  assert.equal(acceptance?.evidence.whenEnvironment, "RUN_BROWSER_ACCEPTANCE");
 
   const browser = workflow.jobs.browser;
   assert.equal(browser?.name, "browser acceptance");
   assert.ok(browser?.steps.some(({ run }) => run === "bunx playwright install --with-deps chromium"));
-  assert.ok(browser?.steps.some(({ run }) => run === "bun run test:e2e"));
+  assert.ok(browser?.steps.some(({ run }) => run === "bun run repository:verify -- --claim browser.acceptance"));
   assert.ok(browser?.steps.some(({ uses }) => uses === "actions/upload-artifact@v4"));
   assert.ok((workflow.jobs.verify.needs ?? []).includes("browser"));
 });
@@ -47,6 +48,21 @@ test("browser acceptance preserves its failing scenario and missing-tool diagnos
   assert.match(failed.results[0].observed, /workbench-live-read\.spec\.ts/);
   assert.match(failed.results[0].observed, /Expected live Snapshot/);
   assert.equal(missingTool.results[0].observed, "tool not found: bun");
+});
+
+test("browser acceptance is skipped unless its heavyweight CI profile is enabled", async () => {
+  const prior = process.env.RUN_BROWSER_ACCEPTANCE;
+  delete process.env.RUN_BROWSER_ACCEPTANCE;
+  try {
+    const report = await verifyRepository({
+      root: "/repo",
+      manifest: manifest([{ ...commandClaim("browser.acceptance", ["bun", "run", "test:e2e"], "browser acceptance passes"), evidence: { adapter: "command", source: "bun run test:e2e", whenEnvironment: "RUN_BROWSER_ACCEPTANCE", command: ["bun", "run", "test:e2e"] } }]),
+    });
+    assert.equal(report.results[0].status, "skip");
+  } finally {
+    if (prior === undefined) delete process.env.RUN_BROWSER_ACCEPTANCE;
+    else process.env.RUN_BROWSER_ACCEPTANCE = prior;
+  }
 });
 
 test("structured JSON evidence is parsed and checked by path", async (t) => {
