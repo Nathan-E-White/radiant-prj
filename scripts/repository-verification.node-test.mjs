@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -9,6 +9,17 @@ import {
   formatVerificationReport,
   verifyRepository,
 } from "./repository-verification/verifier.mjs";
+
+test("complete Go backend profiles are repository claims exercised by CI", async () => {
+  const manifest = JSON.parse(await readFile("config/repository-verification.json", "utf8"));
+  const workflow = await readFile(".github/workflows/ci.yml", "utf8");
+  for (const id of ["backend.go.default", "backend.go.docker-runtime", "backend.go.dataplane-iceberg", "backend.go.docker-compatibility-shim"]) {
+    const claim = manifest.claims.find((candidate) => candidate.id === id);
+    assert.equal(claim?.evidence.command[0], "go");
+    assert.equal(claim?.evidence.env.GOCACHE, "/tmp/radiant-go-cache");
+  }
+  assert.match(workflow, /uses: actions\/setup-go@v5/);
+});
 
 test("structured JSON evidence is parsed and checked by path", async (t) => {
   const root = await temporaryRepository(t);

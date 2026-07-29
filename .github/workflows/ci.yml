@@ -81,6 +81,10 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/slurm-gateway/go.mod
+
       - name: Install dependencies
         run: bun install
 

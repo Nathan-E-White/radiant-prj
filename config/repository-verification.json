@@ -59,6 +59,30 @@
       "expected": "type checking, the complete frontend suite, one production build, and entry/lazy/raster/total output budgets pass"
     },
     {
+      "id": "backend.go.default",
+      "title": "The complete supported Go backend passes its default package surface",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/go.mod", "cwd": "backend/slurm-gateway", "env": { "GOCACHE": "/tmp/radiant-go-cache", "GOMODCACHE": "/tmp/radiant-go-mod-cache" }, "command": ["go", "test", "./..."] },
+      "expected": "every primary gateway and command package passes its default Go test surface"
+    },
+    {
+      "id": "backend.go.docker-runtime",
+      "title": "Docker Runtime Adapter behavior has explicit Go evidence",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/internal/gateway/*docker*", "cwd": "backend/slurm-gateway", "env": { "GOCACHE": "/tmp/radiant-go-cache", "GOMODCACHE": "/tmp/radiant-go-mod-cache" }, "command": ["go", "test", "-tags", "dockerintegration", "./..."] },
+      "expected": "Docker-integration gateway, adapter, and command tests pass"
+    },
+    {
+      "id": "backend.go.dataplane-iceberg",
+      "title": "Kubernetes and dataplane variants have explicit Go evidence",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/internal/gateway/*dataplane*", "cwd": "backend/slurm-gateway", "env": { "GOCACHE": "/tmp/radiant-go-cache", "GOMODCACHE": "/tmp/radiant-go-mod-cache" }, "command": ["go", "test", "-p", "2", "-tags", "dataplane,iceberggo", "./..."] },
+      "expected": "dataplane, Kubernetes runtime adapter, and Iceberg build-tag packages pass"
+    },
+    {
+      "id": "backend.go.docker-compatibility-shim",
+      "title": "The local Docker compatibility shim remains executable evidence",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/third_party/docker-compat/go.mod", "cwd": "backend/slurm-gateway/third_party/docker-compat", "env": { "GOCACHE": "/tmp/radiant-go-cache", "GOMODCACHE": "/tmp/radiant-go-mod-cache" }, "command": ["go", "test", "./..."] },
+      "expected": "the supported Docker compatibility shim compiles and its tests pass"
+    },
+    {
       "id": "artifact-forge.behavior",
       "title": "Artifact Forge eligibility, recovery, and outcome mapping remain executable behavior",
       "evidence": {
