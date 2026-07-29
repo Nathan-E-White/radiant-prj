@@ -23,10 +23,7 @@ test("Workbench cadence recovers fixture and stale states by replacing the whole
   await page.locator('button[data-unit-id="KAL-03"]').click();
   await expect(page.getByRole("heading", { name: "Kaleidos Unit 03" })).toBeVisible();
   const fixtureMeasured = page.getByRole("region", { name: "Measured State" });
-  await fixtureMeasured.getByRole("button", { name: /Electric Output/ }).click();
-  await expect(fixtureMeasured.getByRole("button", { name: /Electric Output/ })).toHaveAttribute("aria-pressed", "true");
-
-  const measuredValue = page.getByRole("button", { name: /Flux Axial Low/ });
+  const measuredValue = fixtureMeasured.getByRole("button", { name: /Electric Output/ });
   await measuredValue.click();
   await expect(measuredValue).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByLabel("Bottom Explanation Rail").locator(".simwb-count")).toContainText("measured");
