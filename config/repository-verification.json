@@ -59,6 +59,28 @@
       "expected": "type checking, the complete frontend suite, one production build, and entry/lazy/raster/total output budgets pass"
     },
     {
+      "id": "workers.simops-generator.tests",
+      "title": "Simulation Ops generator has locked, worker-scoped Cargo evidence",
+      "evidence": {
+        "adapter": "command",
+        "source": "workers/simops-generator/Cargo.toml",
+        "env": { "CARGO_TARGET_DIR": "/tmp/radiant-cargo-target/simops-generator" },
+        "command": ["cargo", "test", "--locked", "--manifest-path", "workers/simops-generator/Cargo.toml"]
+      },
+      "expected": "the complete Simulation Ops generator Cargo contract passes"
+    },
+    {
+      "id": "workers.scada-standins.tests",
+      "title": "Resident Source worker has locked, worker-scoped Cargo evidence",
+      "evidence": {
+        "adapter": "command",
+        "source": "workers/scada-standins/Cargo.toml",
+        "env": { "CARGO_TARGET_DIR": "/tmp/radiant-cargo-target/scada-standins" },
+        "command": ["cargo", "test", "--locked", "--manifest-path", "workers/scada-standins/Cargo.toml"]
+      },
+      "expected": "the complete Resident Source Cargo contract passes"
+    },
+    {
       "id": "artifact-forge.behavior",
       "title": "Artifact Forge eligibility, recovery, and outcome mapping remain executable behavior",
       "evidence": {
