@@ -281,6 +281,13 @@ async function executeEvidenceCommand(claim, { root, run }, command, args) {
   const result = await run(command, args, { cwd, env: { ...process.env, ...claim.evidence.env } });
   if (result.error?.code === "ENOENT") return { failure: claimFailure(claim, `tool not found: ${command}`) };
   if (result.error) return { failure: claimFailure(claim, result.error.message) };
+  if (result.status === 0 && claim.evidence.cleanPaths?.length) {
+    const status = await run("git", ["status", "--porcelain", "--", ...claim.evidence.cleanPaths], { cwd: root, env: process.env });
+    if (status.error?.code === "ENOENT") return { failure: claimFailure(claim, "tool not found: git") };
+    if (status.error) return { failure: claimFailure(claim, status.error.message) };
+    if (status.status !== 0) return { failure: claimFailure(claim, `git status exited ${status.status ?? "unknown"}: ${conciseOutput(status.stderr, status.stdout)}`) };
+    if (status.stdout.trim()) return { failure: claimFailure(claim, `worktree changed: ${status.stdout.trim().split(/\r?\n/).join(", ")}`) };
+  }
   return { result };
 }
 

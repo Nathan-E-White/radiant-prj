@@ -58,6 +58,12 @@
       },
       "expected": "type checking, the complete frontend suite, one production build, and entry/lazy/raster/total output budgets pass"
     },
+    { "id": "operations.fixture-validation", "title": "Repository fixtures have executable validation evidence", "evidence": { "adapter": "command", "source": "scripts/validate-fixtures.mjs", "command": ["node", "scripts/validate-fixtures.mjs"] }, "expected": "fixture validation passes" },
+    { "id": "operations.objective-evidence", "title": "Objective evidence generation is deterministic and leaves no tracked change", "evidence": { "adapter": "command", "source": "scripts/generate-evidence.mjs", "cleanPaths": ["generated/evidence-index.json"], "command": ["node", "scripts/generate-evidence.mjs"] }, "expected": "evidence generation passes without changing generated/evidence-index.json" },
+    { "id": "operations.controlled-documents", "title": "Quality and ADR controlled documents have executable checks", "evidence": { "adapter": "command", "source": "package.json quality check", "command": ["bun", "run", "quality:check"] }, "expected": "controlled quality documentation passes" },
+    { "id": "operations.hygiene-guards", "title": "Storage, cleanup, and size safeguards are executable evidence", "evidence": { "adapter": "command", "source": "scripts/check-hygiene-size.mjs", "command": ["node", "scripts/check-hygiene-size.mjs"] }, "expected": "the repository hygiene size safeguard passes" },
+    { "id": "operations.simops-smoke-json", "title": "Simulation Ops smoke JSON parsing is executable evidence", "evidence": { "adapter": "command", "source": "scripts/simops-smoke-json.node-test.mjs", "command": ["node", "--test", "scripts/simops-smoke-json.node-test.mjs"] }, "expected": "Simulation Ops smoke JSON contract tests pass" },
+    { "id": "operations.simops-runtime-closeout", "title": "Kind smoke and runtime-closeout traceability are executable evidence", "evidence": { "adapter": "command", "source": "scripts/check-simops-runtime-closeout.mjs", "command": ["node", "scripts/check-simops-runtime-closeout.mjs"] }, "expected": "runtime closeout traceability passes" },
     {
       "id": "artifact-forge.behavior",
       "title": "Artifact Forge eligibility, recovery, and outcome mapping remain executable behavior",
