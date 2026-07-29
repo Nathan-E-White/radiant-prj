@@ -58,6 +58,34 @@
       },
       "expected": "type checking, the complete frontend suite, one production build, and entry/lazy/raster/total output budgets pass"
     },
+    { "id": "operations.fixture-validation", "title": "Repository fixtures have executable validation evidence", "evidence": { "adapter": "command", "source": "scripts/validate-fixtures.mjs", "command": ["node", "scripts/validate-fixtures.mjs"] }, "expected": "fixture validation passes" },
+    { "id": "operations.objective-evidence", "title": "Objective evidence generation is deterministic and leaves no tracked change", "evidence": { "adapter": "command", "source": "scripts/generate-evidence.mjs", "cleanPaths": ["generated/evidence-index.json"], "command": ["node", "scripts/generate-evidence.mjs"] }, "expected": "evidence generation passes without changing generated/evidence-index.json" },
+    { "id": "operations.controlled-documents", "title": "Quality and ADR controlled documents have executable checks", "evidence": { "adapter": "command", "source": "package.json quality check", "command": ["bun", "run", "quality:check"] }, "expected": "controlled quality documentation passes" },
+    { "id": "operations.hygiene-guards", "title": "Storage, cleanup, and size safeguards are executable evidence", "evidence": { "adapter": "command", "source": "scripts/check-hygiene-size.mjs", "command": ["node", "scripts/check-hygiene-size.mjs"] }, "expected": "the repository hygiene size safeguard passes" },
+    { "id": "operations.simops-smoke-json", "title": "Simulation Ops smoke JSON parsing is executable evidence", "evidence": { "adapter": "command", "source": "scripts/simops-smoke-json.node-test.mjs", "command": ["node", "--test", "scripts/simops-smoke-json.node-test.mjs"] }, "expected": "Simulation Ops smoke JSON contract tests pass" },
+    { "id": "operations.simops-runtime-closeout", "title": "Kind smoke and runtime-closeout traceability are executable evidence", "evidence": { "adapter": "command", "source": "scripts/check-simops-runtime-closeout.mjs", "command": ["node", "scripts/check-simops-runtime-closeout.mjs"] }, "expected": "runtime closeout traceability passes" },
+    {
+      "id": "workers.simops-generator.tests",
+      "title": "Simulation Ops generator has locked, worker-scoped Cargo evidence",
+      "evidence": {
+        "adapter": "command",
+        "source": "workers/simops-generator/Cargo.toml",
+        "env": { "CARGO_TARGET_DIR": "/tmp/radiant-cargo-target/simops-generator" },
+        "command": ["cargo", "test", "--locked", "--manifest-path", "workers/simops-generator/Cargo.toml"]
+      },
+      "expected": "the complete Simulation Ops generator Cargo contract passes"
+    },
+    {
+      "id": "workers.scada-standins.tests",
+      "title": "Resident Source worker has locked, worker-scoped Cargo evidence",
+      "evidence": {
+        "adapter": "command",
+        "source": "workers/scada-standins/Cargo.toml",
+        "env": { "CARGO_TARGET_DIR": "/tmp/radiant-cargo-target/scada-standins" },
+        "command": ["cargo", "test", "--locked", "--manifest-path", "workers/scada-standins/Cargo.toml"]
+      },
+      "expected": "the complete Resident Source Cargo contract passes"
+    },
     {
       "id": "browser.acceptance",
       "title": "Browser acceptance covers Fleet Board and Simulator Workbench user journeys",
