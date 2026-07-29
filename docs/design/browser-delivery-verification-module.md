@@ -9,15 +9,15 @@
 
 ## Purpose
 
-Establish that the browser product can be typed, tested, built for production, and delivered within its defined output budgets.
+Establish that the browser product can be typed, tested, built for production, and delivered within its defined output budgets, then exercised through its tracked browser acceptance journeys.
 
 ## Owned Contract
 
-`bun run browser:verify` is the module boundary. It owns the combined browser-delivery claim: TypeScript checking, the complete frontend suite, a production build, and entry, lazy, raster, and total output budgets. It does not own backend, container-image, or infrastructure verification.
+`bun run browser:verify` owns the combined browser-delivery claim: TypeScript checking, the complete frontend suite, a production build, and entry, lazy, raster, and total output budgets. `bun run test:e2e` owns the browser-acceptance claim: the full tracked Playwright suite starts and stops the local application server and browser through `playwright.config.ts`, and covers Fleet Board and Simulator Workbench journeys. Neither command owns backend, container-image, or infrastructure verification.
 
 ## Highest Verification Seam And Evidence
 
-The highest seam is `bun run browser:verify`; its command result and production-build budget report are the evidence source. The claim is retained by `browser.delivery` in `config/repository-verification.json`.
+The delivery seam is `bun run browser:verify`; its command result and production-build budget report are the evidence source. The acceptance seam is `bun run test:e2e`; Playwright names a failing spec and scenario in its console output, while CI retains `playwright-report/` and `test-results/` as diagnostics. The claims are retained by `browser.delivery` and `browser.acceptance` in `config/repository-verification.json`; CI runs the complete acceptance suite in its `browser acceptance` job.
 
 ## Controlled Record Links
 
