@@ -87,6 +87,17 @@
       "expected": "the complete Resident Source Cargo contract passes"
     },
     {
+      "id": "browser.acceptance",
+      "title": "Browser acceptance covers Fleet Board and Simulator Workbench user journeys",
+      "evidence": {
+        "adapter": "command",
+        "source": "bun run test:e2e",
+        "whenEnvironment": "RUN_BROWSER_ACCEPTANCE",
+        "command": ["bun", "run", "test:e2e"]
+      },
+      "expected": "the tracked Playwright suite starts and stops its server deterministically, reports each failing scenario, and passes Fleet Board and Workbench acceptance behavior"
+    },
+    {
       "id": "artifact-forge.behavior",
       "title": "Artifact Forge eligibility, recovery, and outcome mapping remain executable behavior",
       "evidence": {
