@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
@@ -9,6 +9,20 @@ import {
   formatVerificationReport,
   verifyRepository,
 } from "./repository-verification/verifier.mjs";
+
+test("both Rust workers are explicit locked repository claims exercised by CI", async () => {
+  const manifest = JSON.parse(await readFile("config/repository-verification.json", "utf8"));
+  const workflow = await readFile(".github/workflows/ci.yml", "utf8");
+  for (const [id, manifestPath, target] of [
+    ["workers.simops-generator.tests", "workers/simops-generator/Cargo.toml", "/tmp/radiant-cargo-target/simops-generator"],
+    ["workers.scada-standins.tests", "workers/scada-standins/Cargo.toml", "/tmp/radiant-cargo-target/scada-standins"],
+  ]) {
+    const claim = manifest.claims.find((candidate) => candidate.id === id);
+    assert.deepEqual(claim?.evidence.command, ["cargo", "test", "--locked", "--manifest-path", manifestPath]);
+    assert.equal(claim?.evidence.env.CARGO_TARGET_DIR, target);
+  }
+  assert.match(workflow, /uses: dtolnay\/rust-toolchain@stable/);
+});
 
 test("structured JSON evidence is parsed and checked by path", async (t) => {
   const root = await temporaryRepository(t);
