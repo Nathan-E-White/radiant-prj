@@ -299,6 +299,9 @@ impl HttpTarget {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
 
     #[test]
     fn parses_bounded_reactor_worker_identity() {
@@ -358,5 +361,65 @@ mod tests {
             max_frames: Some(1),
         };
         assert!(resident_source_for_config(&config).is_ok());
+    }
+
+    #[test]
+    fn http_publisher_registers_the_source_before_the_first_frame_batch() {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind loopback gateway");
+        let address = listener.local_addr().expect("read loopback address");
+        let gateway = thread::spawn(move || {
+            let mut requests = Vec::new();
+            for _ in 0..2 {
+                let (mut stream, _) = listener.accept().expect("accept worker request");
+                let request = read_http_request(&mut stream);
+                stream
+                    .write_all(
+                        b"HTTP/1.1 202 Accepted\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    )
+                    .expect("accept worker request");
+                requests.push(request);
+            }
+            requests
+        });
+        let base_url = format!("http://{address}");
+        let mut publisher = HttpPublisher {
+            base_url: &base_url,
+            token: "loopback-token",
+        };
+        let mut source =
+            ResidentSource::static_source_bounded("src-loopback", 1).expect("configure source");
+        source
+            .run(&mut publisher, &mut SystemClock, &mut StopAfterFirstBatch)
+            .expect("emit source");
+        let requests = gateway.join().expect("join loopback gateway");
+        assert!(requests[0].starts_with("POST /internal/scada/sources HTTP/1.1"));
+        assert!(requests[0].contains("\"sourceId\":\"src-loopback\""));
+        assert!(requests[1].starts_with("POST /internal/scada/telemetry HTTP/1.1"));
+        assert!(requests[1].contains("\"sourceId\":\"src-loopback\""));
+        assert!(requests[1].contains("\"valueBasis\":\"measured\""));
+    }
+
+    fn read_http_request(stream: &mut TcpStream) -> String {
+        let mut request = Vec::new();
+        let mut chunk = [0; 1024];
+        let header_end = loop {
+            let received = stream.read(&mut chunk).expect("read worker request");
+            request.extend_from_slice(&chunk[..received]);
+            if let Some(end) = request.windows(4).position(|window| window == b"\r\n\r\n") {
+                break end + 4;
+            }
+        };
+        let headers = String::from_utf8_lossy(&request[..header_end]);
+        let body_length = headers
+            .lines()
+            .find_map(|line| line.strip_prefix("Content-Length: "))
+            .expect("content length")
+            .parse::<usize>()
+            .expect("numeric content length");
+        while request.len() < header_end + body_length {
+            let received = stream.read(&mut chunk).expect("read worker body");
+            request.extend_from_slice(&chunk[..received]);
+        }
+        String::from_utf8(request).expect("utf8 request")
     }
 }
