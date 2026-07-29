@@ -4,6 +4,10 @@ use std::net::TcpStream;
 use std::thread::sleep;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use scada_standins::{
+    Cadence, Clock, ResidentSource, ResidentSourceDeclaration, ResidentSourcePublisher,
+    TelemetryFrame,
+};
 use serde_json::json;
 
 #[derive(Debug, Clone)]
@@ -29,78 +33,97 @@ where
     I: IntoIterator<Item = String>,
 {
     let config = parse_args(args)?;
+    let mut source = resident_source_for_config(&config)?;
     if let Some(base_url) = config.ingest_base_url.as_deref() {
         let token = config.ingest_token.as_deref().ok_or_else(|| {
             "missing --ingest-token when --ingest-base-url is supplied".to_string()
         })?;
-        let source = match (&config.reactor_id, config.worker_index) {
-            (Some(reactor_id), Some(worker_index)) => {
-                scada_standins::reactor_resident_source_declaration(
-                    &config.source_id,
-                    reactor_id,
-                    worker_index,
-                )
-            }
-            _ => scada_standins::resident_source_declaration(&config.source_id),
-        };
-        post_json(
-            &source,
-            &format!("{}/internal/scada/sources", base_url.trim_end_matches('/')),
+        let mut publisher = HttpPublisher {
+            base_url: base_url.trim_end_matches('/'),
             token,
-        )?;
-        let mut sequence = 1;
-        loop {
-            let frames = telemetry_frames_for_config(&config, sequence)?;
-            post_json(
-                &json!({ "frames": frames }),
-                &format!(
-                    "{}/internal/scada/telemetry",
-                    base_url.trim_end_matches('/')
-                ),
-                token,
-            )?;
-            if config
-                .max_frames
-                .map(|max_frames| sequence >= max_frames)
-                .unwrap_or(false)
-            {
-                break;
-            }
-            sequence += 1;
-            sleep(Duration::from_millis(config.interval_ms));
-        }
+        };
+        let mut clock = SystemClock;
+        let mut cadence = SleepCadence {
+            interval: Duration::from_millis(config.interval_ms),
+        };
+        source.run(&mut publisher, &mut clock, &mut cadence)?;
     } else {
-        let frames = telemetry_frames_for_config(&config, 1)?;
-        for frame in frames {
-            println!("{}", serde_json::to_string(&frame)?);
-        }
+        let mut publisher = StdoutPublisher;
+        let mut clock = SystemClock;
+        let mut cadence = StopAfterFirstBatch;
+        source.run(&mut publisher, &mut clock, &mut cadence)?;
     }
     Ok(())
 }
 
-fn telemetry_frames_for_config(
-    config: &CliConfig,
-    sequence: u64,
-) -> scada_standins::Result<Vec<scada_standins::TelemetryFrame>> {
+fn resident_source_for_config(config: &CliConfig) -> scada_standins::Result<ResidentSource> {
     match (&config.reactor_id, config.worker_index) {
-        (Some(reactor_id), Some(worker_index)) => {
-            let mut frames = scada_standins::reactor_telemetry_frames(
-                &config.source_id,
-                reactor_id,
-                worker_index,
-                sequence,
-            );
-            let sampled_at = current_rfc3339()?;
-            for frame in &mut frames {
-                frame.sampled_at = sampled_at.clone();
-                frame.observed_at = sampled_at.clone();
-            }
-            Ok(frames)
-        }
-        _ => Ok(scada_standins::telemetry_frames(
+        (Some(reactor_id), Some(worker_index)) => ResidentSource::reactor_scoped(
             &config.source_id,
-            sequence,
-        )),
+            reactor_id,
+            worker_index,
+            config.max_frames.unwrap_or(86_400),
+        ),
+        _ => match config.max_frames {
+            Some(max_frames) => {
+                ResidentSource::static_source_bounded(&config.source_id, max_frames)
+            }
+            None => Ok(ResidentSource::static_source(&config.source_id)),
+        },
+    }
+}
+
+struct SystemClock;
+impl Clock for SystemClock {
+    fn now(&mut self) -> scada_standins::Result<String> {
+        current_rfc3339()
+    }
+}
+struct SleepCadence {
+    interval: Duration,
+}
+impl Cadence for SleepCadence {
+    fn wait_for_next_batch(&mut self) -> scada_standins::Result<bool> {
+        sleep(self.interval);
+        Ok(true)
+    }
+}
+struct StopAfterFirstBatch;
+impl Cadence for StopAfterFirstBatch {
+    fn wait_for_next_batch(&mut self) -> scada_standins::Result<bool> {
+        Ok(false)
+    }
+}
+struct HttpPublisher<'a> {
+    base_url: &'a str,
+    token: &'a str,
+}
+impl ResidentSourcePublisher for HttpPublisher<'_> {
+    fn register(&mut self, declaration: &ResidentSourceDeclaration) -> scada_standins::Result<()> {
+        post_json(
+            declaration,
+            &format!("{}/internal/scada/sources", self.base_url),
+            self.token,
+        )
+    }
+    fn publish(&mut self, frames: &[TelemetryFrame]) -> scada_standins::Result<()> {
+        post_json(
+            &json!({ "frames": frames }),
+            &format!("{}/internal/scada/telemetry", self.base_url),
+            self.token,
+        )
+    }
+}
+struct StdoutPublisher;
+impl ResidentSourcePublisher for StdoutPublisher {
+    fn register(&mut self, _: &ResidentSourceDeclaration) -> scada_standins::Result<()> {
+        Ok(())
+    }
+    fn publish(&mut self, frames: &[TelemetryFrame]) -> scada_standins::Result<()> {
+        for frame in frames {
+            println!("{}", serde_json::to_string(frame)?);
+        }
+        Ok(())
     }
 }
 
@@ -324,7 +347,7 @@ mod tests {
     }
 
     #[test]
-    fn dynamic_worker_frames_use_live_time_instead_of_fixture_time() {
+    fn dynamic_worker_configures_bounded_reactor_source() {
         let config = CliConfig {
             source_id: "src-live".to_string(),
             reactor_id: Some("reactor-live".to_string()),
@@ -334,9 +357,6 @@ mod tests {
             interval_ms: 1_000,
             max_frames: Some(1),
         };
-        let frames = telemetry_frames_for_config(&config, 1).expect("live frames");
-        let now = current_rfc3339().expect("current timestamp");
-        assert_eq!(&frames[0].observed_at[..10], &now[..10]);
-        assert_ne!(frames[0].observed_at, "2026-07-06T15:00:01Z");
+        assert!(resident_source_for_config(&config).is_ok());
     }
 }

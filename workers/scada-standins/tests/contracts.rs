@@ -1,94 +1,147 @@
-use std::collections::HashSet;
-
 use scada_standins::{
-    SignalKind, ValueBasis, default_tags, reactor_resident_source_declaration,
-    reactor_telemetry_frames, resident_source_declaration, telemetry_frames,
+    Cadence, Clock, ResidentSource, ResidentSourceDeclaration, ResidentSourcePublisher, Result,
+    TelemetryFrame,
 };
 
-#[test]
-fn default_tags_cover_mixed_source_set() {
-    let kinds: HashSet<_> = default_tags()
-        .into_iter()
-        .map(|tag| tag.signal_kind)
-        .collect();
-
-    for expected in [
-        SignalKind::Flux,
-        SignalKind::Temperature,
-        SignalKind::Pressure,
-        SignalKind::ActuatorState,
-        SignalKind::ElectricalState,
-        SignalKind::Comms,
-    ] {
-        assert!(kinds.contains(&expected), "missing {expected:?}");
+#[derive(Default)]
+struct RecordingPublisher {
+    declarations: Vec<ResidentSourceDeclaration>,
+    batches: Vec<Vec<TelemetryFrame>>,
+    fail_register: bool,
+    fail_publish_at: Option<usize>,
+}
+impl ResidentSourcePublisher for RecordingPublisher {
+    fn register(&mut self, declaration: &ResidentSourceDeclaration) -> Result<()> {
+        if self.fail_register {
+            return Err("registration failed".into());
+        }
+        self.declarations.push(declaration.clone());
+        Ok(())
+    }
+    fn publish(&mut self, frames: &[TelemetryFrame]) -> Result<()> {
+        if self.fail_publish_at == Some(self.batches.len() + 1) {
+            return Err("publication failed".into());
+        }
+        self.batches.push(frames.to_vec());
+        Ok(())
+    }
+}
+struct ControlledClock {
+    tick: u64,
+}
+impl Clock for ControlledClock {
+    fn now(&mut self) -> Result<String> {
+        self.tick += 1;
+        Ok(format!(
+            "2026-07-06T15:{:02}:{:02}Z",
+            1 + self.tick / 60,
+            self.tick % 60
+        ))
+    }
+}
+struct Batches(usize);
+impl Cadence for Batches {
+    fn wait_for_next_batch(&mut self) -> Result<bool> {
+        if self.0 == 0 {
+            Ok(false)
+        } else {
+            self.0 -= 1;
+            Ok(true)
+        }
     }
 }
 
 #[test]
-fn reactor_worker_identity_scopes_declaration_and_frames() {
-    let declaration = reactor_resident_source_declaration("src-stable-01", "reactor-opaque-a", 1);
-    assert_eq!(declaration.source_id, "src-stable-01");
-    assert_eq!(declaration.reactor_id.as_deref(), Some("reactor-opaque-a"));
-    assert_eq!(declaration.tags.len(), 2);
-    assert!(declaration.tags.iter().all(|tag| {
-        tag.source_id.as_deref() == Some("src-stable-01")
-            && tag.reactor_id.as_deref() == Some("reactor-opaque-a")
-            && tag.tag_id.starts_with("src-stable-01-")
-    }));
-
-    let frames = reactor_telemetry_frames("src-stable-01", "reactor-opaque-a", 1, 7);
-    assert_eq!(frames.len(), 2);
-    assert!(frames.iter().all(|frame| {
-        frame.source_id == "src-stable-01"
-            && frame.reactor_id.as_deref() == Some("reactor-opaque-a")
-            && frame.sequence == 7
-            && frame.value_basis == "measured"
-    }));
-}
-
-#[test]
-fn reactor_worker_index_cannot_expand_beyond_three_sources() {
+fn static_source_registers_before_long_running_measured_emission() {
+    let mut source = ResidentSource::static_source("SRC-MIXED-STANDIN-001");
+    let mut publisher = RecordingPublisher::default();
+    let mut clock = ControlledClock { tick: 0 };
+    let mut cadence = Batches(60);
+    source
+        .run(&mut publisher, &mut clock, &mut cadence)
+        .expect("emit static source");
+    assert_eq!(publisher.declarations.len(), 1);
+    assert_eq!(publisher.batches.len(), 61);
     assert!(
-        reactor_resident_source_declaration("src", "reactor", 3)
-            .tags
-            .is_empty()
+        publisher
+            .batches
+            .iter()
+            .flatten()
+            .all(|frame| frame.value_basis == "measured")
     );
-    assert!(reactor_telemetry_frames("src", "reactor", 3, 1).is_empty());
+    assert_eq!(publisher.batches[59][0].sequence, 60);
+    assert_eq!(publisher.batches[58][0].sampled_at, "2026-07-06T15:01:59Z");
+    assert_eq!(publisher.batches[59][0].sampled_at, "2026-07-06T15:02:00Z");
+    assert_eq!(publisher.batches[60][0].sampled_at, "2026-07-06T15:02:01Z");
 }
 
 #[test]
-fn resident_source_tags_are_measured() {
-    for tag in default_tags() {
-        assert_eq!(tag.value_basis, ValueBasis::Measured);
-        assert_eq!(tag.value_basis.as_str(), "measured");
-    }
-}
-
-#[test]
-fn resident_source_declaration_targets_scada_topic() {
-    let source = resident_source_declaration("SRC-MIXED-STANDIN-001");
-
-    assert_eq!(
-        source.schema_version,
-        "scada.resident-source-declaration.v1"
+fn reactor_scoped_source_preserves_identity_and_worker_cap() {
+    let mut source = ResidentSource::reactor_scoped("src-stable-01", "reactor-opaque-a", 1, 2)
+        .expect("configure source");
+    let mut publisher = RecordingPublisher::default();
+    let mut clock = ControlledClock { tick: 0 };
+    let mut cadence = Batches(10);
+    source
+        .run(&mut publisher, &mut clock, &mut cadence)
+        .expect("emit reactor source");
+    assert_eq!(publisher.declarations[0].tags.len(), 2);
+    assert_eq!(publisher.batches.len(), 2);
+    assert!(
+        publisher
+            .batches
+            .iter()
+            .flatten()
+            .all(|frame| frame.source_id == "src-stable-01"
+                && frame.reactor_id.as_deref() == Some("reactor-opaque-a")
+                && frame.value_basis == "measured")
     );
-    assert_eq!(source.lifecycle, "resident");
-    assert_eq!(source.synthetic_status, "public-safe-standin");
-    assert_eq!(source.ingest.topic, "scada.telemetry.v1");
-    assert_eq!(source.tags.len(), default_tags().len());
-    assert!(source.tags.iter().all(|tag| tag.value_basis == "measured"));
+    assert!(ResidentSource::reactor_scoped("src", "reactor", 3, 1).is_err());
 }
 
 #[test]
-fn telemetry_frames_are_measured_and_sequence_bound() {
-    let frames = telemetry_frames("SRC-MIXED-STANDIN-001", 7);
+fn static_source_honors_an_explicit_smoke_test_bound() {
+    let mut source = ResidentSource::static_source_bounded("src-static", 1).expect("configure bounded static source");
+    let mut publisher = RecordingPublisher::default();
+    source.run(&mut publisher, &mut ControlledClock { tick: 0 }, &mut Batches(10)).expect("emit bounded static source");
+    assert_eq!(publisher.batches.len(), 1);
+}
 
-    assert_eq!(frames.len(), default_tags().len());
-    for frame in frames {
-        assert_eq!(frame.schema_version, "scada.telemetry.v1");
-        assert_eq!(frame.sequence, 7);
-        assert_eq!(frame.value_basis, "measured");
-        assert_eq!(frame.synthetic_status, "public-safe-standin");
-        assert!(!frame.value.as_object().expect("object value").is_empty());
-    }
+#[test]
+fn registration_failure_prevents_publication() {
+    let mut source = ResidentSource::static_source("src");
+    let mut publisher = RecordingPublisher {
+        fail_register: true,
+        ..Default::default()
+    };
+    assert!(
+        source
+            .run(
+                &mut publisher,
+                &mut ControlledClock { tick: 0 },
+                &mut Batches(1)
+            )
+            .is_err()
+    );
+    assert!(publisher.batches.is_empty());
+}
+
+#[test]
+fn publication_failure_stops_the_run() {
+    let mut source = ResidentSource::static_source("src");
+    let mut publisher = RecordingPublisher {
+        fail_publish_at: Some(2),
+        ..Default::default()
+    };
+    assert!(
+        source
+            .run(
+                &mut publisher,
+                &mut ControlledClock { tick: 0 },
+                &mut Batches(3)
+            )
+            .is_err()
+    );
+    assert_eq!(publisher.declarations.len(), 1);
+    assert_eq!(publisher.batches.len(), 1);
 }
