@@ -545,6 +545,16 @@
       "expected": "schema, example, lineage, Value Basis, and projection semantic checks pass"
     },
     {
+      "id": "simulator-workbench.snapshot-smoke-contract",
+      "title": "Simulator Workbench smoke accepts only one coherent Snapshot envelope",
+      "evidence": {
+        "adapter": "command",
+        "source": "scripts/workbench-dataflow-json.mjs and its Node tests",
+        "command": ["node", "--test", "scripts/workbench-dataflow-json.node-test.mjs"]
+      },
+      "expected": "the dataflow smoke accepts a complete generation-matched Snapshot and rejects partial or generation-mismatched envelopes"
+    },
+    {
       "id": "simops.runtime-closeout-traceability",
       "title": "SimOps runtime closeout remains traceable in controlled documents",
       "evidence": {
@@ -584,10 +594,12 @@
           "docs/adr/adr-0010.md",
           "docs/adr/adr-0011.md",
           "docs/adr/adr-0012.md",
+          "docs/adr/adr-0013.md",
           "docs/design/repository-verification-module.md",
           "docs/design/browser-delivery-verification-module.md",
           "docs/design/docker-packaging-delivery-verification-module.md",
           "docs/design/pipeline-policy-module.md",
+          "docs/design/workbench-snapshot-read-and-lifecycle-policy.md",
           "docs/verification/capability-reconciliation-baseline.md"
         ]
       },

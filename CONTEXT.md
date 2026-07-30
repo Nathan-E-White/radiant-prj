@@ -135,8 +135,16 @@ A dry-run-first clearing of accepted local-demo runtime records that preserves s
 _Avoid_: Environment teardown, volume pruning, factory reset
 
 **Workbench Snapshot**:
-One coherent read generation of independently labeled Measured State, Simulated Result State, Twin State, and Lineage returned through the read-only Workbench interface. Live, stale, recovering, and fixture Snapshots must never be field-wise mixed.
+One coherent read generation of independently labeled Measured State, Simulated Result State, Twin State, and Lineage returned through the read-only Workbench interface. Reading it does not reconcile retention or otherwise mutate lifecycle state; live, stale, recovering, and fixture Snapshots must never be field-wise mixed.
 _Avoid_: Best-effort aggregate, mixed-generation response, fixture patch
+
+**Lifecycle Reconciliation**:
+The scheduled fulfilment of distinct expiry and retention obligations for Reactor Telemetry Workers, Artifact Forge records, and dynamic Measured State. It is independent of a Workbench Snapshot read and retains each obligation's own outcome.
+_Avoid_: Read-triggered cleanup, aggregate-only cleanup, request-path garbage collection
+
+**Lifecycle Health**:
+The operational truth of whether the configured Lifecycle Reconciliation obligations have completed successfully and remain within their required interval. It is distinct from process liveness and determines whether the gateway is ready to serve its declared lifecycle policy.
+_Avoid_: Liveness, absence of requests, aggregate error string
 
 **Trust Lens**:
 A focused Simulator Workbench review mode that keeps the selected value's Value Basis, freshness, confidence, Workbench Snapshot generation, and Lineage visible together.

@@ -494,7 +494,7 @@ type recordingArtifactForgeSessionReconciler struct {
 	err   error
 }
 
-func (r *recordingArtifactForgeSessionReconciler) ReconcileExpired() (int64, error) {
+func (r *recordingArtifactForgeSessionReconciler) ReconcileExpired(context.Context) (int64, error) {
 	if r.calls != nil {
 		*r.calls = append(*r.calls, "artifact-forge")
 	}
@@ -506,7 +506,7 @@ type recordingDynamicMeasuredRetentionReconciler struct {
 	err   error
 }
 
-func (r *recordingDynamicMeasuredRetentionReconciler) ReconcileDynamicMeasuredRetention() error {
+func (r *recordingDynamicMeasuredRetentionReconciler) ReconcileDynamicMeasuredRetention(context.Context) error {
 	if r.calls != nil {
 		*r.calls = append(*r.calls, "measured-retention")
 	}

@@ -138,7 +138,7 @@ func TestPostgresArtifactForgeLedgerRecoversAssociationAndProtectsAppliedOutcome
 	if err := store.Save(final); err != nil {
 		t.Fatalf("age retained ledger: %v", err)
 	}
-	if removed, err := store.PruneExpired(now); err != nil || removed != 1 {
+	if removed, err := store.PruneExpired(context.Background(), now); err != nil || removed != 1 {
 		t.Fatalf("prune expired ledger removed=%d err=%v", removed, err)
 	}
 	if _, err := store.Find(record.GameSessionID, record.IdempotencyKey); !errors.Is(err, ErrArtifactForgeNotFound) {
