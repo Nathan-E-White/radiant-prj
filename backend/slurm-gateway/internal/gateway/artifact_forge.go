@@ -282,13 +282,7 @@ func (m *ArtifactForgeManager) Request(ctx context.Context, request ArtifactForg
 		if existing.ReactorID != request.ReactorID || existing.SimulationJobID != request.SimulationJobID || existing.SimulationRecipe != request.SimulationRecipe {
 			return ArtifactForgeRecord{}, false, fmt.Errorf("idempotency key is already associated with a different Artifact Forge request")
 		}
-		if existing.Outcome != nil || existing.Decision == ArtifactForgeIntentRejected {
-			return existing, false, nil
-		}
-		if existing.RunID == "" {
-			return m.associateRun(ctx, existing, false)
-		}
-		return m.evaluate(existing)
+		return m.resume(ctx, existing, false)
 	}
 	if !errors.Is(err, ErrArtifactForgeNotFound) {
 		return ArtifactForgeRecord{}, false, err
@@ -337,6 +331,35 @@ func (m *ArtifactForgeManager) Request(ctx context.Context, request ArtifactForg
 		return ArtifactForgeRecord{}, false, err
 	}
 	return m.associateRun(ctx, record, true)
+}
+
+// Recover resumes one persisted Artifact Forge request using its durable ledger
+// identity. Callers do not need to retain or reconstruct the original request.
+func (m *ArtifactForgeManager) Recover(ctx context.Context, gameSessionID, idempotencyKey string) (ArtifactForgeRecord, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	gameSessionID = strings.TrimSpace(gameSessionID)
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if !runIDPattern.MatchString(gameSessionID) || !runIDPattern.MatchString(idempotencyKey) {
+		return ArtifactForgeRecord{}, fmt.Errorf("gameSessionId and idempotencyKey are required and must be opaque stable identifiers")
+	}
+
+	record, err := m.store.Find(gameSessionID, idempotencyKey)
+	if err != nil {
+		return ArtifactForgeRecord{}, err
+	}
+	recovered, _, err := m.resume(ctx, record, false)
+	return recovered, err
+}
+
+func (m *ArtifactForgeManager) resume(ctx context.Context, record ArtifactForgeRecord, created bool) (ArtifactForgeRecord, bool, error) {
+	if record.Outcome != nil || record.Decision == ArtifactForgeIntentRejected {
+		return record, false, nil
+	}
+	if record.RunID == "" {
+		return m.associateRun(ctx, record, created)
+	}
+	return m.evaluate(record)
 }
 
 func (m *ArtifactForgeManager) ReconcileExpired() (int64, error) {
