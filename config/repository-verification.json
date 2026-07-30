@@ -59,6 +59,16 @@
       "expected": "type checking, the complete frontend suite, one production build, and entry/lazy/raster/total output budgets pass"
     },
     {
+      "id": "storybook.catalog",
+      "title": "Storybook compiles the production component catalog and retains Workbench presentation variants",
+      "evidence": {
+        "adapter": "command",
+        "source": "all tracked Storybook stories and fixtures",
+        "command": ["bun", "run", "storybook:verify"]
+      },
+      "expected": "the production Storybook build contains compiled Simulation Health and Simulator Workbench stories"
+    },
+    {
       "id": "artifact-forge.behavior",
       "title": "Artifact Forge eligibility, recovery, and outcome mapping remain executable behavior",
       "evidence": {
