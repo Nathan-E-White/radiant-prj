@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -167,9 +168,10 @@ func (s *PostgresArtifactForgeStore) TouchSession(gameSessionID string, activity
 	return nil
 }
 
-func (s *PostgresArtifactForgeStore) PruneExpired(now time.Time) (int64, error) {
-	ctx, cancel := simopsSQLContext()
-	defer cancel()
+func (s *PostgresArtifactForgeStore) PruneExpired(ctx context.Context, now time.Time) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	result, err := s.db.ExecContext(ctx, `DELETE FROM artifact_forge_requests WHERE retain_until <= $1`, now.UTC())
 	if err != nil {
 		return 0, err

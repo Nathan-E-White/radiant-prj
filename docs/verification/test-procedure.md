@@ -25,13 +25,17 @@ This procedure defines the standard local test sequence for the v2 baseline.
 git status --short --branch
 bun run typecheck
 bun run test
+bun run repository:manifest:test
 bun run repository:verify:test
 bun run repository:verify
+bun run capability:ledger:manifest:test
+bun run capability:ledger:test
 bun run validate:fixtures
 bun run evidence:generate
 bun run quality:check
 bun run simops:contract:check
 bun run simulator-workbench:contract:check
+bun run simulator-workbench:dataflow:json:test
 bun run scada:standins:test
 bun run simops:generator:test
 bun run simulator-workbench:dataflow:smoke

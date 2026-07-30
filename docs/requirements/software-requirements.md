@@ -31,6 +31,7 @@ This document defines software and deployment requirements for the interview dem
 | SW-017 | The Simulation Ops Docker worker launcher shall use a Docker SDK runtime adapter that consumes run connection profiles, preserves run/worker labels and metadata, and stops only matching run-scoped worker containers. | Local Docker/OrbStack startup must avoid shell-command assembly while keeping the control-plane contract and cleanup targeting traceable. | Test | Verified |
 | SW-018 | The Simulation Ops runtime adapter shall support run synchronization that reports runtime-neutral observed worker lifecycle separately from worker telemetry, artifact status, and data-plane health. | Runtime resource observation needs a narrow control-plane contract without turning telemetry, Redpanda, Postgres, or Iceberg status into worker lifecycle. | Test | Verified |
 | SW-024 | The browser shall consume one authoritative Workbench Snapshot session that owns acceptance, generation monotonicity, cancellation, initial fixture fallback, stale recovery, projection, selection, and Simulation Health derivation while preserving the read-only credential boundary. | Visible Workbench state must never combine generations or live Snapshot truth with fixture-derived health. | Test and demonstration | Verified |
+| SW-025 | The gateway shall expose only the coherent, non-mutating Workbench Snapshot for browser reads and shall reconcile dynamic retention through independently observable lifecycle work. | Browser coherence and operational cleanup cannot share a mutable field-read path; liveness, readiness, cancellation, and named lifecycle outcomes must remain distinguishable. | Test and demonstration | Accepted design; implementation evidence pending |
 
 ## Interface Summary
 
@@ -43,6 +44,7 @@ This document defines software and deployment requirements for the interview dem
 - `bun run backend:test` runs the Go Slurm gateway handler and spooler tests.
 - `bun run simops:contract:check` validates Simulation Ops schemas and example telemetry.
 - `bun run simulator-workbench:dataflow:smoke` proves resident measured, operational telemetry, simulated result, and imputed twin units through the Status Workbench backend dataflow.
+- `bun run simulator-workbench:dataflow:json:test` proves that the smoke parser accepts one complete, generation-matched Snapshot and rejects partial or mismatched envelopes.
 - `bun run simops:generator:test` runs the Rust Simulation Ops generator tests.
 
 ## Controlled Inputs

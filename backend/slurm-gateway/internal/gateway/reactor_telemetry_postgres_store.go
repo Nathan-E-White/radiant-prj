@@ -100,6 +100,37 @@ func (s *PostgresReactorTelemetryStore) ListWorkerSets(gameSessionID string) ([]
 	return sets, rows.Err()
 }
 
+func (s *PostgresReactorTelemetryStore) ListWorkerSetsContext(ctx context.Context, gameSessionID string) ([]ReactorTelemetryWorkerSet, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	query := `SELECT worker_set FROM reactor_telemetry_worker_sets`
+	args := []any{}
+	if gameSessionID != "" {
+		query += ` WHERE game_session_id = $1`
+		args = append(args, gameSessionID)
+	}
+	query += ` ORDER BY game_session_id, reactor_id`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	sets := []ReactorTelemetryWorkerSet{}
+	for rows.Next() {
+		var raw []byte
+		if err := rows.Scan(&raw); err != nil {
+			return nil, err
+		}
+		var set ReactorTelemetryWorkerSet
+		if err := json.Unmarshal(raw, &set); err != nil {
+			return nil, err
+		}
+		sets = append(sets, set)
+	}
+	return sets, rows.Err()
+}
+
 func (s *PostgresReactorTelemetryStore) SaveWorkerSet(set ReactorTelemetryWorkerSet) error {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
@@ -117,6 +148,19 @@ func (s *PostgresReactorTelemetryStore) SaveWorkerSet(set ReactorTelemetryWorker
 		    worker_set = EXCLUDED.worker_set,
 		    updated_at = EXCLUDED.updated_at
 	`, set.GameSessionID, set.ReactorID, set.RegisterIdempotency, raw, set.UpdatedAt)
+	return err
+}
+
+func (s *PostgresReactorTelemetryStore) SaveWorkerSetContext(ctx context.Context, set ReactorTelemetryWorkerSet) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	set = redactTelemetryCredentials(set)
+	raw, err := json.Marshal(set)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `INSERT INTO reactor_telemetry_worker_sets (game_session_id, reactor_id, register_idempotency_key, worker_set, updated_at) VALUES ($1,$2,$3,$4::jsonb,$5) ON CONFLICT (game_session_id, reactor_id) DO UPDATE SET register_idempotency_key = EXCLUDED.register_idempotency_key, worker_set = EXCLUDED.worker_set, updated_at = EXCLUDED.updated_at`, set.GameSessionID, set.ReactorID, set.RegisterIdempotency, raw, set.UpdatedAt)
 	return err
 }
 
