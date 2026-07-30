@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"testing"
 	"time"
 )
@@ -25,7 +26,9 @@ func (focusedTwinProjectionStore) SaveTwinStateProjection(string, TwinStateProje
 
 type focusedMeasuredRetentionStore struct{}
 
-func (focusedMeasuredRetentionStore) PruneDynamicMeasured(time.Time) error { return nil }
+func (focusedMeasuredRetentionStore) PruneDynamicMeasured(context.Context, time.Time) error {
+	return nil
+}
 
 func TestWorkbenchPersistenceSeamsRequireOnlyOwnedBehavior(t *testing.T) {
 	var _ WorkbenchScadaProjectionPersistence = focusedScadaProjectionStore{}

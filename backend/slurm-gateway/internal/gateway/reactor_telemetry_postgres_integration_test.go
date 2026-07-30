@@ -83,9 +83,24 @@ func TestPostgresReactorTelemetryMeasuredRetentionPreservesSourceDeclaration(t *
 	}
 	controller.now = func() time.Time { return now }
 	controller.dynamicMeasuredRetention = time.Hour
-	measured, err := controller.Measured()
-	if err != nil || len(measured) != 0 {
-		t.Fatalf("expired dynamic measured state remained visible: %#v err=%v", measured, err)
+	before, err := store.Snapshot()
+	if err != nil {
+		t.Fatalf("read pre-reconciliation Snapshot: %v", err)
+	}
+	snapshot, err := controller.Snapshot()
+	if err != nil || len(snapshot.Measured) != len(source.Tags) {
+		t.Fatalf("Snapshot unexpectedly reconciled dynamic measured state: %#v err=%v", snapshot.Measured, err)
+	}
+	afterRead, err := store.Snapshot()
+	if err != nil || afterRead.Generation != before.Generation {
+		t.Fatalf("Snapshot changed generation: before=%d after=%#v err=%v", before.Generation, afterRead, err)
+	}
+	if err := controller.ReconcileDynamicMeasuredRetention(context.Background()); err != nil {
+		t.Fatalf("reconcile retention: %v", err)
+	}
+	afterReconcile, err := controller.Snapshot()
+	if err != nil || len(afterReconcile.Measured) != 0 || afterReconcile.Generation <= before.Generation {
+		t.Fatalf("reconciliation did not remove dynamic measured state: %#v err=%v", afterReconcile, err)
 	}
 	if _, err := store.GetResidentTag(source.Tags[0].TagID); err != nil {
 		t.Fatalf("retention removed protected source declaration: %v", err)

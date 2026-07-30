@@ -147,7 +147,7 @@ type ArtifactForgeStore interface {
 	List(gameSessionID string) ([]ArtifactForgeRecord, error)
 	Save(record ArtifactForgeRecord) error
 	TouchSession(gameSessionID string, activityAt time.Time) error
-	PruneExpired(now time.Time) (int64, error)
+	PruneExpired(ctx context.Context, now time.Time) (int64, error)
 }
 
 type InMemoryArtifactForgeStore struct {
@@ -219,7 +219,10 @@ func (s *InMemoryArtifactForgeStore) TouchSession(gameSessionID string, activity
 	return nil
 }
 
-func (s *InMemoryArtifactForgeStore) PruneExpired(now time.Time) (int64, error) {
+func (s *InMemoryArtifactForgeStore) PruneExpired(ctx context.Context, now time.Time) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	var removed int64
@@ -362,8 +365,11 @@ func (m *ArtifactForgeManager) resume(ctx context.Context, record ArtifactForgeR
 	return m.evaluate(record)
 }
 
-func (m *ArtifactForgeManager) ReconcileExpired() (int64, error) {
-	return m.store.PruneExpired(m.now().UTC())
+func (m *ArtifactForgeManager) ReconcileExpired(ctx context.Context) (int64, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, err
+	}
+	return m.store.PruneExpired(ctx, m.now().UTC())
 }
 
 func (m *ArtifactForgeManager) associateRun(ctx context.Context, record ArtifactForgeRecord, created bool) (ArtifactForgeRecord, bool, error) {

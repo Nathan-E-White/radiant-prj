@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://radiant.local/schemas/simulator-workbench/workbench-snapshot.v1.schema.json",
+  "type": "object",
+  "required": ["generation", "state", "measured", "results", "twin", "lineage"],
+  "properties": {
+    "generation": {"type": "integer", "minimum": 0},
+    "state": {"$ref": "workbench-state.v1.schema.json"},
+    "measured": {"type": "array", "items": {"$ref": "../scada/scada-telemetry.v1.schema.json"}},
+    "results": {"type": "array", "items": {"$ref": "../simulation-ops/simops-result-envelope.v1.schema.json"}},
+    "twin": {"$ref": "../digital-twin/digital-twin-state.v1.schema.json"},
+    "lineage": {"type": "array", "items": {"$ref": "../digital-twin/value-lineage.v1.schema.json"}}
+  },
+  "additionalProperties": false
+}

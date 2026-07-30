@@ -18,6 +18,8 @@ This design records the browser authority that carries one coherent Workbench Sn
 
 `src/domain/simulator-workbench/liveWorkbench.ts` is an adapter. It performs one credential-free `GET /api/simulator-workbench/snapshot`, parses and validates the whole response, and projects that response into a candidate input or a typed read error. It does not export read-state transition or fallback policy.
 
+The envelope is an executable cross-runtime contract, not merely a matching TypeScript shape: schema validation establishes its structure, while shared valid and invalid vectors establish generation, completeness, and cross-field semantic rules. The browser does not compose fallback field reads, and it treats a partial or semantically inconsistent envelope as a failed read.
+
 React subscribes to the session result and forwards its render-ready projection and commands. React owns no refresh timer, accepted-state ref, fallback decision, selection reconciliation, or health animation.
 
 ## State Policy

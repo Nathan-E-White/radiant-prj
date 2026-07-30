@@ -49,6 +49,9 @@
 | ADR-0010 SimOps Control Plane and Runtime Adapter Seam | Software | Accepted |
 | ADR-0011 Data-Plane Storage Authority | Software | Accepted |
 | ADR-0012 Gateway Execution and Credential Authority | Software | Accepted |
+| ADR-0013 Coherent Workbench Snapshot And Lifecycle Reconciliation | Software | Accepted; implementation evidence pending |
+| Workbench Snapshot Read And Lifecycle Policy | Software | Accepted design; implementation evidence pending |
+| Workbench Snapshot And Lifecycle: Primary-Source Research | Software | Research record |
 | Capability Ledger Architecture Selection | Software | Selected design input for Issue #175 |
 | Verification Plan | Quality | Draft for v3.0 review |
 | Test Report Template | Quality | Template |

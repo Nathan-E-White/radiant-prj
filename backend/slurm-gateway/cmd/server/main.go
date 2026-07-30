@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"radiant/slurm-gateway/internal/gateway"
@@ -47,11 +50,25 @@ func main() {
 
 	server := gateway.NewHTTPServer(cfg, app.Handler())
 	if cfg.ReactorTelemetry.Enabled || (cfg.Simops.Enabled && cfg.Workbench.Enabled) {
+		app.EnableLifecycleHealth()
+		lifecycleCtx, stopLifecycle := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		go func() {
+			defer stopLifecycle()
+			ctx, cancel := context.WithTimeout(lifecycleCtx, cfg.RequestTimeout)
+			err := app.ReconcileFleetBoardSessions(ctx)
+			cancel()
+			if err != nil {
+				log.Printf("fleet board initial reconciliation failed: %v", err)
+			}
 			ticker := time.NewTicker(cfg.ReactorTelemetry.ReconcileInterval)
 			defer ticker.Stop()
-			for range ticker.C {
-				ctx, cancel := context.WithTimeout(context.Background(), cfg.RequestTimeout)
+			for {
+				select {
+				case <-lifecycleCtx.Done():
+					return
+				case <-ticker.C:
+				}
+				ctx, cancel := context.WithTimeout(lifecycleCtx, cfg.RequestTimeout)
 				err := app.ReconcileFleetBoardSessions(ctx)
 				cancel()
 				if err != nil {
