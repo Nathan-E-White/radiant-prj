@@ -132,6 +132,24 @@
       "expected": "the production Storybook build contains compiled Simulation Health and Simulator Workbench stories"
     },
     {
+      "id": "verification.module-inventory",
+      "title": "Every first-party module is mapped to repository verification or an owned exclusion",
+      "evidence": { "adapter": "command", "source": "tracked manifests and config/module-inventory.json", "command": ["bun", "run", "module-inventory:verify"] },
+      "expected": "the deterministic tracked-module inventory has no missing, duplicate, or stale mappings"
+    },
+    {
+      "id": "scada.standins-behavior",
+      "title": "SCADA stand-ins compile and pass their Rust module tests",
+      "evidence": { "adapter": "command", "source": "workers/scada-standins/Cargo.toml", "command": ["bun", "run", "scada:standins:test"] },
+      "expected": "the first-party SCADA stand-ins Rust tests pass"
+    },
+    {
+      "id": "simops.generator-behavior",
+      "title": "SimOps generator compiles and passes its Rust module tests",
+      "evidence": { "adapter": "command", "source": "workers/simops-generator/Cargo.toml", "command": ["bun", "run", "simops:generator:test"] },
+      "expected": "the first-party SimOps generator Rust tests pass"
+    },
+    {
       "id": "artifact-forge.behavior",
       "title": "Artifact Forge eligibility, recovery, and outcome mapping remain executable behavior",
       "evidence": {
