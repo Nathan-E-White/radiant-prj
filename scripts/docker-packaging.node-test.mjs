@@ -183,7 +183,8 @@ test("Docker packaging stays narrow, reproducible, and budgeted", () => {
   assert.match(workflow, /DOCKER_BAKE_CACHE_TO_GO_RUNTIME: \$\{\{ github\.ref == 'refs\/heads\/main' && 'type=gha,scope=radiant-go-runtime-main,mode=max,ignore-error=true' \|\| '' \}\}/);
   assert.match(workflow, /DOCKER_PACKAGING_REGISTRY_REUSE: "true"/);
   assert.match(workflow, /DOCKER_PACKAGING_REGISTRY_PUBLISH: "false"/);
-  assert.match(workflow, /run: bun run backend:dataplane:test/);
+  assert.match(workflow, /name: Verify complete Go backend claims/);
+  assert.match(workflow, /--claim backend\.go\.dataplane-iceberg/);
   const publishWorkflow = read(".github/workflows/docker-packaging-publish.yml");
   assert.match(publishWorkflow, /branches:\n      - main/);
   assert.match(publishWorkflow, /packages: write/);
