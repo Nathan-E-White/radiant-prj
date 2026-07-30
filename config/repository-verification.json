@@ -58,6 +58,69 @@
       },
       "expected": "type checking, the complete frontend suite, one production build, and entry/lazy/raster/total output budgets pass"
     },
+    { "id": "operations.fixture-validation", "title": "Repository fixtures have executable validation evidence", "evidence": { "adapter": "command", "source": "scripts/validate-fixtures.mjs", "command": ["node", "scripts/validate-fixtures.mjs"] }, "expected": "fixture validation passes" },
+    { "id": "operations.objective-evidence", "title": "Objective evidence generation is deterministic and leaves no tracked change", "evidence": { "adapter": "command", "source": "scripts/generate-evidence.mjs", "cleanPaths": ["generated/evidence-index.json"], "command": ["node", "scripts/generate-evidence.mjs"] }, "expected": "evidence generation passes without changing generated/evidence-index.json" },
+    { "id": "operations.controlled-documents", "title": "Quality and ADR controlled documents have executable checks", "evidence": { "adapter": "command", "source": "package.json quality check", "command": ["bun", "run", "quality:check"] }, "expected": "controlled quality documentation passes" },
+    { "id": "operations.hygiene-guards", "title": "Storage, cleanup, and size safeguards are executable evidence", "evidence": { "adapter": "command", "source": "scripts/check-hygiene-size.mjs", "command": ["node", "scripts/check-hygiene-size.mjs"] }, "expected": "the repository hygiene size safeguard passes" },
+    { "id": "operations.simops-smoke-json", "title": "Simulation Ops smoke JSON parsing is executable evidence", "evidence": { "adapter": "command", "source": "scripts/simops-smoke-json.node-test.mjs", "command": ["node", "--test", "scripts/simops-smoke-json.node-test.mjs"] }, "expected": "Simulation Ops smoke JSON contract tests pass" },
+    { "id": "operations.simops-runtime-closeout", "title": "Kind smoke and runtime-closeout traceability are executable evidence", "evidence": { "adapter": "command", "source": "scripts/check-simops-runtime-closeout.mjs", "command": ["node", "scripts/check-simops-runtime-closeout.mjs"] }, "expected": "runtime closeout traceability passes" },
+    {
+      "id": "workers.simops-generator.tests",
+      "title": "Simulation Ops generator has locked, worker-scoped Cargo evidence",
+      "evidence": {
+        "adapter": "command",
+        "source": "workers/simops-generator/Cargo.toml",
+        "env": { "CARGO_TARGET_DIR": "/tmp/radiant-cargo-target/simops-generator" },
+        "command": ["cargo", "test", "--locked", "--manifest-path", "workers/simops-generator/Cargo.toml"]
+      },
+      "expected": "the complete Simulation Ops generator Cargo contract passes"
+    },
+    {
+      "id": "workers.scada-standins.tests",
+      "title": "Resident Source worker has locked, worker-scoped Cargo evidence",
+      "evidence": {
+        "adapter": "command",
+        "source": "workers/scada-standins/Cargo.toml",
+        "env": { "CARGO_TARGET_DIR": "/tmp/radiant-cargo-target/scada-standins" },
+        "command": ["cargo", "test", "--locked", "--manifest-path", "workers/scada-standins/Cargo.toml"]
+      },
+      "expected": "the complete Resident Source Cargo contract passes"
+    },
+    {
+      "id": "browser.acceptance",
+      "title": "Browser acceptance covers Fleet Board and Simulator Workbench user journeys",
+      "evidence": {
+        "adapter": "command",
+        "source": "bun run test:e2e",
+        "whenEnvironment": "RUN_BROWSER_ACCEPTANCE",
+        "command": ["bun", "run", "test:e2e"]
+      },
+      "expected": "the tracked Playwright suite starts and stops its server deterministically, reports each failing scenario, and passes Fleet Board and Workbench acceptance behavior"
+    },
+    {
+      "id": "backend.go.default",
+      "title": "The complete supported Go backend passes its default package surface",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/go.mod", "cwd": "backend/slurm-gateway", "whenEnvironment": "RUN_BACKEND_GO_PROFILES", "command": ["go", "test", "./..."] },
+      "expected": "every primary gateway and command package passes its default Go test surface"
+    },
+    {
+      "id": "backend.go.docker-runtime",
+      "title": "Docker Runtime Adapter behavior has explicit Go evidence",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/internal/gateway/*docker*", "cwd": "backend/slurm-gateway", "whenEnvironment": "RUN_BACKEND_GO_PROFILES", "command": ["go", "test", "-tags", "dockerintegration", "./..."] },
+      "expected": "Docker-integration gateway, adapter, and command tests pass"
+    },
+    {
+      "id": "backend.go.dataplane-iceberg",
+      "title": "Kubernetes and dataplane variants have explicit Go evidence",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/internal/gateway/*dataplane*", "cwd": "backend/slurm-gateway", "whenEnvironment": "RUN_BACKEND_GO_PROFILES", "command": ["go", "test", "-p", "2", "-tags", "dataplane,iceberggo", "./..."] },
+      "expected": "dataplane, Kubernetes runtime adapter, and Iceberg build-tag packages pass"
+    },
+    {
+      "id": "backend.go.docker-compatibility-shim",
+      "title": "The local Docker compatibility shim remains executable evidence",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/third_party/docker-compat/go.mod", "cwd": "backend/slurm-gateway/third_party/docker-compat", "whenEnvironment": "RUN_BACKEND_GO_PROFILES", "command": ["go", "test", "./..."] },
+      "expected": "the supported Docker compatibility shim compiles and its tests pass"
+    },
     {
       "id": "storybook.catalog",
       "title": "Storybook compiles the production component catalog and retains Workbench presentation variants",
