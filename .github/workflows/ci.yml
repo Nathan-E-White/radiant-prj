@@ -214,6 +214,8 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/slurm-gateway/go.mod
+          cache: true
+          cache-dependency-path: backend/slurm-gateway/go.sum
 
       - name: Download Reactor Telemetry worker image
         uses: actions/download-artifact@v4
@@ -227,13 +229,16 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Backend gateway tests
-        run: bun run backend:test
+      - name: Verify complete Go backend claims
+        run: >-
+          bun run repository:verify --
+          --claim backend.go.default
+          --claim backend.go.docker-runtime
+          --claim backend.go.dataplane-iceberg
+          --claim backend.go.docker-compatibility-shim
         env:
+          RUN_BACKEND_GO_PROFILES: "true"
           REACTOR_TELEMETRY_TEST_IMAGE: radiant-scada-standins:ci
-
-      - name: Backend dataplane and Iceberg tests
-        run: bun run backend:dataplane:test
 
       - name: Postgres coherent Snapshot tests
         run: bun run backend:snapshot:postgres:test
