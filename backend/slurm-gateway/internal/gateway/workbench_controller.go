@@ -123,33 +123,25 @@ func (c *WorkbenchController) IngestResults(ctx context.Context, run SimopsRunRe
 }
 
 func (c *WorkbenchController) Snapshot() (WorkbenchSnapshot, error) {
-	if err := c.pruneExpiredDynamicMeasured(); err != nil {
+	snapshot, err := c.store.Snapshot()
+	if err != nil {
 		return WorkbenchSnapshot{}, err
 	}
-	return c.store.Snapshot()
-}
-
-func (c *WorkbenchController) Measured() ([]ScadaTelemetryFrame, error) {
-	if err := c.pruneExpiredDynamicMeasured(); err != nil {
-		return nil, err
+	if err := ValidateWorkbenchSnapshot(snapshot); err != nil {
+		return WorkbenchSnapshot{}, err
 	}
-	return c.store.LatestMeasuredFrames(100)
+	return snapshot, nil
 }
 
-func (c *WorkbenchController) pruneExpiredDynamicMeasured() error {
-	return c.store.PruneDynamicMeasured(c.now().UTC().Add(-c.dynamicMeasuredRetention))
+func (c *WorkbenchController) pruneExpiredDynamicMeasured(ctx context.Context) error {
+	return c.store.PruneDynamicMeasured(ctx, c.now().UTC().Add(-c.dynamicMeasuredRetention))
 }
 
-func (c *WorkbenchController) ReconcileDynamicMeasuredRetention() error {
-	return c.pruneExpiredDynamicMeasured()
-}
-
-func (c *WorkbenchController) Twin() (DigitalTwinState, error) {
-	return c.store.CurrentTwinState()
-}
-
-func (c *WorkbenchController) Lineage(valueID string) (DigitalTwinValueLineage, error) {
-	return c.store.LineageForValue(valueID)
+func (c *WorkbenchController) ReconcileDynamicMeasuredRetention(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return c.pruneExpiredDynamicMeasured(ctx)
 }
 
 func (c *WorkbenchController) validateScadaFrame(frame ScadaTelemetryFrame) error {

@@ -4,7 +4,7 @@
 | --- | --- |
 | Document ID | SWB-DATAFLOW-001 |
 | Revision | 0.1 |
-| Status | Implemented backend slice |
+| Status | Implemented backend slice; Issue #135 read-boundary revision accepted, evidence pending |
 | Owner | Software |
 | Baseline | v3.0 candidate |
 
@@ -46,7 +46,7 @@ flowchart LR
   RESULT_TOPIC --> TWIN
   TWIN --> TWIN_STATE["Twin State + Lineage Tables"]
   TWIN --> TWIN_LAKE["Iceberg: digital_twin.state_values"]
-  TWIN_STATE --> API["Read-Only Workbench APIs"]
+  TWIN_STATE --> API["One Read-Only Workbench Snapshot"]
 ```
 
 ## Service Architecture
@@ -85,17 +85,18 @@ flowchart TB
 | `/internal/scada/telemetry` | POST | Ingest measured SCADA stand-in frames |
 | `/internal/simops/runs/{run_id}/ingest` | POST | Ingest operational SimOps telemetry |
 | `/internal/simops/runs/{run_id}/results` | POST | Ingest synthetic simulated result frames |
-| `/api/simulator-workbench/state` | GET | Read compact Workbench state summary |
-| `/api/simulator-workbench/measured` | GET | Read latest measured frames |
-| `/api/simulator-workbench/twin` | GET | Read current twin state |
-| `/api/simulator-workbench/lineage/{value_id}` | GET | Read selected value lineage |
+| `/api/simulator-workbench/snapshot` | GET | Read one generation-bound, non-mutating Workbench Snapshot |
 
 ## Verification
 
-`bun run simulator-workbench:dataflow:smoke` is the objective evidence command for this slice. It starts the local compose platform, sends one bounded SCADA frame batch, launches a `scheduler-drift` run with the `burst-01` worker, and verifies:
+`bun run simulator-workbench:dataflow:smoke` is the objective evidence command for this slice. Its accepted Issue #135 revision must start the local compose platform, send one bounded SCADA frame batch, launch a `scheduler-drift` run with the `burst-01` worker, and verify one Snapshot envelope rather than field reads:
 
 - Redpanda topics exist for SCADA telemetry, SimOps telemetry, SimOps results, and twin state.
 - Postgres projections contain measured, telemetry, simulated result, imputed twin, and lineage rows.
+- One Snapshot carries the expected generation and the measured, result, twin, and lineage projections derived from that same generation.
+- Expiry evidence is produced by a scheduler-driven lifecycle cycle without a Snapshot request causing the mutation.
+
+The route and scheduler evidence in this section is accepted design pending implementation; the existing backend-slice evidence remains separate from the Issue #135 target proof.
 - Iceberg catalog tables exist for `simops.telemetry_frames`, `scada.measured_frames`, `simops.simulated_results`, and `digital_twin.state_values`.
 - MinIO contains Parquet-backed Iceberg data files.
 - Read-only Workbench APIs return measured, simulated, imputed, and lineage data.

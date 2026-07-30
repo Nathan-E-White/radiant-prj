@@ -44,6 +44,7 @@
 | SW-022 | Configuration audit | OpenTofu module and no-mutation preflight cover namespace, gateway/worker service accounts, scoped Job/Pod RBAC, runtime adapter ConfigMap values, and the explicit absence of per-run Jobs | `bun run simops:tofu:check`, `bun run simops:tofu:preflight` | SIMOPS-TOFU-SUBSTRATE-001 |
 | SW-023 | Review and demonstration | Consolidated runtime docs match implemented RunConnectionProfile, Docker SDK, SyncRun, client-go/Kind, OpenTofu, credential and cleanup boundaries; final local commands cover both runtime smokes and no-mutation substrate plan | `bun run simops:runtime:closeout:check`, `bun run backend:test`, elevated `bun run simops:smoke:docker-orbstack`, elevated `bun run simops:smoke:kind -- --timeout 300 --build auto`, `bun run simops:tofu:preflight`, `bun run ci`, `bun run build` | SIMOPS-RUNTIME-CLOSEOUT-001 |
 | SW-024 | Test and demonstration | Authoritative browser Snapshot-session module, deterministic read outcomes, atomic projection/selection/health publication, credential-free HTTP request, fallback/stale/recovery presentation, invalid-selection replacement, unmount cancellation, and health fault containment | `bun run test`, `bun run test:mutation:workbench`, `bunx playwright test tests/e2e/workbench-live-read.spec.ts tests/e2e/workbench-health-chaos.spec.ts`, `bun run ci`, `bun run build` | VVR-WORKBENCH-SNAPSHOT-SESSION-001 |
+| SW-025 | Test and demonstration | Snapshot-only public route, read-only behavior, shared envelope vectors, explicit retention reconciliation, lifecycle startup/outcome/cancellation policy, liveness/readiness separation, and scheduler-driven expiry | `bun run simulator-workbench:dataflow:json:test`; focused gateway/Postgres/Docker tests and dataflow smoke after implementation | ADR-0013; implementation evidence pending |
 
 ## Acceptance Scenario
 
@@ -56,7 +57,7 @@
 7. Run `bun run backend:test` and confirm the Slurm gateway rejects unauthorized requests and records mock jobs.
 8. Create a Simulation Ops run through `POST /api/simops/runs` and confirm the response contains WebTransport subscription metadata, worker tracks, and artifact references.
 9. Run `bun run quality:check` and confirm the v3.0 controlled document and traceability package is complete.
-10. Run `bun run simulator-workbench:dataflow:smoke` and confirm measured, telemetry, simulated, and imputed units reach Redpanda, Postgres, Iceberg, and the read-only Workbench APIs.
+10. Run `bun run simulator-workbench:dataflow:smoke` and confirm measured, telemetry, simulated, and imputed units reach Redpanda, Postgres, Iceberg, and one read-only Workbench Snapshot.
 11. Run the Docker SDK SimOps adapter unit slice and confirm worker launch uses run connection profiles without Docker CLI shell-out.
 12. Run the SyncRun lifecycle unit slice and confirm runtime observations remain separate from telemetry, artifacts, and data-plane health.
 13. Run `bun run simops:smoke:docker-orbstack` and confirm the Docker/OrbStack runtime proof reports API launch, gateway-only ingest, observed Docker lifecycle, zero-TTL success cleanup, failed-run retention with logs, and forced cleanup. Use `SIMOPS_SMOKE_BUILD=always` when the evidence must include a fresh image rebuild.

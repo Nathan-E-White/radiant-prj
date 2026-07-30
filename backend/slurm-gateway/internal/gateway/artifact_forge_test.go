@@ -341,9 +341,19 @@ func TestArtifactForgeRequiresEveryAssociationAndArtifactLineageLink(t *testing.
 				t.Fatal(err)
 			}
 			seedEligibleArtifactForgeProjection(t, workbench, record, request)
-			lineage, err := workbench.LineageForValue(WorkbenchSimulatedMarginValue)
+			snapshot, err := workbench.Snapshot()
 			if err != nil {
 				t.Fatal(err)
+			}
+			var lineage DigitalTwinValueLineage
+			for _, candidate := range snapshot.Lineage {
+				if candidate.ValueID == WorkbenchSimulatedMarginValue {
+					lineage = candidate
+					break
+				}
+			}
+			if lineage.ValueID == "" {
+				t.Fatalf("missing simulated margin lineage in Snapshot: %#v", snapshot.Lineage)
 			}
 			if test.artifact {
 				lineage.Artifacts = nil
@@ -356,7 +366,7 @@ func TestArtifactForgeRequiresEveryAssociationAndArtifactLineageLink(t *testing.
 				}
 				lineage.Inputs = inputs
 			}
-			snapshot, err := workbench.Snapshot()
+			snapshot, err = workbench.Snapshot()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -467,11 +477,11 @@ func TestArtifactForgeExpiresSessionThenRetainsLedgerForSevenDays(t *testing.T) 
 		t.Fatalf("retention metadata=%#v err=%v", record, err)
 	}
 	now = now.Add(7 * 24 * time.Hour)
-	if removed, err := forge.ReconcileExpired(); err != nil || removed != 0 {
+	if removed, err := forge.ReconcileExpired(context.Background()); err != nil || removed != 0 {
 		t.Fatalf("ledger pruned before seven-day post-expiry retention: removed=%d err=%v", removed, err)
 	}
 	now = now.Add(24 * time.Hour)
-	if removed, err := forge.ReconcileExpired(); err != nil || removed != 1 {
+	if removed, err := forge.ReconcileExpired(context.Background()); err != nil || removed != 1 {
 		t.Fatalf("expired retained ledger was not bounded: removed=%d err=%v", removed, err)
 	}
 	if _, err := forge.store.Find(request.GameSessionID, request.IdempotencyKey); !errors.Is(err, ErrArtifactForgeNotFound) {

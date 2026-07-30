@@ -44,4 +44,6 @@ The workflow never tears down the environment, prunes volumes, deletes whole vol
 
 The serializable transaction either commits every target deletion with the next monotonic generation or rolls back to the prior generation. A Workbench Snapshot transaction therefore observes the complete pre-flush generation or the complete post-flush generation, never a field-wise mixture.
 
-After apply, verify that `/api/simulator-workbench/state` reports the new generation and empty projected data. Start the next SimOps Run through the existing API; no schema migration, topic creation, Compose restart, or volume reprovisioning is required.
+After apply, verify that one `/api/simulator-workbench/snapshot` reports the new generation and empty projected collections. Start the next SimOps Run through the existing API; no schema migration, topic creation, Compose restart, or volume reprovisioning is required.
+
+The Snapshot verification is a read-only observation: it must not reconcile dynamic-Measured-State retention or otherwise alter the generation being verified. Retention reconciliation is a separate lifecycle operation with its own health outcome.

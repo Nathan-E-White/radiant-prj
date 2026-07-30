@@ -42,6 +42,7 @@ This document identifies internal and operational interfaces that are controlled
 | `scripts/simops-opentofu-preflight.sh` | OpenTofu module, committed provider lockfile, isolated synthetic kubeconfig | No-mutation fmt/init/validate/plan evidence for namespace, service accounts, RBAC, and runtime adapter ConfigMap |
 | `scripts/check-simops-runtime-closeout.mjs` | Runtime design, interface, verification, and traceability docs | Pass/fail final runtime adapter documentation coverage |
 | `scripts/simulator-workbench-dataflow-smoke.sh` | Local Docker/OrbStack compose platform | Pass/fail backend dataflow proof for measured, telemetry, simulated, and imputed units |
+| `scripts/workbench-dataflow-json.node-test.mjs` | Controlled complete and invalid Snapshot envelopes | Pass/fail parser proof that the smoke accepts one coherent Snapshot and rejects partial or generation-mismatched input |
 | `scripts/hygiene-size.mjs` | Local repo, Git worktree, cache, and Docker/OrbStack storage inspection | Read-only size report with skipped optional sections |
 | `scripts/check-hygiene-size.mjs` | Fake Git, Docker, Go, and cache fixtures | Pass/fail read-only size-report validation |
 | `scripts/check-docker-storage-policy.mjs` | Controlled storage-policy documentation and report source | Pass/fail policy and read-only boundary validation |
@@ -58,9 +59,9 @@ This document identifies internal and operational interfaces that are controlled
 
 | Handler | Method | Input | Output | Control |
 | --- | --- | --- | --- | --- |
-| `/healthz` | GET | None | `{"status":"ok"}` | Handler test |
-| `/readyz` | GET | Runtime config | Ready status and mode | Handler test |
-| `/metrics` | GET | In-memory counters | Prometheus text metrics | Handler test and infra check |
+| `/healthz` | GET | None | Process-liveness status | Handler test; it remains independent of lifecycle-reconciliation readiness |
+| `/readyz` | GET | Runtime config and Lifecycle Health | Readiness status, mode, and declared lifecycle-policy state | Handler and lifecycle-task tests |
+| `/metrics` | GET | In-memory counters and Lifecycle Health | Prometheus text metrics, including fixed-label lifecycle task outcome/status series | Handler, metrics, and infra checks |
 | `/api/jobs/submit` | POST | `script_name`, `partition`, `node_count`, optional `rank_count` | Queued job id, state, and mode | mTLS identity check, allowlists, Go tests |
 | `/api/jobs/{job_id}` | GET | Job id path segment | Recorded job status | mTLS identity check and Go tests |
 | `/api/simops/runs` | POST | Scenario id, optional work script, worker kinds, launch mode, runtime, idempotency key | Run id, lifecycle state, workers, spool commands, artifact refs, WebTransport subscription metadata | mTLS identity check, allowlists, idempotency tests, Go tests |
@@ -72,15 +73,13 @@ This document identifies internal and operational interfaces that are controlled
 | `/api/fleet-board/intents` | POST | Authenticated `registerDynamicReactor`, `removeDynamicReactor`, or explicit `requestArtifactForge` with opaque domain identities and idempotency key | Bounded Reactor Telemetry lifecycle or one distinct SimOps Run association and explicit Artifact Forge decision/outcome trace | mTLS identity check, ADR caps, Postgres recovery, eligibility allowlist, and Go tests |
 | `/internal/scada/sources` | POST | Platform-token or source-scoped reactor-bound resident source declaration | Accepted source id and resident tag registration | Source/reactor credential binding and Go tests |
 | `/internal/scada/telemetry` | POST | Platform-token or source-scoped reactor-bound measured frame batch | Accepted measured frame count and Workbench event publication | Source/reactor credential binding, Value Basis validation, and Go tests |
-| `/api/simulator-workbench/snapshot` | GET | Authorized client request | One generation-bound Workbench Snapshot containing Measured State, Simulated Result State, Twin State, and Lineage | One repeatable read, mTLS identity check, generation/schema validation, Go/frontend/browser tests |
-| `/api/simulator-workbench/state` | GET | Authorized client request | Compact Workbench state summary | mTLS identity check and Go tests |
-| `/api/simulator-workbench/measured` | GET | Authorized client request | Latest measured frames | mTLS identity check and Go tests |
-| `/api/simulator-workbench/twin` | GET | Authorized client request | Current digital twin state | mTLS identity check and Go tests |
-| `/api/simulator-workbench/lineage/{value_id}` | GET | Authorized client request | Selected value lineage | mTLS identity check and Go tests |
+| `/api/simulator-workbench/snapshot` | GET | Authorized client request | One generation-bound, non-mutating Workbench Snapshot containing Measured State, Simulated Result State, Twin State, and Lineage | Read-only repeatable-read store view, mTLS identity check, executable envelope contract, and Go/frontend/browser tests |
 
 Submit and status handlers require an authorized client certificate common name unless `SLURM_GATEWAY_REQUIRE_CLIENT_CERT=false` is explicitly set for local development. Default mode is `mock`; `sbatch` mode is enabled only through `SLURM_GATEWAY_MODE=sbatch`, `SLURM_GATEWAY_SCRIPT_ROOT`, and allowlist configuration.
 
 Simulation Ops public handlers use the same backend trust boundary. Browser-local development may explicitly disable client certificate enforcement at the gateway while relying on the Vite/API proxy path; non-browser gateway use keeps mTLS as the controlled boundary. The frontend uses run/status endpoints for control and recovery inspection and the single read-only Workbench Snapshot endpoint for coherent live reads. It receives short-lived WebTransport subscription metadata for live tracks and never receives Redpanda, Timescale/Postgres, MinIO, Docker, or Iceberg catalog credentials. Development fixture fallback is enabled only when `VITE_WORKBENCH_ALLOW_FIXTURE_FALLBACK=true`; `.env.example` documents the local-demo setting and production builds leave it unset.
+
+The legacy field-read routes (`state`, `measured`, `twin`, and `lineage`) are retired rather than retained as aliases: an alias would preserve an independent public read contract and make a mixed-generation client possible again. Internal Twin projection queries remain private to the backend and are not browser routes. The accepted Issue #135 target is recorded in ADR-0013; implementation and operational evidence remain pending.
 
 ## Simulation Ops Contract Interface
 

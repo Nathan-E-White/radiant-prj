@@ -163,6 +163,14 @@ type ReactorTelemetryStore interface {
 	SaveWorkerSet(set ReactorTelemetryWorkerSet) error
 }
 
+// ReactorTelemetryLifecycleStore is the cancellation-aware persistence seam
+// used only by scheduled reconciliation; request handling retains the legacy
+// store contract until it is migrated independently.
+type ReactorTelemetryLifecycleStore interface {
+	ListWorkerSetsContext(context.Context, string) ([]ReactorTelemetryWorkerSet, error)
+	SaveWorkerSetContext(context.Context, ReactorTelemetryWorkerSet) error
+}
+
 type ReactorTelemetrySourceRegistrar interface {
 	RegisterSource(source ScadaResidentSourceDeclaration) (int, error)
 }
@@ -347,6 +355,9 @@ func (m *ReactorTelemetryManager) RemoveDynamicReactor(ctx context.Context, requ
 }
 
 func (m *ReactorTelemetryManager) cleanupWorkerSet(ctx context.Context, set ReactorTelemetryWorkerSet, idempotencyKey string) (ReactorTelemetryWorkerSet, error) {
+	if err := ctx.Err(); err != nil {
+		return set, err
+	}
 	now := m.now().UTC()
 	if idempotencyKey != "" {
 		set.RemoveIdempotency = idempotencyKey
@@ -358,7 +369,7 @@ func (m *ReactorTelemetryManager) cleanupWorkerSet(ctx context.Context, set Reac
 	}
 	set.UpdatedAt = now
 	set.LastError = ""
-	if err := m.store.SaveWorkerSet(set); err != nil {
+	if err := m.saveLifecycleWorkerSet(ctx, set); err != nil {
 		return set, err
 	}
 	cleanupContext, cancel := context.WithTimeout(ctx, m.cfg.CleanupTimeout)
@@ -367,12 +378,12 @@ func (m *ReactorTelemetryManager) cleanupWorkerSet(ctx context.Context, set Reac
 		set.Lifecycle = ReactorTelemetryCleanupFailed
 		set.LastError = err.Error()
 		set.UpdatedAt = m.now().UTC()
-		_ = m.store.SaveWorkerSet(set)
+		_ = m.saveLifecycleWorkerSet(ctx, set)
 		return set, fmt.Errorf("stop reactor telemetry worker set: %w", err)
 	}
 	set.Lifecycle = ReactorTelemetryRemoved
 	set.UpdatedAt = m.now().UTC()
-	if err := m.store.SaveWorkerSet(set); err != nil {
+	if err := m.saveLifecycleWorkerSet(ctx, set); err != nil {
 		return set, err
 	}
 	return set, nil
@@ -404,7 +415,7 @@ func (m *ReactorTelemetryManager) AuthorizeSourceCredential(token, sourceID, rea
 func (m *ReactorTelemetryManager) ReconcileExpired(ctx context.Context) error {
 	m.transition.Lock()
 	defer m.transition.Unlock()
-	sets, err := m.store.ListWorkerSets("")
+	sets, err := m.listLifecycleWorkerSets(ctx)
 	if err != nil {
 		return err
 	}
@@ -428,6 +439,26 @@ func (m *ReactorTelemetryManager) ReconcileExpired(ctx context.Context) error {
 		}
 	}
 	return reconcileErr
+}
+
+func (m *ReactorTelemetryManager) listLifecycleWorkerSets(ctx context.Context) ([]ReactorTelemetryWorkerSet, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if store, ok := m.store.(ReactorTelemetryLifecycleStore); ok {
+		return store.ListWorkerSetsContext(ctx, "")
+	}
+	return m.store.ListWorkerSets("")
+}
+
+func (m *ReactorTelemetryManager) saveLifecycleWorkerSet(ctx context.Context, set ReactorTelemetryWorkerSet) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if store, ok := m.store.(ReactorTelemetryLifecycleStore); ok {
+		return store.SaveWorkerSetContext(ctx, set)
+	}
+	return m.store.SaveWorkerSet(set)
 }
 
 func (m *ReactorTelemetryManager) ReconcileActive(ctx context.Context) error {
@@ -549,6 +580,20 @@ func (s *InMemoryReactorTelemetryStore) SaveWorkerSet(set ReactorTelemetryWorker
 	defer s.mu.Unlock()
 	s.sets[telemetryStoreKey(set.GameSessionID, set.ReactorID)] = redactTelemetryCredentials(set)
 	return nil
+}
+
+func (s *InMemoryReactorTelemetryStore) ListWorkerSetsContext(ctx context.Context, gameSessionID string) ([]ReactorTelemetryWorkerSet, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return s.ListWorkerSets(gameSessionID)
+}
+
+func (s *InMemoryReactorTelemetryStore) SaveWorkerSetContext(ctx context.Context, set ReactorTelemetryWorkerSet) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return s.SaveWorkerSet(set)
 }
 
 func BuildReactorResidentSource(worker ReactorTelemetryWorker) ScadaResidentSourceDeclaration {

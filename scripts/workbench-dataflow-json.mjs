@@ -12,46 +12,33 @@ try {
 }
 
 switch (command) {
-  case "state-ready": {
-    const summary = parsed?.valueBasisSummary ?? {};
-    process.exit(
-      numeric(summary.measured) >= 1 &&
-        numeric(summary.simulated) >= 1 &&
-        numeric(summary.imputed) >= 1
-        ? 0
-        : 1,
-    );
+  case "snapshot-ready":
+    process.exit(snapshotReady(parsed) ? 0 : 1);
     break;
-  }
-  case "lineage-ready": {
-    const inputs = Array.isArray(parsed?.inputs) ? parsed.inputs : [];
-    const hasMeasured = inputs.some((input) => input?.valueBasis === "measured");
-    const hasSimulated = inputs.some((input) => input?.valueBasis === "simulated");
-    process.exit(parsed?.valueBasis === "imputed" && hasMeasured && hasSimulated ? 0 : 1);
-    break;
-  }
-  case "frames-ready": {
-    const frames = Array.isArray(parsed?.frames) ? parsed.frames : [];
-    process.exit(frames.some((frame) => frame?.valueBasis === "measured") ? 0 : 1);
-    break;
-  }
-  case "twin-ready": {
-    const entities = Array.isArray(parsed?.entities) ? parsed.entities : [];
-    const values = entities.flatMap((entity) => (Array.isArray(entity?.values) ? entity.values : []));
-    process.exit(
-      values.some((value) => value?.valueBasis === "measured") &&
-        values.some((value) => value?.valueBasis === "simulated") &&
-        values.some((value) => value?.valueBasis === "imputed")
-        ? 0
-        : 1,
-    );
-    break;
-  }
   default:
-    console.error("Usage: workbench-dataflow-json.mjs state-ready|lineage-ready|frames-ready|twin-ready");
+    console.error("Usage: workbench-dataflow-json.mjs snapshot-ready");
     process.exit(2);
 }
 
-function numeric(value) {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+function snapshotReady(snapshot) {
+  const generation = snapshot?.generation;
+  const state = snapshot?.state;
+  const measured = Array.isArray(snapshot?.measured) ? snapshot.measured : [];
+  const results = Array.isArray(snapshot?.results) ? snapshot.results : [];
+  const entities = Array.isArray(snapshot?.twin?.entities) ? snapshot.twin.entities : [];
+  const values = entities.flatMap((entity) => (Array.isArray(entity?.values) ? entity.values : []));
+  const lineage = Array.isArray(snapshot?.lineage) ? snapshot.lineage : [];
+  const imputedLineage = lineage.find((record) => record?.valueId === "VAL-IMPUTED-CORE-MARGIN");
+  const inputs = Array.isArray(imputedLineage?.inputs) ? imputedLineage.inputs : [];
+
+  return Number.isSafeInteger(generation) && generation > 0 &&
+    state?.snapshotGeneration === generation &&
+    measured.some((frame) => frame?.valueBasis === "measured") &&
+    results.some((frame) => frame?.valueBasis === "simulated") &&
+    values.some((value) => value?.valueBasis === "measured") &&
+    values.some((value) => value?.valueBasis === "simulated") &&
+    values.some((value) => value?.valueBasis === "imputed") &&
+    imputedLineage?.valueBasis === "imputed" &&
+    inputs.some((input) => input?.valueBasis === "measured") &&
+    inputs.some((input) => input?.valueBasis === "simulated");
 }
