@@ -1,9 +1,21 @@
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import assert from "node:assert/strict";
-import { evaluatePackagingEvidence } from "./docker-packaging-lib.mjs";
+import { evaluatePackagingEvidence, selectPackagingRoles } from "./docker-packaging-lib.mjs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+
+test("worker delivery verification selects only its two image roles", () => {
+  const selected = selectPackagingRoles(
+    [{ role: "console" }, { role: "reactor-telemetry-worker" }, { role: "simops-generator" }, { role: "slurm-gateway" }],
+    "reactor-telemetry-worker,simops-generator",
+  );
+  assert.deepEqual(selected.map(({ role }) => role), ["reactor-telemetry-worker", "simops-generator"]);
+  assert.throws(
+    () => selectPackagingRoles([{ role: "console" }], "missing-worker"),
+    /unknown roles: missing-worker/,
+  );
+});
 
 test("Docker packaging stays narrow, reproducible, and budgeted", () => {
   const dockerignore = read(".dockerignore");
@@ -54,6 +66,16 @@ test("Docker packaging stays narrow, reproducible, and budgeted", () => {
   assert.match(worker, /^COPY scripts\/mock-worker\.mjs scripts\/mock-worker\.mjs$/m);
   assert.match(worker, /^COPY src\/data\/readiness-fixtures\.json src\/data\/readiness-fixtures\.json$/m);
 
+  const scadaWorker = read("deploy/scada-standins.Dockerfile");
+  assert.match(scadaWorker, /^FROM \$\{SCADA_STANDINS_RUNTIME_IMAGE\}$/m);
+  assert.match(scadaWorker, /^ENTRYPOINT \["\/scada-standins"\]$/m);
+
+  const simopsWorker = read("deploy/simops-generator.Dockerfile");
+  assert.match(simopsWorker, /^FROM \$\{SIMOPS_GENERATOR_RUNTIME_IMAGE\}$/m);
+  assert.match(simopsWorker, /^COPY --from=builder \/src\/workers\/simops-generator\/Cargo\.toml \/controlled-manifests\/simops-generator\/Cargo\.toml$/m);
+  assert.match(simopsWorker, /^COPY --from=builder \/src\/workers\/simops-generator\/Cargo\.lock \/controlled-manifests\/simops-generator\/Cargo\.lock$/m);
+  assert.match(simopsWorker, /^ENTRYPOINT \["\/simops-generator"\]$/m);
+
   const goDockerfile = read("deploy/slurm-gateway.Dockerfile");
   assert.doesNotMatch(goDockerfile, /AS full-runtime/);
   for (const target of Object.values(goRoleTargets)) {
@@ -78,6 +100,10 @@ test("Docker packaging stays narrow, reproducible, and budgeted", () => {
     const block = serviceBlock(compose, service);
     assert.match(block, new RegExp(`^      target: ${escapeRegExp(target)}$`, "m"), `${service} must select ${target}`);
   }
+  assert.match(compose, /^      SIMOPS_WORKER_IMAGE: "radiant-simops-generator:latest"$/m);
+  assert.match(compose, /^      REACTOR_TELEMETRY_WORKER_IMAGE: "radiant-scada-standins:latest"$/m);
+  assert.match(compose, /^    image: radiant-scada-standins:latest$/m);
+  assert.match(compose, /^    image: radiant-simops-generator:latest$/m);
 
   const budgets = JSON.parse(read("config/docker-packaging-budgets.json"));
   const inputManifest = JSON.parse(read("config/docker-packaging-inputs.json"));
@@ -114,6 +140,11 @@ test("Docker packaging stays narrow, reproducible, and budgeted", () => {
   for (const role of ["console", "mock-worker", "reactor-telemetry-worker", "simops-generator", ...Object.keys(goRoleTargets)]) {
     assert.ok(budgets.images[role]?.maxBytes > 0, `missing image budget: ${role}`);
   }
+  for (const role of ["reactor-telemetry-worker", "simops-generator"]) {
+    for (const architecture of ["amd64", "arm64"]) {
+      assert.ok(budgets.images[role]?.maxBytesByArchitecture?.[architecture] > 0, `missing ${architecture} image budget: ${role}`);
+    }
+  }
   const amd64Evidence = JSON.parse(read("docs/verification/docker-packaging-evidence-amd64.json"));
   assert.equal(amd64Evidence.source.workflowRunId, 29680581898);
   assert.equal(amd64Evidence.contentAssertions.mockWorkerDependencyTreeAbsent, true);
@@ -138,6 +169,14 @@ test("Docker packaging stays narrow, reproducible, and budgeted", () => {
     repositoryVerification.claims.find(({ id }) => id === "docker-packaging.structured-budgets")?.evidence.command,
     ["node", "--test", "scripts/docker-packaging.node-test.mjs"],
   );
+  assert.deepEqual(
+    repositoryVerification.claims.find(({ id }) => id === "workers.delivery-artifacts")?.evidence.command,
+    ["bun", "run", "docker:packaging:verify"],
+  );
+  assert.equal(
+    repositoryVerification.claims.find(({ id }) => id === "workers.delivery-artifacts")?.evidence.whenEnvironment,
+    "RUN_WORKER_IMAGE_DELIVERY_VERIFICATION",
+  );
   assert.match(packageJson.scripts.ci, /backend:dataplane:test/);
 
   const verifier = read("scripts/verify-docker-packaging.mjs");
@@ -150,6 +189,8 @@ test("Docker packaging stays narrow, reproducible, and budgeted", () => {
   assert.match(verifier, /"push"/);
   assert.match(verifier, /DOCKER_PACKAGING_REGISTRY_REUSE/);
   assert.match(verifier, /DOCKER_PACKAGING_REGISTRY_PUBLISH/);
+  assert.match(verifier, /DOCKER_PACKAGING_ROLES/);
+  assert.match(read("scripts/docker-packaging-lib.mjs"), /unknown roles/);
   assert.match(verifier, /baseImageSetArgs/);
   assert.match(verifier, /platformSetArgs/);
   assert.match(verifier, /\.platform=\$\{platform\}/);
@@ -165,6 +206,17 @@ test("Docker packaging stays narrow, reproducible, and budgeted", () => {
   assert.match(verifier, /DOCKER_BAKE_CACHE_TO_GO_RUNTIME/);
   assert.match(verifier, /radiant-scada-standins:ci/);
   assert.match(verifier, /radiant-simops-generator:latest/);
+  assert.match(verifier, /deliveryArtifact/);
+  assert.match(verifier, /runtimeIdentity/);
+  assert.match(verifier, /virtualSizeBytes/);
+  assert.match(verifier, /entrypoint/);
+  assert.match(verifier, /controlled-manifests\/simops-generator\/Cargo\.toml/);
+  assert.match(verifier, /forbiddenPathPrefixes/);
+  assert.match(verifier, /"workers", "src", "tests", "examples"/);
+  assert.match(verifier, /requireCompletePair/);
+  assert.match(verifier, /verifyWorkerComposeReferences/);
+  assert.match(verifier, /REACTOR_TELEMETRY_WORKER_IMAGE/);
+  assert.match(verifier, /SIMOPS_WORKER_IMAGE/);
   assert.match(read("scripts/docker-packaging-lib.mjs"), /cacheExportErrorCount/);
 
   const workflow = read(".github/workflows/ci.yml");
@@ -174,15 +226,20 @@ test("Docker packaging stays narrow, reproducible, and budgeted", () => {
   assert.match(workflow, /docker\/setup-buildx-action@v3/);
   assert.doesNotMatch(workflow, /Build Reactor Telemetry worker image/);
   assert.doesNotMatch(workflow, /run: docker build -f deploy\/scada-standins\.Dockerfile/);
-  assert.match(workflow, /run: bun run docker:packaging:verify/);
+  assert.match(workflow, /run: bun run repository:verify -- --claim workers\.delivery-artifacts/);
+  assert.match(workflow, /RUN_WORKER_IMAGE_DELIVERY_VERIFICATION: "true"/);
+  assert.match(workflow, /DOCKER_PACKAGING_ROLES: reactor-telemetry-worker,simops-generator/);
   assert.match(workflow, /needs: \[changes, docker\]/);
-  assert.match(workflow, /name: reactor-telemetry-image/);
+  assert.doesNotMatch(workflow, /name: reactor-telemetry-image/);
   assert.match(workflow, /docker save radiant-scada-standins:ci --output radiant-scada-standins\.tar/);
-  assert.match(workflow, /docker load --input \.local\/reactor-telemetry-image\/radiant-scada-standins\.tar/);
+  assert.match(workflow, /docker load --input \.local\/worker-delivery-artifacts\/radiant-scada-standins\.tar/);
+  assert.match(workflow, /docker load --input \.local\/worker-delivery-artifacts\/radiant-simops-generator\.tar/);
   assert.match(workflow, /DOCKER_BAKE_CACHE_FROM_GO_RUNTIME: type=gha,scope=radiant-go-runtime-main/);
   assert.match(workflow, /DOCKER_BAKE_CACHE_TO_GO_RUNTIME: \$\{\{ github\.ref == 'refs\/heads\/main' && 'type=gha,scope=radiant-go-runtime-main,mode=max,ignore-error=true' \|\| '' \}\}/);
   assert.match(workflow, /DOCKER_PACKAGING_REGISTRY_REUSE: "true"/);
   assert.match(workflow, /DOCKER_PACKAGING_REGISTRY_PUBLISH: "false"/);
+  assert.match(workflow, /name: worker-delivery-artifacts/);
+  assert.match(workflow, /radiant-simops-generator\.tar/);
   assert.match(workflow, /name: Verify complete Go backend claims/);
   assert.match(workflow, /--claim backend\.go\.dataplane-iceberg/);
   const publishWorkflow = read(".github/workflows/docker-packaging-publish.yml");
