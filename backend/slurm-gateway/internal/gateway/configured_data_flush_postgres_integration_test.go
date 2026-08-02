@@ -225,6 +225,14 @@ CREATE TABLE simops_events (
   event_id BIGSERIAL PRIMARY KEY, run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
   worker_id TEXT, event_type TEXT NOT NULL, lifecycle TEXT, frame JSONB, occurred_at TIMESTAMPTZ NOT NULL
 );
+CREATE TABLE simops_publication_intents (
+  intent_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
+  event JSONB NOT NULL, state TEXT NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL,
+  published_at TIMESTAMPTZ
+);
+CREATE INDEX idx_simops_publication_intents_run_state
+  ON simops_publication_intents (run_id, state, created_at);
 CREATE TABLE simops_artifacts (
   artifact_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
   kind TEXT NOT NULL, media_type TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'received',
