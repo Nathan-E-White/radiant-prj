@@ -121,6 +121,22 @@ _Avoid_: SimOps Run, Slurm job, backend submission, objective evidence
 A backend Simulation Ops execution lifecycle with its own run, worker, event, and artifact outcomes. An eligible Fleet Board intent may request or associate a Run through Artifact Forge, but a local Simulation Job never becomes the Run.
 _Avoid_: Simulation Job, game tick, local job state
 
+**Delivery Attempt**:
+One identified request to deliver one ordered operational-telemetry batch for one SimOps Run. Its identity remains stable across retry and recovery; an observed storage snapshot is evidence of the attempt, not its identity.
+_Avoid_: Artifact status, snapshot ID, broker offset
+
+**Delivery Assurance**:
+The narrow storage fact demonstrated by a completed Delivery Attempt, such as a local manifest write, external-command acknowledgement, or readable Iceberg table data. It is not Artifact Forge eligibility, Objective Evidence, or broker-offset completion.
+_Avoid_: Artifact status, delivery success, objective evidence
+
+**Verified Delivery Evidence**:
+The recorded proof for one Delivery Attempt, including its identity, expected coordinates, achieved Delivery Assurance, and any observed storage result. It explains storage delivery without asserting cross-system atomicity or exactly-once processing.
+_Avoid_: Lineage, artifact eligibility, commit log
+
+**Unknown Commit**:
+A Delivery Attempt whose storage outcome cannot be determined after a process or transport failure. It must be reconciled before a new delivery attempt for the same batch is made.
+_Avoid_: Failed delivery, duplicate delivery, retryable error
+
 **Artifact Forge**:
 The server-side boundary that validates one explicit Fleet Board forge request, associates it with one SimOps Run, and may translate one eligible simulation artifact with Simulated Result State and complete Lineage into one versioned game outcome.
 Operational telemetry, failed Runs, incomplete artifacts, and missing Lineage are ineligible.
