@@ -19,13 +19,35 @@ type SimopsStore interface {
 	ListCommands(runID string) ([]SimopsSpoolCommand, error)
 	ListArtifacts(runID string) ([]SimopsArtifactRecord, error)
 	UpdateRunLifecycle(runID string, lifecycle SimopsLifecycle) (SimopsRunRecord, error)
+	UpdateRunLifecycleWithPublicationIntent(runID string, lifecycle SimopsLifecycle, event SimopsEvent) (SimopsRunRecord, SimopsPublicationIntent, error)
 	UpdateWorkerFrames(runID string, workerID string, lifecycle SimopsLifecycle, framesDelta int) error
 	UpdateWorkerObservedLifecycle(observation ObservedWorkerLifecycle) error
 	SaveArtifact(record SimopsArtifactRecord) error
 	SaveEvent(event SimopsEvent) error
 	ListEvents(runID string) ([]SimopsEvent, error)
+	ListPublicationIntents(runID string) ([]SimopsPublicationIntent, error)
+	MarkPublicationIntentPublished(intentID string, event SimopsEvent) error
+	MarkPublicationIntentFailed(intentID string, err error) error
 	UpdateArtifactStatus(runID string, artifactID string, status string) error
 	ActiveRunCount() int
+}
+
+const (
+	SimopsPublicationPending   = "pending"
+	SimopsPublicationPublished = "published"
+	SimopsPublicationFailed    = "failed"
+)
+
+type SimopsPublicationIntent struct {
+	IntentID    string
+	RunID       string
+	Event       SimopsEvent
+	State       string
+	Attempts    int
+	LastError   string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	PublishedAt *time.Time
 }
 
 type InMemorySimopsStore struct {
@@ -36,6 +58,7 @@ type InMemorySimopsStore struct {
 	commandsByRun  map[string][]SimopsSpoolCommand
 	artifactsByRun map[string][]SimopsArtifactRecord
 	eventsByRun    map[string][]SimopsEvent
+	intentsByRun   map[string]map[string]SimopsPublicationIntent
 }
 
 func NewInMemorySimopsStore() *InMemorySimopsStore {
@@ -46,6 +69,7 @@ func NewInMemorySimopsStore() *InMemorySimopsStore {
 		commandsByRun:  make(map[string][]SimopsSpoolCommand),
 		artifactsByRun: make(map[string][]SimopsArtifactRecord),
 		eventsByRun:    make(map[string][]SimopsEvent),
+		intentsByRun:   make(map[string]map[string]SimopsPublicationIntent),
 	}
 }
 
@@ -188,6 +212,34 @@ func (s *InMemorySimopsStore) UpdateRunLifecycle(runID string, lifecycle SimopsL
 	return record, nil
 }
 
+func (s *InMemorySimopsStore) UpdateRunLifecycleWithPublicationIntent(runID string, lifecycle SimopsLifecycle, event SimopsEvent) (SimopsRunRecord, SimopsPublicationIntent, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.runs[runID]
+	if !ok {
+		return SimopsRunRecord{}, SimopsPublicationIntent{}, ErrSimopsRunNotFound
+	}
+	now := time.Now().UTC()
+	record.Lifecycle = lifecycle
+	record.UpdatedAt = now
+	s.runs[runID] = record
+	if event.RunID == "" {
+		event.RunID = runID
+	}
+	if event.OccurredAt.IsZero() {
+		event.OccurredAt = now
+	}
+	intent := newSimopsPublicationIntent(event, now)
+	if s.intentsByRun[runID] == nil {
+		s.intentsByRun[runID] = make(map[string]SimopsPublicationIntent)
+	}
+	if existing, ok := s.intentsByRun[runID][intent.IntentID]; ok {
+		return record, existing, nil
+	}
+	s.intentsByRun[runID][intent.IntentID] = intent
+	return record, intent, nil
+}
+
 func (s *InMemorySimopsStore) UpdateWorkerFrames(runID string, workerID string, lifecycle SimopsLifecycle, framesDelta int) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -272,6 +324,61 @@ func (s *InMemorySimopsStore) ListEvents(runID string) ([]SimopsEvent, error) {
 	return append([]SimopsEvent(nil), s.eventsByRun[runID]...), nil
 }
 
+func (s *InMemorySimopsStore) ListPublicationIntents(runID string) ([]SimopsPublicationIntent, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.runs[runID]; !ok {
+		return nil, ErrSimopsRunNotFound
+	}
+	intents := make([]SimopsPublicationIntent, 0, len(s.intentsByRun[runID]))
+	for _, intent := range s.intentsByRun[runID] {
+		intents = append(intents, intent)
+	}
+	return intents, nil
+}
+
+func (s *InMemorySimopsStore) MarkPublicationIntentPublished(intentID string, event SimopsEvent) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for runID, intents := range s.intentsByRun {
+		intent, ok := intents[intentID]
+		if !ok {
+			continue
+		}
+		now := time.Now().UTC()
+		intent.State = SimopsPublicationPublished
+		intent.LastError = ""
+		intent.UpdatedAt = now
+		intent.PublishedAt = &now
+		intents[intentID] = intent
+		if !eventAlreadySaved(s.eventsByRun[runID], event) {
+			s.eventsByRun[runID] = append(s.eventsByRun[runID], event)
+		}
+		return nil
+	}
+	return ErrSimopsRunNotFound
+}
+
+func (s *InMemorySimopsStore) MarkPublicationIntentFailed(intentID string, err error) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, intents := range s.intentsByRun {
+		intent, ok := intents[intentID]
+		if !ok {
+			continue
+		}
+		intent.State = SimopsPublicationFailed
+		intent.Attempts++
+		if err != nil {
+			intent.LastError = err.Error()
+		}
+		intent.UpdatedAt = time.Now().UTC()
+		intents[intentID] = intent
+		return nil
+	}
+	return ErrSimopsRunNotFound
+}
+
 func (s *InMemorySimopsStore) ActiveRunCount() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -283,6 +390,30 @@ func (s *InMemorySimopsStore) ActiveRunCount() int {
 		}
 	}
 	return count
+}
+
+func newSimopsPublicationIntent(event SimopsEvent, now time.Time) SimopsPublicationIntent {
+	return SimopsPublicationIntent{
+		IntentID:  simopsPublicationIntentID(event),
+		RunID:     event.RunID,
+		Event:     event,
+		State:     SimopsPublicationPending,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+}
+
+func simopsPublicationIntentID(event SimopsEvent) string {
+	return event.RunID + "|" + event.EventType + "|" + string(event.Lifecycle)
+}
+
+func eventAlreadySaved(events []SimopsEvent, event SimopsEvent) bool {
+	for _, existing := range events {
+		if simopsPublicationIntentID(existing) == simopsPublicationIntentID(event) && existing.WorkerID == event.WorkerID {
+			return true
+		}
+	}
+	return false
 }
 
 func idempotencyScope(identity string, key string) string {
