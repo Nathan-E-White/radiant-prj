@@ -341,9 +341,19 @@ func TestArtifactForgeRequiresEveryAssociationAndArtifactLineageLink(t *testing.
 				t.Fatal(err)
 			}
 			seedEligibleArtifactForgeProjection(t, workbench, record, request)
-			lineage, err := workbench.LineageForValue(WorkbenchSimulatedMarginValue)
+			snapshot, err := workbench.Snapshot()
 			if err != nil {
 				t.Fatal(err)
+			}
+			var lineage DigitalTwinValueLineage
+			for _, candidate := range snapshot.Lineage {
+				if candidate.ValueID == WorkbenchSimulatedMarginValue {
+					lineage = candidate
+					break
+				}
+			}
+			if lineage.ValueID == "" {
+				t.Fatalf("missing simulated margin lineage in Snapshot: %#v", snapshot.Lineage)
 			}
 			if test.artifact {
 				lineage.Artifacts = nil
@@ -356,7 +366,7 @@ func TestArtifactForgeRequiresEveryAssociationAndArtifactLineageLink(t *testing.
 				}
 				lineage.Inputs = inputs
 			}
-			snapshot, err := workbench.Snapshot()
+			snapshot, err = workbench.Snapshot()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -429,6 +439,34 @@ func TestArtifactForgeRecoversBothMissingRunAssociationWindows(t *testing.T) {
 	})
 }
 
+func TestArtifactForgeRecoversPersistedEligibleOutcomeWithoutReconstructingRequest(t *testing.T) {
+	forge, simops, workbench := newArtifactForgeTestRig(t)
+	request := artifactForgeRequestFixture()
+	accepted, _, err := forge.Request(context.Background(), request, "fleet-board-client")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := simops.UpdateRunLifecycle(accepted.RunID, SimopsComplete); err != nil {
+		t.Fatal(err)
+	}
+	seedEligibleArtifactForgeProjection(t, workbench, accepted, request)
+
+	// A restarted caller knows only the durable Artifact Forge ledger identity;
+	// it must not reconstruct the original Fleet Board request to finish work.
+	restarted := NewArtifactForgeManager(forge.store, forge.simops, forge.eligibility)
+	recovered, err := restarted.Recover(context.Background(), request.GameSessionID, request.IdempotencyKey)
+	if err != nil || recovered.Decision != ArtifactForgeOutcomeApplied || recovered.Outcome == nil {
+		t.Fatalf("recover persisted eligible outcome: record=%#v err=%v", recovered, err)
+	}
+	if recovered.Outcome.OutcomeID == "" || artifactForgeEventCount(recovered, ArtifactForgeEventOutcomeApplied) != 1 {
+		t.Fatalf("recovery did not preserve one idempotent outcome: %#v", recovered)
+	}
+	replayed, err := restarted.Recover(context.Background(), request.GameSessionID, request.IdempotencyKey)
+	if err != nil || replayed.Outcome == nil || replayed.Outcome.OutcomeID != recovered.Outcome.OutcomeID || artifactForgeEventCount(replayed, ArtifactForgeEventOutcomeApplied) != 1 {
+		t.Fatalf("recovery replay changed the durable outcome: record=%#v err=%v", replayed, err)
+	}
+}
+
 func TestArtifactForgeExpiresSessionThenRetainsLedgerForSevenDays(t *testing.T) {
 	forge, _, _ := newArtifactForgeTestRig(t)
 	request := artifactForgeRequestFixture()
@@ -439,11 +477,11 @@ func TestArtifactForgeExpiresSessionThenRetainsLedgerForSevenDays(t *testing.T) 
 		t.Fatalf("retention metadata=%#v err=%v", record, err)
 	}
 	now = now.Add(7 * 24 * time.Hour)
-	if removed, err := forge.ReconcileExpired(); err != nil || removed != 0 {
+	if removed, err := forge.ReconcileExpired(context.Background()); err != nil || removed != 0 {
 		t.Fatalf("ledger pruned before seven-day post-expiry retention: removed=%d err=%v", removed, err)
 	}
 	now = now.Add(24 * time.Hour)
-	if removed, err := forge.ReconcileExpired(); err != nil || removed != 1 {
+	if removed, err := forge.ReconcileExpired(context.Background()); err != nil || removed != 1 {
 		t.Fatalf("expired retained ledger was not bounded: removed=%d err=%v", removed, err)
 	}
 	if _, err := forge.store.Find(request.GameSessionID, request.IdempotencyKey); !errors.Is(err, ErrArtifactForgeNotFound) {
@@ -497,7 +535,7 @@ func artifactForgeRequestFixture() ArtifactForgeRequest {
 	}
 }
 
-func seedEligibleArtifactForgeProjection(t *testing.T, workbench *InMemoryWorkbenchStore, record ArtifactForgeRecord, request ArtifactForgeRequest) {
+func seedEligibleArtifactForgeProjection(t *testing.T, workbench artifactForgeEligibilityContractStore, record ArtifactForgeRecord, request ArtifactForgeRequest) {
 	t.Helper()
 	result := artifactForgeResultFrame(record.RunID, request.SimulationRecipe)
 	if _, err := workbench.SaveResultProjection("artifact-forge-test", SimopsResultProjection{Frame: result, RedpandaTopic: "simops.results.v1", RedpandaOffset: 1}); err != nil {

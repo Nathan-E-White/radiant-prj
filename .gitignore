@@ -16,11 +16,14 @@ generated/
 .vite/
 .local/
 *.mhtml
+patches/
 
 # Infrastructure tooling caches
 .terraform/
 .terraform.lock.hcl
 terraform.tfstate*
+backend/slurm-gateway/mutago-*.json
+backend/slurm-gateway/report.json
 
 # Local environment
 .env
@@ -31,7 +34,6 @@ terraform.tfstate*
 .worktrees/
 target/
 **/target/
-storybook-static/
 
 # Local certificate and Vault development material
 *.key

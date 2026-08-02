@@ -47,11 +47,11 @@ type ArtifactForgeIntentManager interface {
 }
 
 type ArtifactForgeSessionReconciler interface {
-	ReconcileExpired() (int64, error)
+	ReconcileExpired(context.Context) (int64, error)
 }
 
 type DynamicMeasuredRetentionReconciler interface {
-	ReconcileDynamicMeasuredRetention() error
+	ReconcileDynamicMeasuredRetention(context.Context) error
 }
 
 type ConfiguredDataFlushParticipant interface {
@@ -76,6 +76,11 @@ type FleetBoardIntentModule struct {
 	sessionLifecycle FleetBoardSessionLifecycle
 }
 
+type LifecycleTaskOutcome struct {
+	Name string
+	Err  error
+}
+
 func NewFleetBoardIntentModule(reactorTelemetry DynamicReactorIntentManager, artifactForge ArtifactForgeIntentManager) *FleetBoardIntentModule {
 	return &FleetBoardIntentModule{reactorTelemetry: reactorTelemetry, artifactForge: artifactForge}
 }
@@ -87,21 +92,38 @@ func NewFleetBoardIntentModuleWithSessionLifecycle(reactorTelemetry DynamicReact
 }
 
 func (m *FleetBoardIntentModule) ReconcileSessions(ctx context.Context) error {
+	var reconcileErr error
+	for _, outcome := range m.ReconcileSessionOutcomes(ctx) {
+		reconcileErr = errors.Join(reconcileErr, outcome.Err)
+	}
+	return reconcileErr
+}
+
+func (m *FleetBoardIntentModule) ReconcileSessionOutcomes(ctx context.Context) []LifecycleTaskOutcome {
 	if m == nil {
 		return nil
 	}
-	var reconcileErr error
+	outcomes := []LifecycleTaskOutcome{}
+	if err := ctx.Err(); err != nil {
+		return []LifecycleTaskOutcome{{Name: "scheduler", Err: err}}
+	}
 	if m.reactorTelemetry != nil {
-		reconcileErr = errors.Join(reconcileErr, m.reactorTelemetry.ReconcileExpired(ctx))
+		outcomes = append(outcomes, LifecycleTaskOutcome{"reactor_expiry", m.reactorTelemetry.ReconcileExpired(ctx)})
+	}
+	if err := ctx.Err(); err != nil {
+		return outcomes
 	}
 	if m.sessionLifecycle.ArtifactForge != nil {
-		_, err := m.sessionLifecycle.ArtifactForge.ReconcileExpired()
-		reconcileErr = errors.Join(reconcileErr, err)
+		_, err := m.sessionLifecycle.ArtifactForge.ReconcileExpired(ctx)
+		outcomes = append(outcomes, LifecycleTaskOutcome{"artifact_forge_expiry", err})
+	}
+	if err := ctx.Err(); err != nil {
+		return outcomes
 	}
 	if m.sessionLifecycle.MeasuredRetention != nil {
-		reconcileErr = errors.Join(reconcileErr, m.sessionLifecycle.MeasuredRetention.ReconcileDynamicMeasuredRetention())
+		outcomes = append(outcomes, LifecycleTaskOutcome{"measured_retention", m.sessionLifecycle.MeasuredRetention.ReconcileDynamicMeasuredRetention(ctx)})
 	}
-	return reconcileErr
+	return outcomes
 }
 
 func (m *FleetBoardIntentModule) PlanConfiguredDataFlush(ctx context.Context) (ConfiguredDataFlushPlan, error) {
