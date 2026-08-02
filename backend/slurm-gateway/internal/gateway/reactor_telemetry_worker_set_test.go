@@ -152,10 +152,11 @@ func TestReactorTelemetryWorkerPublishesReactorScopedMeasuredState(t *testing.T)
 			t.Fatalf("save measured projection: %v", err)
 		}
 	}
-	measured, err := controller.Measured()
+	snapshot, err := controller.Snapshot()
 	if err != nil {
-		t.Fatalf("read measured state: %v", err)
+		t.Fatalf("read coherent snapshot: %v", err)
 	}
+	measured := snapshot.Measured
 	if len(measured) != len(frames) {
 		t.Fatalf("expected %d measured frames, got %d", len(frames), len(measured))
 	}
@@ -352,7 +353,7 @@ func TestReactorTelemetryManagerExpiresCredentialsAndReconcilesCleanup(t *testin
 	}
 }
 
-func TestWorkbenchPrunesExpiredDynamicMeasuredStateButPreservesResidentConfiguration(t *testing.T) {
+func TestWorkbenchSnapshotDoesNotPruneExpiredDynamicMeasuredState(t *testing.T) {
 	now := time.Date(2026, 7, 15, 12, 0, 0, 0, time.UTC)
 	store := NewInMemoryWorkbenchStore()
 	store.now = func() time.Time { return now.Add(-2 * time.Hour) }
@@ -381,12 +382,34 @@ func TestWorkbenchPrunesExpiredDynamicMeasuredStateButPreservesResidentConfigura
 		t.Fatalf("save static resident frame: %v", err)
 	}
 
-	measured, err := controller.Measured()
+	before, err := store.Snapshot()
 	if err != nil {
-		t.Fatalf("read retained measured state: %v", err)
+		t.Fatalf("read pre-snapshot generation: %v", err)
 	}
-	if len(measured) != 1 || measured[0].SourceID != static.SourceID {
-		t.Fatalf("retention did not isolate expired dynamic frames: %#v", measured)
+	snapshot, err := controller.Snapshot()
+	if err != nil {
+		t.Fatalf("read coherent snapshot: %v", err)
+	}
+	measured := snapshot.Measured
+	if len(measured) != len(frames)+1 {
+		t.Fatalf("snapshot unexpectedly reconciled expired dynamic frames: %#v", measured)
+	}
+	afterRead, err := store.Snapshot()
+	if err != nil || afterRead.Generation != before.Generation {
+		t.Fatalf("snapshot changed the committed generation: before=%d after=%#v err=%v", before.Generation, afterRead, err)
+	}
+	if err := controller.ReconcileDynamicMeasuredRetention(context.Background()); err != nil {
+		t.Fatalf("reconcile dynamic measured retention: %v", err)
+	}
+	afterReconcile, err := controller.Snapshot()
+	if err != nil {
+		t.Fatalf("read post-reconciliation snapshot: %v", err)
+	}
+	if len(afterReconcile.Measured) != 1 || afterReconcile.Measured[0].SourceID != static.SourceID {
+		t.Fatalf("reconciliation did not isolate expired dynamic frames: %#v", afterReconcile.Measured)
+	}
+	if afterReconcile.Generation <= before.Generation {
+		t.Fatalf("retention reconciliation did not advance generation: before=%d after=%d", before.Generation, afterReconcile.Generation)
 	}
 	if _, err := store.GetResidentTag(source.Tags[0].TagID); err != nil {
 		t.Fatalf("retention deleted protected source configuration: %v", err)
@@ -410,12 +433,32 @@ func TestReactorTelemetryPeriodicReconcilePrunesMeasuredStateWithoutRead(t *test
 	}
 	app := NewGateway(DefaultConfig(), nil, nil, nil)
 	app.workbench = controller
+	app.EnableLifecycleHealth()
+	before, err := controller.Snapshot()
+	if err != nil || len(before.Measured) == 0 {
+		t.Fatalf("expired dynamic frames were not visible before scheduled reconciliation: %#v err=%v", before.Measured, err)
+	}
 	if err := app.ReconcileFleetBoardSessions(context.Background()); err != nil {
 		t.Fatalf("periodic retention reconcile: %v", err)
 	}
-	frames, err := store.LatestMeasuredFrames(100)
-	if err != nil || len(frames) != 0 {
-		t.Fatalf("periodic reconcile left expired rows until a read: %#v err=%v", frames, err)
+	after, err := controller.Snapshot()
+	if err != nil || len(after.Measured) != 0 {
+		t.Fatalf("scheduled reconciliation left expired frames in the public Snapshot: %#v err=%v", after.Measured, err)
+	}
+	if after.Generation <= before.Generation {
+		t.Fatalf("scheduled reconciliation did not publish a newer Snapshot generation: before=%d after=%d", before.Generation, after.Generation)
+	}
+	if app.lifecycle.State() != LifecycleReady {
+		t.Fatalf("scheduled retention task was not reported healthy: %s", app.lifecycle.State())
+	}
+}
+
+func TestMeasuredRetentionReconciliationHonorsCancelledLifecycleContext(t *testing.T) {
+	controller := NewWorkbenchController(DefaultConfig().Workbench, NewInMemoryWorkbenchStore(), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := controller.ReconcileDynamicMeasuredRetention(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled lifecycle context was ignored: %v", err)
 	}
 }
 

@@ -4,20 +4,14 @@ package gateway
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 
 	"github.com/apache/arrow-go/v18/arrow"
 	"github.com/apache/arrow-go/v18/arrow/array"
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/iceberg-go"
 	icecatalog "github.com/apache/iceberg-go/catalog"
-	_ "github.com/apache/iceberg-go/catalog/sql"
-	sqlcatalog "github.com/apache/iceberg-go/catalog/sql"
-	iceio "github.com/apache/iceberg-go/io"
-	_ "github.com/apache/iceberg-go/io/gocloud"
 	icetable "github.com/apache/iceberg-go/table"
 )
 
@@ -34,11 +28,8 @@ type WorkbenchIcebergWriter struct {
 }
 
 func NewWorkbenchIcebergWriter(cfg WorkbenchConfig) (*WorkbenchIcebergWriter, error) {
-	if strings.TrimSpace(cfg.IcebergCatalogDSN) == "" {
-		return nil, fmt.Errorf("WORKBENCH_ICEBERG_CATALOG_DSN is required")
-	}
-	if strings.TrimSpace(cfg.IcebergWarehouse) == "" {
-		return nil, fmt.Errorf("WORKBENCH_ICEBERG_WAREHOUSE is required")
+	if err := workbenchIcebergLifecycle(cfg).Validate(); err != nil {
+		return nil, err
 	}
 	return &WorkbenchIcebergWriter{cfg: cfg}, nil
 }
@@ -57,9 +48,7 @@ func (w *WorkbenchIcebergWriter) AppendScada(ctx context.Context, projection Sca
 		return err
 	}
 	defer arrowTable.Release()
-	if _, err := tbl.AppendTable(ctx, arrowTable, arrowTable.NumRows(), iceberg.Properties{
-		"workbench.topic": projection.RedpandaTopic,
-	}); err != nil {
+	if _, err := tbl.AppendTable(ctx, arrowTable, arrowTable.NumRows(), workbenchIcebergAppendProperties(projection.RedpandaTopic)); err != nil {
 		return err
 	}
 	return verifyWorkbenchIcebergOffset(ctx, cat, workbenchScadaIcebergIdentifier, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset)
@@ -79,9 +68,7 @@ func (w *WorkbenchIcebergWriter) AppendResult(ctx context.Context, projection Si
 		return err
 	}
 	defer arrowTable.Release()
-	if _, err := tbl.AppendTable(ctx, arrowTable, arrowTable.NumRows(), iceberg.Properties{
-		"workbench.topic": projection.RedpandaTopic,
-	}); err != nil {
+	if _, err := tbl.AppendTable(ctx, arrowTable, arrowTable.NumRows(), workbenchIcebergAppendProperties(projection.RedpandaTopic)); err != nil {
 		return err
 	}
 	return verifyWorkbenchIcebergOffset(ctx, cat, workbenchResultIcebergIdentifier, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset)
@@ -104,13 +91,16 @@ func (w *WorkbenchIcebergWriter) AppendTwin(ctx context.Context, projection Twin
 		return err
 	}
 	defer arrowTable.Release()
-	if _, err := tbl.AppendTable(ctx, arrowTable, arrowTable.NumRows(), iceberg.Properties{
-		"workbench.topic":                        projection.RedpandaTopic,
-		workbenchTwinPublicationSnapshotProperty: projection.PublicationID,
-	}); err != nil {
+	properties := workbenchIcebergAppendProperties(projection.RedpandaTopic)
+	properties[workbenchTwinPublicationSnapshotProperty] = projection.PublicationID
+	if _, err := tbl.AppendTable(ctx, arrowTable, arrowTable.NumRows(), properties); err != nil {
 		return err
 	}
 	return verifyWorkbenchIcebergOffset(ctx, cat, workbenchTwinIcebergIdentifier, projection.RedpandaTopic, projection.RedpandaPartition, projection.RedpandaOffset)
+}
+
+func workbenchIcebergAppendProperties(topic string) iceberg.Properties {
+	return iceberg.Properties{"workbench.topic": topic}
 }
 
 func icebergTwinPublicationSeen(tbl *icetable.Table, publicationID string) bool {
@@ -123,62 +113,22 @@ func icebergTwinPublicationSeen(tbl *icetable.Table, publicationID string) bool 
 }
 
 func (w *WorkbenchIcebergWriter) loadCatalog(ctx context.Context) (icecatalog.Catalog, error) {
-	props := iceberg.Properties{
-		"type":                "sql",
-		"uri":                 w.cfg.IcebergCatalogDSN,
-		sqlcatalog.DriverKey:  "pgx",
-		sqlcatalog.DialectKey: string(sqlcatalog.Postgres),
-		"init_catalog_tables": "true",
-		"warehouse":           strings.TrimRight(strings.TrimSpace(w.cfg.IcebergWarehouse), "/"),
-	}
-	for key, value := range w.s3Properties() {
-		props[key] = value
-	}
-	return icecatalog.Load(ctx, "workbench", props)
+	return workbenchIcebergLifecycle(w.cfg).LoadCatalog(ctx, "workbench")
 }
 
-func (w *WorkbenchIcebergWriter) s3Properties() iceberg.Properties {
-	props := iceberg.Properties{}
-	if endpoint := strings.TrimSpace(w.cfg.IcebergS3Endpoint); endpoint != "" {
-		props[iceio.S3EndpointURL] = endpoint
-	}
-	if region := strings.TrimSpace(w.cfg.IcebergS3Region); region != "" {
-		props[iceio.S3Region] = region
-		props[iceio.S3ClientRegion] = region
-	}
-	if accessKey := strings.TrimSpace(w.cfg.IcebergS3AccessKeyID); accessKey != "" {
-		props[iceio.S3AccessKeyID] = accessKey
-	}
-	if secretKey := strings.TrimSpace(w.cfg.IcebergS3SecretKey); secretKey != "" {
-		props[iceio.S3SecretAccessKey] = secretKey
-	}
-	return props
+func workbenchIcebergLifecycle(cfg WorkbenchConfig) IcebergTableLifecycle {
+	return IcebergTableLifecycle{Configuration: IcebergCatalogConfiguration{
+		DSN:           cfg.IcebergCatalogDSN,
+		Warehouse:     cfg.IcebergWarehouse,
+		S3Endpoint:    cfg.IcebergS3Endpoint,
+		S3Region:      cfg.IcebergS3Region,
+		S3AccessKeyID: cfg.IcebergS3AccessKeyID,
+		S3SecretKey:   cfg.IcebergS3SecretKey,
+	}}
 }
 
-func (w *WorkbenchIcebergWriter) loadOrCreateTable(ctx context.Context, cat icecatalog.Catalog, identifier icetable.Identifier, schema *iceberg.Schema) (*icetable.Table, error) {
-	tbl, err := cat.LoadTable(ctx, identifier)
-	if err == nil {
-		return tbl, nil
-	}
-	if !errors.Is(err, icecatalog.ErrNoSuchTable) {
-		return nil, err
-	}
-	namespace := icetable.Identifier{identifier[0]}
-	if err := cat.CreateNamespace(ctx, namespace, iceberg.Properties{}); err != nil && !errors.Is(err, icecatalog.ErrNamespaceAlreadyExists) {
-		return nil, err
-	}
-	tableProps := iceberg.Properties{icetable.PropertyFormatVersion: "2"}
-	for key, value := range w.s3Properties() {
-		tableProps[key] = value
-	}
-	tbl, err = cat.CreateTable(ctx, identifier, schema, icecatalog.WithProperties(tableProps))
-	if err != nil {
-		if errors.Is(err, icecatalog.ErrTableAlreadyExists) {
-			return cat.LoadTable(ctx, identifier)
-		}
-		return nil, err
-	}
-	return tbl, nil
+func (w *WorkbenchIcebergWriter) loadOrCreateTable(ctx context.Context, cat icebergTableLifecycleCatalog, identifier icetable.Identifier, schema *iceberg.Schema) (*icetable.Table, error) {
+	return workbenchIcebergLifecycle(w.cfg).LoadOrCreateTable(ctx, cat, identifier, schema)
 }
 
 func verifyWorkbenchIcebergOffset(ctx context.Context, cat icecatalog.Catalog, identifier icetable.Identifier, topic string, partition int, offset int64) error {

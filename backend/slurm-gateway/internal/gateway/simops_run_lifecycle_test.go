@@ -227,6 +227,35 @@ func TestSimopsControllerIdempotentRetryRecoversStartingRunAtCapacity(t *testing
 	}
 }
 
+func TestSimopsControllerListEventsRecoversRecordedPublicationIntent(t *testing.T) {
+	now := time.Date(2026, 7, 14, 3, 40, 0, 0, time.UTC)
+	store := NewInMemorySimopsStore()
+	controller := NewSimopsController(testRunConnectionProfileConfig(), store, ContractSimopsSpooler{Mode: "auto"}, failingLifecycleEventLog{}, IcebergArtifactPlanner{}, nil, nil)
+	controller.now = func() time.Time { return now }
+	controller.runID = func() string { return "RUN-RECOVER-PUBLICATION" }
+
+	response, status, err := controller.CreateRun(context.Background(), SimopsRunRequest{
+		ScenarioID: "scheduler-drift", WorkerKinds: []string{"scheduler"}, LaunchMode: "auto", IdempotencyKey: "recover-publication",
+	}, "react-backend-client")
+	if err != nil || status != 202 || response.Lifecycle != SimopsStreaming {
+		t.Fatalf("publication delivery failure must leave a visible streaming Run: response=%#v status=%d err=%v", response, status, err)
+	}
+	intents, err := store.ListPublicationIntents(response.RunID)
+	if err != nil || len(intents) != 1 || intents[0].State != SimopsPublicationFailed {
+		t.Fatalf("expected failed publication intent before recovery: intents=%#v err=%v", intents, err)
+	}
+
+	controller.eventLog = MemorySimopsEventLog{Store: store}
+	events, status, err := controller.ListEvents(response.RunID)
+	if err != nil || status != 200 || len(events) != 1 || events[0].Lifecycle != SimopsStreaming {
+		t.Fatalf("event read path did not recover publication: events=%#v status=%d err=%v", events, status, err)
+	}
+	intents, err = store.ListPublicationIntents(response.RunID)
+	if err != nil || len(intents) != 1 || intents[0].State != SimopsPublicationPublished {
+		t.Fatalf("expected recovered publication intent: intents=%#v err=%v", intents, err)
+	}
+}
+
 func TestSimopsRunLifecycleBoundsDetachedRecovery(t *testing.T) {
 	store := NewInMemorySimopsStore()
 	spooler := &blockingRecoveryLifecycleSpooler{delegate: ContractSimopsSpooler{Mode: "auto"}}
@@ -235,7 +264,7 @@ func TestSimopsRunLifecycleBoundsDetachedRecovery(t *testing.T) {
 	lifecycle := NewSimopsRunLifecyclePolicy(cfg, store, spooler, MemorySimopsEventLog{Store: store}, invalidLifecycleArtifactPlanner{})
 	now := time.Date(2026, 7, 14, 3, 45, 0, 0, time.UTC)
 	lifecycle.SetNow(func() time.Time { return now })
-	run := SimopsRunRecord{RunID: "RUN-BOUNDED-RECOVERY", ScenarioID: "scheduler-drift", Lifecycle: SimopsStarting, LaunchMode: "auto", SubmittedBy: "test", CreatedAt: now, UpdatedAt: now}
+	run := SimopsRunRecord{RunID: "RUN-BOUNDED-RECOVERY", ScenarioID: "scheduler-drift", Lifecycle: SimopsStarting, LaunchMode: "auto", SubmittedBy: "test", IngestToken: "test-token", CreatedAt: now, UpdatedAt: now}
 
 	started := time.Now()
 	_, err := lifecycle.Start(context.Background(), run, []SimopsWorkerKind{SimopsWorkerScheduler})
@@ -316,17 +345,48 @@ func TestSimopsRunLifecycleCompensatesArtifactPersistenceFailure(t *testing.T) {
 	assertFailedLifecycleOutcome(t, base, outcome, SimopsStopped, SimopsRunStageArtifactPersistence)
 }
 
-func TestSimopsRunLifecyclePersistsEventPublicationFailureAndFailsArtifact(t *testing.T) {
+func TestSimopsRunLifecycleRecordsRetryableEventPublicationFailure(t *testing.T) {
 	store := NewInMemorySimopsStore()
 	spooler := &trackingLifecycleSpooler{delegate: ContractSimopsSpooler{Mode: "auto"}}
 	lifecycle, run := newLifecycleTestPolicy(store, spooler, failingLifecycleEventLog{}, IcebergArtifactPlanner{})
+	run.IdempotencyKey = "publication-retry"
 
 	outcome, err := lifecycle.Start(context.Background(), run, []SimopsWorkerKind{SimopsWorkerScheduler})
-	assertLifecycleErrorStage(t, err, SimopsRunStageEventPublication)
-	assertFailedLifecycleOutcome(t, store, outcome, SimopsStopped, SimopsRunStageEventPublication)
+	if err != nil || outcome.Run.Lifecycle != SimopsStreaming {
+		t.Fatalf("publication failure must not replace the durable Run fact: outcome=%#v err=%v", outcome, err)
+	}
 	artifacts, listErr := store.ListArtifacts(run.RunID)
-	if listErr != nil || len(artifacts) != 1 || artifacts[0].Status != SimopsArtifactStatusFailed {
-		t.Fatalf("expected planned artifact to receive explicit failed disposition, artifacts=%#v err=%v", artifacts, listErr)
+	if listErr != nil || len(artifacts) != 1 || artifacts[0].Status != SimopsArtifactStatusReceived {
+		t.Fatalf("expected planned artifact to remain attached to streaming Run, artifacts=%#v err=%v", artifacts, listErr)
+	}
+	events, listErr := store.ListEvents(run.RunID)
+	if listErr != nil || len(events) != 0 {
+		t.Fatalf("failed publication must not masquerade as delivered event: events=%#v err=%v", events, listErr)
+	}
+	intents, listErr := store.ListPublicationIntents(run.RunID)
+	if listErr != nil || len(intents) != 1 || intents[0].State != SimopsPublicationFailed || intents[0].Attempts != 1 {
+		t.Fatalf("expected one durable retryable publication failure, intents=%#v err=%v", intents, listErr)
+	}
+
+	if err := dispatchSimopsPublicationIntents(context.Background(), store, MemorySimopsEventLog{Store: store}, run.RunID); err != nil {
+		t.Fatalf("retry publication: %v", err)
+	}
+	events, listErr = store.ListEvents(run.RunID)
+	if listErr != nil || len(events) != 1 || events[0].EventType != SimopsEventRunLifecycle || events[0].Lifecycle != SimopsStreaming {
+		t.Fatalf("expected retry to deliver original lifecycle event, events=%#v err=%v", events, listErr)
+	}
+	intents, listErr = store.ListPublicationIntents(run.RunID)
+	if listErr != nil || len(intents) != 1 || intents[0].State != SimopsPublicationPublished || intents[0].Attempts != 1 {
+		t.Fatalf("expected retry to publish the same intent, intents=%#v err=%v", intents, listErr)
+	}
+
+	replayed, err := lifecycle.Start(context.Background(), run, []SimopsWorkerKind{SimopsWorkerStorage})
+	if err != nil || replayed.Created || replayed.Run.RunID != run.RunID {
+		t.Fatalf("idempotent retry must not invent a second Run fact: outcome=%#v err=%v", replayed, err)
+	}
+	intents, _ = store.ListPublicationIntents(run.RunID)
+	if len(intents) != 1 {
+		t.Fatalf("idempotent retry duplicated publication intent: %#v", intents)
 	}
 }
 
@@ -427,6 +487,13 @@ func (s *failingLifecycleStore) UpdateRunLifecycle(runID string, lifecycle Simop
 	return s.SimopsStore.UpdateRunLifecycle(runID, lifecycle)
 }
 
+func (s *failingLifecycleStore) UpdateRunLifecycleWithPublicationIntent(runID string, lifecycle SimopsLifecycle, event SimopsEvent) (SimopsRunRecord, SimopsPublicationIntent, error) {
+	if s.failStreamingTransition && lifecycle == SimopsStreaming {
+		return SimopsRunRecord{}, SimopsPublicationIntent{}, errors.New("streaming transition failed")
+	}
+	return s.SimopsStore.UpdateRunLifecycleWithPublicationIntent(runID, lifecycle, event)
+}
+
 func (s *failingLifecycleStore) SaveArtifact(record SimopsArtifactRecord) error {
 	if s.failArtifact {
 		return errors.New("save artifact failed")
@@ -456,12 +523,30 @@ func (s *recoveringLifecycleSpooler) StartRun(context.Context, SimopsRunRecord, 
 	return nil, nil, errors.New("stranded recovery must not relaunch")
 }
 
+func (s *recoveringLifecycleSpooler) StartRunProfiles(context.Context, SimopsRunRecord, []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	return nil, nil, errors.New("stranded recovery must not relaunch")
+}
+
 func (s *recoveringLifecycleSpooler) StopRun(context.Context, string) error {
 	s.stops++
 	return nil
 }
 
+func (s *recoveringLifecycleSpooler) StopRunProfiles(context.Context, string, []RunConnectionProfile) error {
+	s.stops++
+	return nil
+}
+
+func (s *recoveringLifecycleSpooler) CleanupRunProfiles(context.Context, string, []RunConnectionProfile) error {
+	return nil
+}
+
 func (s *recoveringLifecycleSpooler) SyncRun(context.Context, SimopsRunRecord, []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
+	s.syncs++
+	return append([]ObservedWorkerLifecycle(nil), s.observations...), nil
+}
+
+func (s *recoveringLifecycleSpooler) SyncRunProfiles(context.Context, SimopsRunRecord, []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
 	s.syncs++
 	return append([]ObservedWorkerLifecycle(nil), s.observations...), nil
 }
@@ -474,8 +559,21 @@ func (s *blockingRecoveryLifecycleSpooler) StartRun(ctx context.Context, run Sim
 	return s.delegate.StartRun(ctx, run, workers)
 }
 
+func (s *blockingRecoveryLifecycleSpooler) StartRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	return s.delegate.StartRunProfiles(ctx, run, profiles)
+}
+
 func (*blockingRecoveryLifecycleSpooler) StopRun(ctx context.Context, _ string) error {
 	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (*blockingRecoveryLifecycleSpooler) StopRunProfiles(ctx context.Context, _ string, _ []RunConnectionProfile) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (*blockingRecoveryLifecycleSpooler) CleanupRunProfiles(ctx context.Context, _ string, _ []RunConnectionProfile) error {
 	return ctx.Err()
 }
 
@@ -483,8 +581,17 @@ func (s *blockingRecoveryLifecycleSpooler) SyncRun(ctx context.Context, run Simo
 	return s.delegate.SyncRun(ctx, run, workers)
 }
 
+func (s *blockingRecoveryLifecycleSpooler) SyncRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
+	return s.delegate.SyncRunProfiles(ctx, run, profiles)
+}
+
 func (s *silentPartialLifecycleSpooler) StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
 	records, commands, err := s.delegate.StartRun(ctx, run, workers[:1])
+	return records, commands, err
+}
+
+func (s *silentPartialLifecycleSpooler) StartRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	records, commands, err := s.delegate.StartRunProfiles(ctx, run, profiles[:1])
 	return records, commands, err
 }
 
@@ -493,13 +600,31 @@ func (s *silentPartialLifecycleSpooler) StopRun(ctx context.Context, runID strin
 	return s.delegate.StopRun(ctx, runID)
 }
 
+func (s *silentPartialLifecycleSpooler) StopRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	s.stops++
+	return s.delegate.StopRunProfiles(ctx, runID, profiles)
+}
+
+func (s *silentPartialLifecycleSpooler) CleanupRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	return s.delegate.CleanupRunProfiles(ctx, runID, profiles)
+}
+
 func (s *silentPartialLifecycleSpooler) SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
 	return s.delegate.SyncRun(ctx, run, workers)
+}
+
+func (s *silentPartialLifecycleSpooler) SyncRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
+	return s.delegate.SyncRunProfiles(ctx, run, profiles)
 }
 
 func (s *trackingLifecycleSpooler) StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
 	s.starts++
 	return s.delegate.StartRun(ctx, run, workers)
+}
+
+func (s *trackingLifecycleSpooler) StartRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	s.starts++
+	return s.delegate.StartRunProfiles(ctx, run, profiles)
 }
 
 func (s *trackingLifecycleSpooler) StopRun(ctx context.Context, runID string) error {
@@ -510,8 +635,24 @@ func (s *trackingLifecycleSpooler) StopRun(ctx context.Context, runID string) er
 	return s.delegate.StopRun(ctx, runID)
 }
 
+func (s *trackingLifecycleSpooler) StopRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	s.stops++
+	if s.failStop {
+		return errors.New("stop failed")
+	}
+	return s.delegate.StopRunProfiles(ctx, runID, profiles)
+}
+
+func (s *trackingLifecycleSpooler) CleanupRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	return s.delegate.CleanupRunProfiles(ctx, runID, profiles)
+}
+
 func (s *trackingLifecycleSpooler) SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
 	return s.delegate.SyncRun(ctx, run, workers)
+}
+
+func (s *trackingLifecycleSpooler) SyncRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
+	return s.delegate.SyncRunProfiles(ctx, run, profiles)
 }
 
 type invalidLifecycleArtifactPlanner struct{}
@@ -541,11 +682,34 @@ func (s *partialFailureSimopsSpooler) StartRun(_ context.Context, run SimopsRunR
 		}}, errors.New("storage worker launch failed")
 }
 
+func (s *partialFailureSimopsSpooler) StartRunProfiles(_ context.Context, run SimopsRunRecord, _ []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	return []SimopsWorkerRecord{{
+			RunID: run.RunID, WorkerID: "scheduler-01", WorkerKind: SimopsWorkerScheduler,
+			Lifecycle: SimopsStarting, LaunchMode: "auto", Runtime: "test", RuntimeID: "runtime-scheduler", UpdatedAt: s.now,
+		}}, []SimopsSpoolCommand{{
+			CommandID: run.RunID + "-scheduler-01-start", RunID: run.RunID, WorkerID: "scheduler-01",
+			Mode: "auto", State: SimopsStarting, Message: "scheduler launched", CreatedAt: s.now, UpdatedAt: s.now,
+		}}, errors.New("storage worker launch failed")
+}
+
 func (s *partialFailureSimopsSpooler) StopRun(_ context.Context, _ string) error {
 	s.stops++
 	return nil
 }
 
+func (s *partialFailureSimopsSpooler) StopRunProfiles(_ context.Context, _ string, _ []RunConnectionProfile) error {
+	s.stops++
+	return nil
+}
+
+func (s *partialFailureSimopsSpooler) CleanupRunProfiles(_ context.Context, _ string, _ []RunConnectionProfile) error {
+	return nil
+}
+
 func (s *partialFailureSimopsSpooler) SyncRun(_ context.Context, _ SimopsRunRecord, _ []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
+	return nil, nil
+}
+
+func (s *partialFailureSimopsSpooler) SyncRunProfiles(_ context.Context, _ SimopsRunRecord, _ []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
 	return nil, nil
 }

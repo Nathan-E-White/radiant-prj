@@ -224,11 +224,6 @@ func (s Spooler) syncRunProfiles(ctx context.Context, run gateway.SimopsRunRecor
 			continue
 		}
 		observation := observedFromDockerState(run, profile, item, inspect, s.now())
-		if succeededCleanupDue(profile, inspect, observation, s.now()) {
-			if err := s.Client.ContainerRemove(ctx, observation.RuntimeID, dockerclient.ContainerRemoveOptions{Force: true}); err != nil {
-				return nil, fmt.Errorf("cleanup succeeded simops worker container %s for run %s: %w", observation.RuntimeID, runID, err)
-			}
-		}
 		observations = append(observations, observation)
 	}
 	return observations, nil
@@ -390,25 +385,6 @@ func cleanedUpSucceededObservation(run gateway.SimopsRunRecord, profile gateway.
 	), true
 }
 
-func succeededCleanupDue(profile gateway.RunConnectionProfile, inspect container.InspectResponse, observation gateway.ObservedWorkerLifecycle, now time.Time) bool {
-	if observation.State != gateway.ObservedWorkerSucceeded || strings.TrimSpace(observation.RuntimeID) == "" {
-		return false
-	}
-	if profile.Cleanup.TTLSecondsAfterFinished < 0 {
-		return false
-	}
-	state := inspect.State
-	if state == nil {
-		return false
-	}
-	ttl := time.Duration(profile.Cleanup.TTLSecondsAfterFinished) * time.Second
-	finishedAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(state.FinishedAt))
-	if err != nil || finishedAt.IsZero() {
-		return ttl == 0
-	}
-	return !now.Before(finishedAt.Add(ttl))
-}
-
 func dockerIntPtr(value int) *int {
 	return &value
 }
@@ -446,6 +422,48 @@ func (s Spooler) tryStopRunProfiles(ctx context.Context, runID string, profiles 
 		timeout := 10
 		if err := s.Client.ContainerStop(ctx, containerID, dockerclient.ContainerStopOptions{Timeout: &timeout}); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("stop simops worker container %s: %w", containerID, err)
+		}
+	}
+	return firstErr
+}
+
+func (s Spooler) CleanupRunProfiles(ctx context.Context, runID string, profiles []gateway.RunConnectionProfile) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	if s.Client == nil {
+		return fmt.Errorf("docker client is required")
+	}
+	return s.tryCleanupRunProfiles(ctx, strings.TrimSpace(runID), profiles)
+}
+
+func (s Spooler) tryCleanupRunProfiles(ctx context.Context, runID string, profiles []gateway.RunConnectionProfile) error {
+	runID = strings.TrimSpace(runID)
+	if runID == "" {
+		return nil
+	}
+	workers := profileWorkerSet(profiles)
+	containers, err := s.Client.ContainerList(ctx, dockerclient.ContainerListOptions{
+		All: true,
+		Filters: make(dockerclient.Filters).
+			Add("label", "simops.run_id="+runID).
+			Add("label", "simops.runtime_adapter=docker-sdk").
+			Add("label", "simops.role="+string(gateway.RunConnectionRoleOrdinaryWorker)),
+	})
+	if err != nil {
+		return fmt.Errorf("list simops worker containers for cleanup %s: %w", runID, err)
+	}
+
+	var firstErr error
+	for _, item := range containers {
+		if !matchesRunWorker(runID, item.Labels, workers) {
+			continue
+		}
+		containerID := strings.TrimSpace(item.ID)
+		if containerID == "" {
+			continue
 		}
 		if err := s.Client.ContainerRemove(ctx, containerID, dockerclient.ContainerRemoveOptions{Force: true}); err != nil && firstErr == nil {
 			firstErr = fmt.Errorf("remove simops worker container %s: %w", containerID, err)

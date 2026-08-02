@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import { buildWorkbenchProjection } from "./projection";
 import {
@@ -6,8 +7,8 @@ import {
 } from "./liveWorkbench";
 
 describe("live Workbench read boundary", () => {
-  it("loads one coherent snapshot through one credential-free browser request", async () => {
-    const fetcher = vi.fn(async () => new Response(JSON.stringify(liveSnapshot(4)), { status: 200 }));
+	 it("loads one coherent snapshot through one credential-free browser request", async () => {
+		const fetcher = vi.fn(async () => new Response(readFileSync(new URL("../../../examples/simulator-workbench/workbench-snapshot.valid.json", import.meta.url), "utf8"), { status: 200 }));
     const accepted = await createHttpWorkbenchDataAdapter(fetcher).load();
 
     expect(fetcher).toHaveBeenCalledTimes(1);
@@ -16,8 +17,8 @@ describe("live Workbench read boundary", () => {
       credentials: "same-origin",
       headers: { Accept: "application/json" }
     });
-    expect(accepted.generation).toBe(4);
-    expect(accepted.input.state.snapshotGeneration).toBe(4);
+		expect(accepted.generation).toBe(7);
+		expect(accepted.input.state.snapshotGeneration).toBe(7);
     expect(accepted.input.fleetUnits[0]).toMatchObject({
       unitId: "reactor-01",
       availabilityPhase: "status not provided",
@@ -43,8 +44,7 @@ describe("live Workbench read boundary", () => {
   });
 
   it("rejects schema and generation mismatches without assembling a partial projection", async () => {
-    const mismatch = liveSnapshot(7);
-    mismatch.state.snapshotGeneration = 6;
+    const mismatch = JSON.parse(readFileSync(new URL("../../../examples/simulator-workbench/workbench-snapshot.generation-mismatch.json", import.meta.url), "utf8"));
     await expect(createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(mismatch))).load()).rejects.toMatchObject({
       kind: "generation"
     });
@@ -55,11 +55,14 @@ describe("live Workbench read boundary", () => {
       kind: "schema"
     });
 
-    const partial = liveSnapshot(7) as unknown as { twin: { entities: Array<{ entityId: string }> } };
+	const partial = liveSnapshot(7) as unknown as { twin: { entities: Array<{ entityId: string }> } };
     partial.twin.entities = [{ entityId: "reactor-01" }];
-    await expect(createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(partial))).load()).rejects.toMatchObject({
-      kind: "partial"
-    });
+	await expect(createHttpWorkbenchDataAdapter(async () => new Response(JSON.stringify(partial))).load()).rejects.toMatchObject({
+		kind: "partial"
+	});
+
+	await expect(createHttpWorkbenchDataAdapter(async () => new Response(readFileSync(new URL("../../../examples/simulator-workbench/workbench-snapshot.partial.json", import.meta.url), "utf8"))).load()).rejects.toMatchObject({ kind: "partial" });
+	await expect(createHttpWorkbenchDataAdapter(async () => new Response(readFileSync(new URL("../../../examples/simulator-workbench/workbench-snapshot.invalid-value-basis.json", import.meta.url), "utf8"))).load()).rejects.toMatchObject({ kind: "schema" });
 
     const noReactorIdentity = liveSnapshot(7);
     delete noReactorIdentity.measured[0]?.reactorId;

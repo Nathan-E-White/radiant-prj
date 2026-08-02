@@ -81,24 +81,22 @@ func TestDockerReactorTelemetryWorkerSetPublishesMeasuredStateAndCleansUp(t *tes
 	}
 
 	deadline := time.Now().Add(30 * time.Second)
-	var measured struct {
-		Frames []gateway.ScadaTelemetryFrame `json:"frames"`
-	}
+	var snapshot gateway.WorkbenchSnapshot
 	for time.Now().Before(deadline) {
-		res, err := http.Get(baseURL + "/api/simulator-workbench/measured")
+		res, err := http.Get(baseURL + "/api/simulator-workbench/snapshot")
 		if err == nil {
-			_ = json.NewDecoder(res.Body).Decode(&measured)
+			_ = json.NewDecoder(res.Body).Decode(&snapshot)
 			_ = res.Body.Close()
-			if len(measured.Frames) == 6 {
+			if snapshot.Generation > 0 && snapshot.State.SnapshotGeneration == snapshot.Generation && len(snapshot.Measured) == 6 {
 				break
 			}
 		}
 		time.Sleep(250 * time.Millisecond)
 	}
-	if len(measured.Frames) != 6 {
-		t.Fatalf("expected six reactor-scoped measured tags, got %#v", measured.Frames)
+	if snapshot.Generation == 0 || snapshot.State.SnapshotGeneration != snapshot.Generation || len(snapshot.Measured) != 6 {
+		t.Fatalf("expected one coherent Snapshot with six reactor-scoped measured tags, got %#v", snapshot)
 	}
-	for _, frame := range measured.Frames {
+	for _, frame := range snapshot.Measured {
 		if frame.ReactorID != "docker-reactor" || frame.ValueBasis != gateway.WorkbenchValueMeasured {
 			t.Fatalf("container publication lost reactor identity or Value Basis: %#v", frame)
 		}

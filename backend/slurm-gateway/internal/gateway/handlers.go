@@ -25,6 +25,7 @@ type Gateway struct {
 	reactorTelemetry *ReactorTelemetryManager
 	artifactForge    *ArtifactForgeManager
 	fleetBoard       *FleetBoardIntentModule
+	lifecycle        *LifecycleHealth
 	now              func() time.Time
 }
 
@@ -114,11 +115,12 @@ func NewGateway(cfg Config, spooler SlurmSpooler, store JobStore, metrics *Metri
 		spooler = MockSpooler{}
 	}
 	return &Gateway{
-		cfg:     cfg,
-		spooler: spooler,
-		store:   store,
-		metrics: metrics,
-		now:     time.Now,
+		cfg:       cfg,
+		spooler:   spooler,
+		store:     store,
+		metrics:   metrics,
+		now:       time.Now,
+		lifecycle: NewLifecycleHealth(false),
 	}
 }
 
@@ -145,7 +147,22 @@ func (g *Gateway) Handler() http.Handler {
 }
 
 func (g *Gateway) ReconcileFleetBoardSessions(ctx context.Context) error {
-	return g.fleetBoardIntentModule().ReconcileSessions(ctx)
+	outcomes := g.fleetBoardIntentModule().ReconcileSessionOutcomes(ctx)
+	var err error
+	for _, outcome := range outcomes {
+		err = errors.Join(err, outcome.Err)
+	}
+	// Shutdown is an intentional cancellation, not an operational failure. A
+	// deadline remains evidence of an unhealthy reconciliation cycle.
+	if errors.Is(ctx.Err(), context.Canceled) {
+		return err
+	}
+	g.lifecycle.RecordOutcomes(g.now(), outcomes)
+	return err
+}
+
+func (g *Gateway) EnableLifecycleHealth() {
+	g.lifecycle = NewLifecycleHealth(true)
 }
 
 func (g *Gateway) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -163,6 +180,10 @@ func (g *Gateway) handleReady(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := g.readyError(); err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "Gateway is not ready", Code: "not_ready"})
+		return
+	}
+	if state := g.lifecycle.StateAt(g.now()); state == LifecycleStarting || state == LifecycleNotReady {
+		writeJSON(w, http.StatusServiceUnavailable, ErrorResponse{Error: "Gateway lifecycle reconciliation is not ready", Code: "lifecycle_not_ready"})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -189,7 +210,7 @@ func (g *Gateway) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(g.metrics.Render(g.readyError() == nil)))
+	_, _ = w.Write([]byte(g.metrics.Render(g.readyError() == nil) + g.lifecycle.Prometheus()))
 }
 
 func (g *Gateway) handleSubmitJob(w http.ResponseWriter, r *http.Request) {

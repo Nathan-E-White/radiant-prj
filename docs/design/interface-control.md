@@ -37,11 +37,12 @@ This document identifies internal and operational interfaces that are controlled
 | `bun run configured-data-flush` | PostgreSQL DSN and, for mutation, an exact reviewed `planId` | Dry-run target/protection plan or one atomic monotonic generation transition |
 | `bun run configured-data-flush:check` | Flush behavior tests and operations guide | Pass/fail plan/apply behavior plus contractual operator wording |
 | `scripts/simops-smoke-json.mjs` | SimOps smoke JSON from API responses and Docker inspect | Pass/fail runtime proof parsing, gateway-ingest credential checks, and redacted evidence output |
-| `scripts/simops-docker-orbstack-smoke.sh` | Local Docker/OrbStack compose platform and optional `SIMOPS_SMOKE_BUILD=auto\|always\|never` image build mode | Pass/fail SimOps Runtime Proof for Docker worker launch, gateway-only ingest, observed lifecycle, zero-TTL success cleanup, failed-run retention, and smoke-forced cleanup |
+| `scripts/simops-docker-orbstack-smoke.sh` | Local Docker/OrbStack compose platform and optional `SIMOPS_SMOKE_BUILD=auto\|always\|never` image build mode | Pass/fail SimOps Runtime Proof for Docker worker launch, gateway-only ingest, read-only observed lifecycle, explicit success cleanup, failed-run retention, and smoke-forced cleanup |
 | `scripts/simops-kind-smoke.sh` | Local Kind cluster on OrbStack, gateway and worker images, optional build mode | Pass/fail client-go Job launch, Gateway-Only Worker Ingest, lifecycle sync, TTL, failed-Job retention, and forced cleanup evidence |
 | `scripts/simops-opentofu-preflight.sh` | OpenTofu module, committed provider lockfile, isolated synthetic kubeconfig | No-mutation fmt/init/validate/plan evidence for namespace, service accounts, RBAC, and runtime adapter ConfigMap |
 | `scripts/check-simops-runtime-closeout.mjs` | Runtime design, interface, verification, and traceability docs | Pass/fail final runtime adapter documentation coverage |
 | `scripts/simulator-workbench-dataflow-smoke.sh` | Local Docker/OrbStack compose platform | Pass/fail backend dataflow proof for measured, telemetry, simulated, and imputed units |
+| `scripts/workbench-dataflow-json.node-test.mjs` | Controlled complete and invalid Snapshot envelopes | Pass/fail parser proof that the smoke accepts one coherent Snapshot and rejects partial or generation-mismatched input |
 | `scripts/hygiene-size.mjs` | Local repo, Git worktree, cache, and Docker/OrbStack storage inspection | Read-only size report with skipped optional sections |
 | `scripts/check-hygiene-size.mjs` | Fake Git, Docker, Go, and cache fixtures | Pass/fail read-only size-report validation |
 | `scripts/check-docker-storage-policy.mjs` | Controlled storage-policy documentation and report source | Pass/fail policy and read-only boundary validation |
@@ -58,9 +59,9 @@ This document identifies internal and operational interfaces that are controlled
 
 | Handler | Method | Input | Output | Control |
 | --- | --- | --- | --- | --- |
-| `/healthz` | GET | None | `{"status":"ok"}` | Handler test |
-| `/readyz` | GET | Runtime config | Ready status and mode | Handler test |
-| `/metrics` | GET | In-memory counters | Prometheus text metrics | Handler test and infra check |
+| `/healthz` | GET | None | Process-liveness status | Handler test; it remains independent of lifecycle-reconciliation readiness |
+| `/readyz` | GET | Runtime config and Lifecycle Health | Readiness status, mode, and declared lifecycle-policy state | Handler and lifecycle-task tests |
+| `/metrics` | GET | In-memory counters and Lifecycle Health | Prometheus text metrics, including fixed-label lifecycle task outcome/status series | Handler, metrics, and infra checks |
 | `/api/jobs/submit` | POST | `script_name`, `partition`, `node_count`, optional `rank_count` | Queued job id, state, and mode | mTLS identity check, allowlists, Go tests |
 | `/api/jobs/{job_id}` | GET | Job id path segment | Recorded job status | mTLS identity check and Go tests |
 | `/api/simops/runs` | POST | Scenario id, optional work script, worker kinds, launch mode, runtime, idempotency key | Run id, lifecycle state, workers, spool commands, artifact refs, WebTransport subscription metadata | mTLS identity check, allowlists, idempotency tests, Go tests |
@@ -72,15 +73,13 @@ This document identifies internal and operational interfaces that are controlled
 | `/api/fleet-board/intents` | POST | Authenticated `registerDynamicReactor`, `removeDynamicReactor`, or explicit `requestArtifactForge` with opaque domain identities and idempotency key | Bounded Reactor Telemetry lifecycle or one distinct SimOps Run association and explicit Artifact Forge decision/outcome trace | mTLS identity check, ADR caps, Postgres recovery, eligibility allowlist, and Go tests |
 | `/internal/scada/sources` | POST | Platform-token or source-scoped reactor-bound resident source declaration | Accepted source id and resident tag registration | Source/reactor credential binding and Go tests |
 | `/internal/scada/telemetry` | POST | Platform-token or source-scoped reactor-bound measured frame batch | Accepted measured frame count and Workbench event publication | Source/reactor credential binding, Value Basis validation, and Go tests |
-| `/api/simulator-workbench/snapshot` | GET | Authorized client request | One generation-bound Workbench Snapshot containing Measured State, Simulated Result State, Twin State, and Lineage | One repeatable read, mTLS identity check, generation/schema validation, Go/frontend/browser tests |
-| `/api/simulator-workbench/state` | GET | Authorized client request | Compact Workbench state summary | mTLS identity check and Go tests |
-| `/api/simulator-workbench/measured` | GET | Authorized client request | Latest measured frames | mTLS identity check and Go tests |
-| `/api/simulator-workbench/twin` | GET | Authorized client request | Current digital twin state | mTLS identity check and Go tests |
-| `/api/simulator-workbench/lineage/{value_id}` | GET | Authorized client request | Selected value lineage | mTLS identity check and Go tests |
+| `/api/simulator-workbench/snapshot` | GET | Authorized client request | One generation-bound, non-mutating Workbench Snapshot containing Measured State, Simulated Result State, Twin State, and Lineage | Read-only repeatable-read store view, mTLS identity check, executable envelope contract, and Go/frontend/browser tests |
 
 Submit and status handlers require an authorized client certificate common name unless `SLURM_GATEWAY_REQUIRE_CLIENT_CERT=false` is explicitly set for local development. Default mode is `mock`; `sbatch` mode is enabled only through `SLURM_GATEWAY_MODE=sbatch`, `SLURM_GATEWAY_SCRIPT_ROOT`, and allowlist configuration.
 
 Simulation Ops public handlers use the same backend trust boundary. Browser-local development may explicitly disable client certificate enforcement at the gateway while relying on the Vite/API proxy path; non-browser gateway use keeps mTLS as the controlled boundary. The frontend uses run/status endpoints for control and recovery inspection and the single read-only Workbench Snapshot endpoint for coherent live reads. It receives short-lived WebTransport subscription metadata for live tracks and never receives Redpanda, Timescale/Postgres, MinIO, Docker, or Iceberg catalog credentials. Development fixture fallback is enabled only when `VITE_WORKBENCH_ALLOW_FIXTURE_FALLBACK=true`; `.env.example` documents the local-demo setting and production builds leave it unset.
+
+The legacy field-read routes (`state`, `measured`, `twin`, and `lineage`) are retired rather than retained as aliases: an alias would preserve an independent public read contract and make a mixed-generation client possible again. Internal Twin projection queries remain private to the backend and are not browser routes. The accepted Issue #135 target is recorded in ADR-0013; implementation and operational evidence remain pending.
 
 ## Simulation Ops Contract Interface
 
@@ -92,11 +91,11 @@ Simulation Ops public handlers use the same backend trust boundary. Browser-loca
 | Run summary | Completed telemetry stream and scenario events | Reviewable run artifact for future evidence handoff | `simops-run-summary.v1` schema |
 | Simulated result envelope | Run-scoped synthetic engineering result values | `simops.result.v1` frames with `valueBasis=simulated` | `simops-result-envelope.v1` schema |
 | Artifact Forge | Completed local Simulation Job identity plus supported recipe | Distinct SimOps Run association; one versioned game outcome only for a committed simulated-result artifact with complete Lineage | `requestArtifactForge`, durable game-event ledger, server-side allowlist, and Go tests |
-| Runtime adapter sync | Run record and stored worker records | Runtime-neutral observed worker lifecycle states: `pending`, `active`, `succeeded`, `failed`, `missing`, `image-pull-failed`, `stopped` | Gateway runtime interface and Go tests |
+| Runtime adapter contract | Run record and `RunConnectionProfile` records for start, observe, stop, and cleanup | Runtime-neutral requested, observed, terminal, retryable-failure, and cleanup facts: `pending`, `active`, `succeeded`, `failed`, `missing`, `image-pull-failed`, `stopped` | Profile-only Gateway runtime interface and Go tests |
 
 The contract uses NDJSON as the canonical example and local fixture format. Live browser transport for v1 is WebTransport with a MoQ-compatible SimOps namespace/track envelope; `GET /api/simops/runs/{run_id}/events` is recovery/inspection only and is not the live telemetry stream.
 
-Observed runtime-worker lifecycle is separate from telemetry stream health, artifact disposition, Redpanda status, Postgres status, and Iceberg write health. Docker sync maps container existence and inspected container state into the neutral state set. Kubernetes sync uses the same state set: Job `Complete` maps to `succeeded`, Job `Failed` maps to `failed`, Pod `Pending` maps to `pending`, Pod `Running` maps to `active`, Pod `Succeeded` maps to `succeeded`, Pod `Failed` maps to `failed`, `ErrImagePull`/`ImagePullBackOff` maps to `image-pull-failed`, and missing/deleted resources map to `missing` unless the run is already stopped.
+Observed runtime-worker lifecycle is separate from telemetry stream health, artifact disposition, Redpanda status, Postgres status, and Iceberg write health. Observation never performs cleanup; cleanup is an explicit runtime-adapter operation. Docker sync maps container existence and inspected container state into the neutral state set. Kubernetes sync uses the same state set: Job `Complete` maps to `succeeded`, Job `Failed` maps to `failed`, Pod `Pending` maps to `pending`, Pod `Running` maps to `active`, Pod `Succeeded` maps to `succeeded`, Pod `Failed` maps to `failed`, `ErrImagePull`/`ImagePullBackOff` maps to `image-pull-failed`, and missing/deleted resources map to `missing` unless the run is already stopped.
 
 Run inspection remains available when a runtime sync attempt fails; in that case the handler returns the stored run and worker records without fresh observed lifecycle updates.
 
