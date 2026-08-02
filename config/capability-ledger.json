@@ -27,9 +27,15 @@
     },
     {
       "id": "simulator-workbench-dataflow", "title": "Simulator Workbench dataflow contract", "lifecycle": "active", "ownerRole": "Software", "decisionRef": "docs/adr/adr-0005.md",
-      "documentationRefs": ["docs/design/simulator-workbench-backend-dataflow-slice.md", "docs/verification/verification-plan.md"],
+      "documentationRefs": ["docs/design/simulator-workbench-backend-dataflow-slice.md", "docs/verification/verification-plan.md", "docs/adr/adr-0013.md"],
       "surfaces": [{ "kind": "source-set", "root": "docs/schemas/simulator-workbench", "extensions": [".json"] }, { "kind": "source-set", "root": "examples/simulator-workbench", "extensions": [".json"] }],
       "verificationClaim": "simulator-workbench.structured-contract", "operationalConstraints": ["measured, simulated, imputed, and lineage semantics remain distinct", "browser reads only coherent snapshots"], "lastVerificationEvidence": { "revision": "controlled-baseline", "reference": "simulator-workbench.structured-contract" }
+    },
+    {
+      "id": "simulator-workbench-snapshot-smoke-contract", "title": "Workbench Snapshot smoke-envelope integrity", "lifecycle": "active", "ownerRole": "Software", "decisionRef": "docs/adr/adr-0013.md",
+      "documentationRefs": ["docs/adr/adr-0013.md", "docs/design/workbench-snapshot-read-and-lifecycle-policy.md", "docs/verification/verification-plan.md"],
+      "surfaces": [{ "kind": "artifact", "path": "scripts/workbench-dataflow-json.mjs" }, { "kind": "artifact", "path": "scripts/workbench-dataflow-json.node-test.mjs" }, { "kind": "artifact", "path": "scripts/simulator-workbench-dataflow-smoke.sh" }, { "kind": "artifact", "path": "package.json" }],
+      "verificationClaim": "simulator-workbench.snapshot-smoke-contract", "operationalConstraints": ["the smoke observes one public Snapshot rather than field-wise reads", "a complete envelope has matching top-level and State generations", "partial or generation-mismatched envelopes fail before they become smoke evidence"], "lastVerificationEvidence": { "revision": "issue-135-test-scaffold", "reference": "simulator-workbench.snapshot-smoke-contract" }
     }
   ]
 }

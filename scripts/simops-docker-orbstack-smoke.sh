@@ -9,13 +9,14 @@ Usage:
   scripts/simops-docker-orbstack-smoke.sh [--timeout seconds] [--build auto|always|never]
 
 This smoke proves runtime launch semantics through the normal SimOps API path:
-worker container launch, gateway-only ingest credentials, observed Docker
-lifecycle sync, successful-run cleanup, failed-run retention, and smoke-forced
-cleanup. It intentionally does not prove the full lakehouse fanout path.
+worker container launch, gateway-only ingest credentials, read-only Docker
+lifecycle sync, successful-run explicit cleanup, failed-run retention, and
+smoke-forced cleanup. It intentionally does not prove the full lakehouse fanout
+path.
 
 Set SIMOPS_SMOKE_BUILD=always to force a from-source image rebuild.
-The smoke defaults SIMOPS_WORKER_CLEANUP_TTL to 0s so succeeded workers prove
-the configured cleanup policy without waiting for the local-dev TTL.
+Succeeded workers are observed before the smoke requests explicit cleanup, so
+the proof does not rely on local-dev cleanup TTL timing.
 USAGE
 }
 
@@ -313,7 +314,8 @@ wait_for_runtime_state "$success_run" succeeded --frames
 events="$(curl -fsS "http://127.0.0.1:8081/api/simops/runs/${success_run}/events")"
 node scripts/simops-smoke-json.mjs events-nonempty <<<"$events"
 echo "Gateway ingest proof for ${success_run}: worker frames and run events arrived through the gateway."
-echo "Successful-run cleanup policy proof for ${success_run}: waiting for zero-TTL cleanup."
+echo "Successful-run cleanup policy proof for ${success_run}: requesting explicit cleanup after success evidence."
+stop_run "$success_run"
 wait_for_no_containers "$success_run"
 
 echo "Failure-path proof uses checkpoint-pressure to exercise an inspectable worker-process failure."

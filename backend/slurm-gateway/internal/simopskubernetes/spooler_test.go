@@ -83,6 +83,26 @@ func TestStopRunProfilesDeletesJobsAndReturnsErrors(t *testing.T) {
 	}
 }
 
+func TestCleanupRunProfilesDeletesJobsIdempotently(t *testing.T) {
+	run, profile := testRunAndProfile(t)
+	client := fake.NewClientset(&batchv1.Job{ObjectMeta: metav1.ObjectMeta{Name: profile.Runtime.Kubernetes.JobName, Namespace: profile.Runtime.Kubernetes.Namespace}})
+	spooler := Spooler{Config: testConfig(), Client: client}
+	profiles := []gateway.RunConnectionProfile{profile}
+
+	if err := spooler.CleanupRunProfiles(context.Background(), run.RunID, profiles); err != nil {
+		t.Fatalf("cleanup profiles: %v", err)
+	}
+	if _, err := client.BatchV1().Jobs(profile.Runtime.Kubernetes.Namespace).Get(context.Background(), profile.Runtime.Kubernetes.JobName, metav1.GetOptions{}); err == nil {
+		t.Fatal("expected job deletion")
+	}
+	if err := spooler.CleanupRunProfiles(context.Background(), run.RunID, profiles); err != nil {
+		t.Fatalf("cleanup profiles after deletion: %v", err)
+	}
+	if err := spooler.StopRunProfiles(context.Background(), run.RunID, profiles); err != nil {
+		t.Fatalf("stop profiles after cleanup: %v", err)
+	}
+}
+
 func TestSyncRunProfilesMapsJobAndPodLifecycle(t *testing.T) {
 	run, profile := testRunAndProfile(t)
 	job := &batchv1.Job{

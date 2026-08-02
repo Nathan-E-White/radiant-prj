@@ -273,7 +273,8 @@ function validateManifest(manifest) {
 }
 
 function conciseOutput(...values) {
-  return values.join("\n").trim().split(/\r?\n/).filter(Boolean).slice(-3).join(" | ");
+  const tail = values.join("\n").trim().split(/\r?\n/).filter(Boolean).slice(-20).join(" | ");
+  return tail.length > 4_000 ? tail.slice(-4_000) : tail;
 }
 
 async function executeEvidenceCommand(claim, { root, run }, command, args) {

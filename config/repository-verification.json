@@ -42,6 +42,24 @@
       "expected": "least privilege, untrusted pull-request restrictions, trusted publication paths, and required invocations pass their declared policy"
     },
     {
+      "id": "architecture.issue-202-contract",
+      "title": "Issue #202 recoverable delivery, Run, and review truth has a controlled architecture contract",
+      "evidence": { "adapter": "document", "source": "docs/design/recoverable-delivery-run-review-truth.md" },
+      "expected": "the contract preserves at-least-once delivery, stable identity, reconciliation, and the Delivery Assurance, Artifact Forge, Experience Scenario, Run, Snapshot, stream, telemetry, and review boundaries",
+      "requiredText": [
+        "at-least-once with stable identity and reconciliation",
+        "No module may imply end-to-end exactly-once processing",
+        "Delivery Assurance is not broker-offset completion",
+        "An Artifact Forge outcome is not Objective Evidence",
+        "An Experience Scenario is not a Workbench Snapshot or a SimOps Run",
+        "Runtime adapters do not own Run truth",
+        "Unknown Commit must be reconciled before another logical append",
+        "Run stream authorization happens before track selection and fan-out",
+        "Telemetry admission owns one durable disposition",
+        "The Workbench Review Context is presentation-only mediation"
+      ]
+    },
+    {
       "id": "capability-reconciliation.baseline-record",
       "title": "Initial high-risk capability reconciliation has a controlled, classified baseline record",
       "evidence": { "adapter": "document", "source": "docs/verification/capability-reconciliation-baseline.md" },
@@ -96,6 +114,58 @@
         "command": ["bun", "run", "test:e2e"]
       },
       "expected": "the tracked Playwright suite starts and stops its server deterministically, reports each failing scenario, and passes Fleet Board and Workbench acceptance behavior"
+    },
+    {
+      "id": "backend.go.default",
+      "title": "The complete supported Go backend passes its default package surface",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/go.mod", "cwd": "backend/slurm-gateway", "whenEnvironment": "RUN_BACKEND_GO_PROFILES", "command": ["go", "test", "./..."] },
+      "expected": "every primary gateway and command package passes its default Go test surface"
+    },
+    {
+      "id": "backend.go.docker-runtime",
+      "title": "Docker Runtime Adapter behavior has explicit Go evidence",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/internal/gateway/*docker*", "cwd": "backend/slurm-gateway", "whenEnvironment": "RUN_BACKEND_GO_PROFILES", "command": ["go", "test", "-tags", "dockerintegration", "./..."] },
+      "expected": "Docker-integration gateway, adapter, and command tests pass"
+    },
+    {
+      "id": "backend.go.dataplane-iceberg",
+      "title": "Kubernetes and dataplane variants have explicit Go evidence",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/internal/gateway/*dataplane*", "cwd": "backend/slurm-gateway", "whenEnvironment": "RUN_BACKEND_GO_PROFILES", "command": ["go", "test", "-p", "2", "-tags", "dataplane,iceberggo", "./..."] },
+      "expected": "dataplane, Kubernetes runtime adapter, and Iceberg build-tag packages pass"
+    },
+    {
+      "id": "backend.go.docker-compatibility-shim",
+      "title": "The local Docker compatibility shim remains executable evidence",
+      "evidence": { "adapter": "command", "source": "backend/slurm-gateway/third_party/docker-compat/go.mod", "cwd": "backend/slurm-gateway/third_party/docker-compat", "whenEnvironment": "RUN_BACKEND_GO_PROFILES", "command": ["go", "test", "./..."] },
+      "expected": "the supported Docker compatibility shim compiles and its tests pass"
+    },
+    {
+      "id": "storybook.catalog",
+      "title": "Storybook compiles the production component catalog and retains Workbench presentation variants",
+      "evidence": {
+        "adapter": "command",
+        "source": "all tracked Storybook stories and fixtures",
+        "command": ["bun", "run", "storybook:verify"]
+      },
+      "expected": "the production Storybook build contains compiled Simulation Health and Simulator Workbench stories"
+    },
+    {
+      "id": "verification.module-inventory",
+      "title": "Every first-party module is mapped to repository verification or an owned exclusion",
+      "evidence": { "adapter": "command", "source": "tracked manifests and config/module-inventory.json", "command": ["bun", "run", "module-inventory:verify"] },
+      "expected": "the deterministic tracked-module inventory has no missing, duplicate, or stale mappings"
+    },
+    {
+      "id": "scada.standins-behavior",
+      "title": "SCADA stand-ins compile and pass their Rust module tests",
+      "evidence": { "adapter": "command", "source": "workers/scada-standins/Cargo.toml", "command": ["bun", "run", "scada:standins:test"] },
+      "expected": "the first-party SCADA stand-ins Rust tests pass"
+    },
+    {
+      "id": "simops.generator-behavior",
+      "title": "SimOps generator compiles and passes its Rust module tests",
+      "evidence": { "adapter": "command", "source": "workers/simops-generator/Cargo.toml", "command": ["bun", "run", "simops:generator:test"] },
+      "expected": "the first-party SimOps generator Rust tests pass"
     },
     {
       "id": "artifact-forge.behavior",
@@ -493,6 +563,16 @@
       "expected": "schema, example, lineage, Value Basis, and projection semantic checks pass"
     },
     {
+      "id": "simulator-workbench.snapshot-smoke-contract",
+      "title": "Simulator Workbench smoke accepts only one coherent Snapshot envelope",
+      "evidence": {
+        "adapter": "command",
+        "source": "scripts/workbench-dataflow-json.mjs and its Node tests",
+        "command": ["node", "--test", "scripts/workbench-dataflow-json.node-test.mjs"]
+      },
+      "expected": "the dataflow smoke accepts a complete generation-matched Snapshot and rejects partial or generation-mismatched envelopes"
+    },
+    {
       "id": "simops.runtime-closeout-traceability",
       "title": "SimOps runtime closeout remains traceable in controlled documents",
       "evidence": {
@@ -521,6 +601,17 @@
       "expected": "packaging manifest, Compose targets, evidence, and budgets pass their executable contract"
     },
     {
+      "id": "workers.delivery-artifacts",
+      "title": "Rust worker images are verified delivery artifacts",
+      "evidence": {
+        "adapter": "command",
+        "source": "docker:packaging:verify worker-image inspection evidence",
+        "whenEnvironment": "RUN_WORKER_IMAGE_DELIVERY_VERIFICATION",
+        "command": ["bun", "run", "docker:packaging:verify"]
+      },
+      "expected": "both Rust worker images build and record their digest, architecture, virtual size, non-root runtime identity, entry point, controlled contents, and Compose-ready aliases"
+    },
+    {
       "id": "capability-lifecycle.documentation-inventory",
       "title": "Capability lifecycle decisions and active verification module records remain present",
       "evidence": {
@@ -532,10 +623,12 @@
           "docs/adr/adr-0010.md",
           "docs/adr/adr-0011.md",
           "docs/adr/adr-0012.md",
+          "docs/adr/adr-0013.md",
           "docs/design/repository-verification-module.md",
           "docs/design/browser-delivery-verification-module.md",
           "docs/design/docker-packaging-delivery-verification-module.md",
           "docs/design/pipeline-policy-module.md",
+          "docs/design/workbench-snapshot-read-and-lifecycle-policy.md",
           "docs/verification/capability-reconciliation-baseline.md"
         ]
       },

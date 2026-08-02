@@ -453,14 +453,7 @@ func BuildTwinStateFromData(measured []ScadaTelemetryFrame, result SimopsResultF
 		LineageID:  WorkbenchCoreMarginLineage,
 		SourceIDs:  append(sourceIDs, result.RunID, result.ModelID),
 	})
-	inputs := make([]TwinLineageInput, 0, len(sourceIDs)+2)
-	for _, sourceID := range sourceIDs {
-		inputs = append(inputs, TwinLineageInput{SourceKind: "scada-tag", SourceID: sourceID, ValueBasis: WorkbenchValueMeasured})
-	}
-	inputs = append(inputs,
-		TwinLineageInput{SourceKind: "simulation-run", SourceID: result.RunID, ValueBasis: WorkbenchValueSimulated},
-		TwinLineageInput{SourceKind: "digital-twin-model", SourceID: result.ModelID, ValueBasis: WorkbenchValueImputed},
-	)
+	inputs := buildImputedLineageInputs(sourceIDs, result)
 	lineage = append(lineage, DigitalTwinValueLineage{
 		SchemaVersion: WorkbenchLineageSchemaVersion,
 		LineageID:     WorkbenchCoreMarginLineage,
@@ -487,6 +480,17 @@ func BuildTwinStateFromData(measured []ScadaTelemetryFrame, result SimopsResultF
 		AsOf:          asOf.UTC(),
 		Entities:      ordered,
 	}, lineage
+}
+
+func buildImputedLineageInputs(sourceIDs []string, result SimopsResultFrame) []TwinLineageInput {
+	inputs := make([]TwinLineageInput, 0, len(sourceIDs))
+	for _, sourceID := range sourceIDs {
+		inputs = append(inputs, TwinLineageInput{SourceKind: "scada-tag", SourceID: sourceID, ValueBasis: WorkbenchValueMeasured})
+	}
+	return append(inputs,
+		TwinLineageInput{SourceKind: "simulation-run", SourceID: result.RunID, ValueBasis: WorkbenchValueSimulated},
+		TwinLineageInput{SourceKind: "digital-twin-model", SourceID: result.ModelID, ValueBasis: WorkbenchValueImputed},
+	)
 }
 
 func simopsResultValueByID(values []SimopsResultValue, valueID string) (SimopsResultValue, bool) {

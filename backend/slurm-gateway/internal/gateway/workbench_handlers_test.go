@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-func TestWorkbenchScadaIngestRequiresDeclaredMeasuredTag(t *testing.T) {
+func TestWorkbenchSnapshotIsTheOnlyPublicReadRoute(t *testing.T) {
 	app := newWorkbenchTestGateway(t)
 	source := scadaSourceFixture()
 	postWorkbenchJSON(t, app, "/internal/scada/sources", source)
@@ -17,20 +17,31 @@ func TestWorkbenchScadaIngestRequiresDeclaredMeasuredTag(t *testing.T) {
 	frame := scadaFrameFixture()
 	postWorkbenchJSON(t, app, "/internal/scada/telemetry", ScadaTelemetryBatch{Frames: []ScadaTelemetryFrame{frame}})
 
-	req := signedRequest(http.MethodGet, "/api/simulator-workbench/measured", "", "react-backend-client")
+	req := signedRequest(http.MethodGet, "/api/simulator-workbench/snapshot", "", "react-backend-client")
 	rr := httptest.NewRecorder()
 	app.Handler().ServeHTTP(rr, req)
 	if rr.Code != http.StatusOK {
-		t.Fatalf("expected measured ok, got %d: %s", rr.Code, rr.Body.String())
+		t.Fatalf("expected snapshot ok, got %d: %s", rr.Code, rr.Body.String())
 	}
-	var response struct {
-		Frames []ScadaTelemetryFrame `json:"frames"`
+	var snapshot WorkbenchSnapshot
+	if err := json.Unmarshal(rr.Body.Bytes(), &snapshot); err != nil {
+		t.Fatalf("decode snapshot: %v", err)
 	}
-	if err := json.Unmarshal(rr.Body.Bytes(), &response); err != nil {
-		t.Fatalf("decode measured: %v", err)
+	if len(snapshot.Measured) != 1 || snapshot.Measured[0].ValueBasis != WorkbenchValueMeasured {
+		t.Fatalf("expected measured frame in snapshot, got %#v", snapshot.Measured)
 	}
-	if len(response.Frames) != 1 || response.Frames[0].ValueBasis != WorkbenchValueMeasured {
-		t.Fatalf("expected measured frame, got %#v", response.Frames)
+
+	for _, path := range []string{
+		"/api/simulator-workbench/state",
+		"/api/simulator-workbench/measured",
+		"/api/simulator-workbench/twin",
+		"/api/simulator-workbench/lineage/VAL-IMPUTED-CORE-MARGIN",
+	} {
+		rr = httptest.NewRecorder()
+		app.Handler().ServeHTTP(rr, signedRequest(http.MethodGet, path, "", "react-backend-client"))
+		if rr.Code != http.StatusNotFound {
+			t.Fatalf("legacy field read %s returned %d: %s", path, rr.Code, rr.Body.String())
+		}
 	}
 }
 
@@ -113,7 +124,7 @@ func TestSimopsResultIngestAcceptsSimulatedResult(t *testing.T) {
 	if rr.Code != http.StatusAccepted {
 		t.Fatalf("expected accepted, got %d: %s", rr.Code, rr.Body.String())
 	}
-	results, err := app.workbench.store.LatestResultFrames(10)
+	results, err := app.workbench.store.(WorkbenchProjectionQueryPersistence).LatestResultFrames(10)
 	if err != nil {
 		t.Fatalf("latest results: %v", err)
 	}
@@ -140,7 +151,7 @@ func TestSimopsResultIngestRejectsTerminalRunToken(t *testing.T) {
 	if rr.Code != http.StatusConflict || !strings.Contains(rr.Body.String(), "run_not_writable") {
 		t.Fatalf("terminal Run result token was not fenced, got %d: %s", rr.Code, rr.Body.String())
 	}
-	results, err := app.workbench.store.LatestResultFrames(10)
+	results, err := app.workbench.store.(WorkbenchProjectionQueryPersistence).LatestResultFrames(10)
 	if err != nil || len(results) != 0 {
 		t.Fatalf("terminal Run ingest persisted results: results=%#v err=%v", results, err)
 	}

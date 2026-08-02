@@ -79,6 +79,36 @@ test("both Rust workers are explicit locked repository claims exercised by CI", 
   assert.match(workflow, /uses: dtolnay\/rust-toolchain@stable/);
 });
 
+test("Issue 202 architecture contract is pinned as document evidence", async () => {
+  const manifest = JSON.parse(await readFile("config/repository-verification.json", "utf8"));
+  const claim = manifest.claims.find((candidate) => candidate.id === "architecture.issue-202-contract");
+
+  assert.equal(claim?.evidence.adapter, "document");
+  assert.equal(claim?.evidence.source, "docs/design/recoverable-delivery-run-review-truth.md");
+  assert.ok(claim?.requiredText.includes("at-least-once with stable identity and reconciliation"));
+  assert.ok(claim?.requiredText.includes("No module may imply end-to-end exactly-once processing"));
+  assert.ok(claim?.requiredText.includes("The Workbench Review Context is presentation-only mediation"));
+});
+
+test("complete Go backend profiles are explicit claims run in the prepared backend job", async () => {
+  const manifest = JSON.parse(await readFile("config/repository-verification.json", "utf8"));
+  const workflow = parseYaml(await readFile(".github/workflows/ci.yml", "utf8"));
+  const ids = ["backend.go.default", "backend.go.docker-runtime", "backend.go.dataplane-iceberg", "backend.go.docker-compatibility-shim"];
+  for (const id of ids) {
+    const claim = manifest.claims.find((candidate) => candidate.id === id);
+    assert.equal(claim?.evidence.command[0], "go");
+    assert.equal(claim?.evidence.whenEnvironment, "RUN_BACKEND_GO_PROFILES");
+    assert.equal(claim?.evidence.env, undefined);
+  }
+
+  const setupGo = workflow.jobs.backend.steps.find(({ uses }) => uses === "actions/setup-go@v5");
+  assert.equal(setupGo?.with?.cache, true);
+  assert.equal(setupGo?.with?.["cache-dependency-path"], "backend/slurm-gateway/go.sum");
+  const verification = workflow.jobs.backend.steps.find(({ name }) => name === "Verify complete Go backend claims");
+  assert.match(verification?.run ?? "", /--claim backend\.go\.default/);
+  assert.equal(verification?.env?.RUN_BACKEND_GO_PROFILES, "true");
+});
+
 test("structured JSON evidence is parsed and checked by path", async (t) => {
   const root = await temporaryRepository(t);
   await writeJson(root, "evidence.json", { services: { gateway: { mode: "mock" } } });

@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import { dirname, extname, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { buildInputIdentity, evaluatePackagingEvidence, parseBuildContextBytes, parseByteSize, summarizeBuildxBake } from "./docker-packaging-lib.mjs";
+import { buildInputIdentity, evaluatePackagingEvidence, parseBuildContextBytes, parseByteSize, selectPackagingRoles, summarizeBuildxBake } from "./docker-packaging-lib.mjs";
 
 const repoRoot = resolve(new URL("..", import.meta.url).pathname);
 const dockerContext = process.env.DOCKER_CONTEXT || (process.env.CI ? "default" : "orbstack");
@@ -17,12 +17,24 @@ const imageAliases = {
   "reactor-telemetry-worker": ["radiant-scada-standins:ci", "radiant-scada-standins:latest"],
   "simops-generator": ["radiant-simops-generator:latest"]
 };
+const workerDeliveryContracts = {
+  "reactor-telemetry-worker": {
+    requiredPaths: ["scada-standins"],
+    forbiddenPathPrefixes: ["workers", "src", "tests", "examples", "controlled-manifests/simops-generator"],
+    entrypoint: ["/scada-standins"]
+  },
+  "simops-generator": {
+    requiredPaths: ["simops-generator", "controlled-manifests/simops-generator/Cargo.toml", "controlled-manifests/simops-generator/Cargo.lock"],
+    forbiddenPathPrefixes: ["workers/scada-standins"],
+    entrypoint: ["/simops-generator"]
+  }
+};
 const platform = process.env.DOCKER_PACKAGING_PLATFORM || process.env.DOCKER_DEFAULT_PLATFORM || (process.env.CI ? "linux/amd64" : nativePlatform());
 const registryReuseEnabled = truthy(process.env.DOCKER_PACKAGING_REGISTRY_REUSE);
 const registryPublishEnabled = truthy(process.env.DOCKER_PACKAGING_REGISTRY_PUBLISH);
 let publishFailureCount = 0;
 
-const roles = [
+const allRoles = [
   { role: "console", dockerfile: "Dockerfile", family: "CONSOLE" },
   { role: "mock-worker", dockerfile: "worker.Dockerfile", family: "MOCK_WORKER" },
   { role: "reactor-telemetry-worker", dockerfile: "deploy/scada-standins.Dockerfile", family: "REACTOR_TELEMETRY_WORKER" },
@@ -36,6 +48,7 @@ const roles = [
   { role: "twin-projector", dockerfile: "deploy/slurm-gateway.Dockerfile", target: "twin-projector-runtime", family: "GO_RUNTIME" },
   { role: "workbench-iceberg-writer", dockerfile: "deploy/slurm-gateway.Dockerfile", target: "workbench-iceberg-writer-runtime", family: "GO_RUNTIME" }
 ];
+const roles = selectPackagingRoles(allRoles, process.env.DOCKER_PACKAGING_ROLES);
 const cacheFamilies = {
   CONSOLE: {
     fromEnv: "DOCKER_BAKE_CACHE_FROM_CONSOLE",
@@ -97,6 +110,7 @@ for (const role of roles) {
   for (const alias of imageAliases[role.role] ?? []) runDocker(["image", "tag", tag, alias]);
   const sizeBytes = Number(runDocker(["image", "inspect", executionRef, "--format", "{{.Size}}"], { capture: true }).stdout.trim());
   const architecture = runDocker(["image", "inspect", executionRef, "--format", "{{.Architecture}}"], { capture: true }).stdout.trim();
+  const inspection = JSON.parse(runDocker(["image", "inspect", executionRef, "--format", "{{json .}}"], { capture: true }).stdout);
   images[role.role] = {
     tag,
     executionRef,
@@ -106,11 +120,19 @@ for (const role of roles) {
     family: role.family,
     architecture,
     sizeBytes,
+    virtualSizeBytes: sizeBytes,
+    digest: inspection.Id,
+    runtimeIdentity: {
+      user: inspection.Config.User || null,
+      entrypoint: inspection.Config.Entrypoint || []
+    },
     registry: registry[role.role]
   };
 }
 
 verifyImageContents(images);
+verifyWorkerDeliveryArtifacts(images, { requireCompletePair: truthy(process.env.RUN_WORKER_IMAGE_DELIVERY_VERIFICATION) });
+verifyWorkerComposeReferences(images);
 const cacheAfter = dockerStorage().buildCache;
 const browserAssets = measureBrowserAssets(join(repoRoot, "dist"));
 const evidence = {
@@ -144,7 +166,11 @@ const evidence = {
   },
   browserAssets
 };
-const violations = evaluatePackagingEvidence(evidence, budgets);
+const selectedBudgets = {
+  ...budgets,
+  images: Object.fromEntries(roles.map(({ role }) => [role, budgets.images[role]]))
+};
+const violations = evaluatePackagingEvidence(evidence, selectedBudgets);
 if (registryPublishEnabled && publishFailureCount > 0) {
   violations.push(`${publishFailureCount} Docker packaging image publish operation failed`);
 }
@@ -197,13 +223,15 @@ function dockerStorage() {
 }
 
 function verifyImageContents(builtImages) {
-  runDocker(["run", "--rm", builtImages["mock-worker"].executionRef]);
-  runDocker([
-    "run", "--rm", "--entrypoint", "sh", builtImages["mock-worker"].executionRef, "-c",
-    "test ! -e /worker/node_modules && test ! -e /worker/package.json && test ! -e /worker/bun.lock"
-  ]);
-  runDocker(["run", "--rm", builtImages["reactor-telemetry-worker"].executionRef, "--source-id", "SRC-PACKAGING-CHECK", "--max-frames", "1"]);
-  runDocker(["run", "--rm", builtImages["simops-generator"].executionRef, "--help"]);
+  if (builtImages["mock-worker"]) {
+    runDocker(["run", "--rm", builtImages["mock-worker"].executionRef]);
+    runDocker([
+      "run", "--rm", "--entrypoint", "sh", builtImages["mock-worker"].executionRef, "-c",
+      "test ! -e /worker/node_modules && test ! -e /worker/package.json && test ! -e /worker/bun.lock"
+    ]);
+  }
+  if (builtImages["reactor-telemetry-worker"]) runDocker(["run", "--rm", builtImages["reactor-telemetry-worker"].executionRef, "--source-id", "SRC-PACKAGING-CHECK", "--max-frames", "1"]);
+  if (builtImages["simops-generator"]) runDocker(["run", "--rm", builtImages["simops-generator"].executionRef, "--help"]);
 
   const binaries = {
     "slurm-gateway": "slurm-gateway",
@@ -216,11 +244,73 @@ function verifyImageContents(builtImages) {
     "workbench-iceberg-writer": "workbench-iceberg-writer"
   };
   for (const [role, binary] of Object.entries(binaries)) {
+    if (!builtImages[role]) continue;
     const dockerExpectation = role === "slurm-gateway" ? "command -v docker >/dev/null" : "! command -v docker >/dev/null";
     runDocker([
       "run", "--rm", "--entrypoint", "/bin/sh", builtImages[role].executionRef, "-c",
       `test -x /app/${binary} && test "$(find /app -maxdepth 1 -type f | wc -l | tr -d ' ')" = 1 && ${dockerExpectation}`
     ]);
+  }
+}
+
+function verifyWorkerDeliveryArtifacts(builtImages, { requireCompletePair }) {
+  for (const [role, contract] of Object.entries(workerDeliveryContracts)) {
+    const image = builtImages[role];
+    if (!image) {
+      if (requireCompletePair) throw new Error(`${role}: expected selected worker delivery artifact; observed no image evidence`);
+      continue;
+    }
+    const paths = imageFilesystemPaths(image.executionRef);
+    const requiredPathsPresent = contract.requiredPaths.filter((path) => paths.includes(path));
+    const forbiddenPathsPresent = contract.forbiddenPathPrefixes.filter((prefix) => paths.some((path) => path === prefix || path.startsWith(`${prefix}/`)));
+    image.deliveryArtifact = {
+      requiredPaths: contract.requiredPaths,
+      requiredPathsPresent,
+      forbiddenPathPrefixes: contract.forbiddenPathPrefixes,
+      forbiddenPathsPresent,
+      observedPathCount: paths.length,
+      entrypointMatches: JSON.stringify(image.runtimeIdentity.entrypoint) === JSON.stringify(contract.entrypoint),
+      nonRootUser: image.runtimeIdentity.user !== null && image.runtimeIdentity.user !== "" && image.runtimeIdentity.user !== "0" && image.runtimeIdentity.user !== "root"
+    };
+    if (!image.digest?.match(/^sha256:[a-f0-9]{64}$/)) throw new Error(`${role}: expected SHA-256 image digest; observed ${image.digest || "none"}`);
+    if (!image.deliveryArtifact.nonRootUser) throw new Error(`${role}: expected non-root runtime user; observed ${image.runtimeIdentity.user || "default root"}`);
+    if (!image.deliveryArtifact.entrypointMatches) throw new Error(`${role}: expected entrypoint ${JSON.stringify(contract.entrypoint)}; observed ${JSON.stringify(image.runtimeIdentity.entrypoint)}`);
+    if (requiredPathsPresent.length !== contract.requiredPaths.length) throw new Error(`${role}: expected paths ${JSON.stringify(contract.requiredPaths)}; observed ${JSON.stringify(requiredPathsPresent)}`);
+    if (forbiddenPathsPresent.length > 0) throw new Error(`${role}: expected no paths under ${JSON.stringify(contract.forbiddenPathPrefixes)}; observed ${JSON.stringify(forbiddenPathsPresent)}`);
+  }
+}
+
+function verifyWorkerComposeReferences(builtImages) {
+  const compose = JSON.parse(runDocker(["compose", "-f", "deploy/slurm-gateway.compose.yml", "config", "--format", "json"], { capture: true }).stdout);
+  const references = {
+    "reactor-telemetry-worker": compose.services?.["slurm-gateway"]?.environment?.REACTOR_TELEMETRY_WORKER_IMAGE,
+    "simops-generator": compose.services?.["slurm-gateway"]?.environment?.SIMOPS_WORKER_IMAGE
+  };
+  for (const [role, reference] of Object.entries(references)) {
+    const image = builtImages[role];
+    if (!image) continue;
+    image.deliveryArtifact.composeReference = reference || null;
+    image.deliveryArtifact.composeReferenceMatches = image.aliases.includes(reference);
+    if (!image.deliveryArtifact.composeReferenceMatches) {
+      throw new Error(`${role}: expected Compose image reference in ${JSON.stringify(image.aliases)}; observed ${reference || "none"}`);
+    }
+  }
+}
+
+function imageFilesystemPaths(ref) {
+  const scratch = mkdtempSync(join(repoRoot, ".local", "docker-image-inspection-"));
+  const archive = join(scratch, "filesystem.tar");
+  let containerId = null;
+  try {
+    containerId = runDocker(["create", ref], { capture: true }).stdout.trim();
+    runDocker(["export", "--output", archive, containerId]);
+    return run("tar", ["-tf", archive], { capture: true }).stdout
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((path) => path.replace(/^\.\//, "").replace(/\/$/, ""));
+  } finally {
+    if (containerId) runDocker(["rm", "--force", containerId], { allowFailure: true });
+    rmSync(scratch, { recursive: true, force: true });
   }
 }
 

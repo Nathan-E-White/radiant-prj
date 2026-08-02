@@ -21,6 +21,7 @@ This procedure defines controls for development, verification, and infrastructur
 | Vitest | Unit tests | `src/domain/readiness.test.ts` |
 | Playwright | Assembled browser acceptance and recovery tests | `playwright.config.ts` and `tests/e2e/` |
 | Stryker | Mutation analysis of Workbench Snapshot policy | Pinned package versions, `stryker.config.mjs`, and `bun run test:mutation:workbench`; `bun run ci` invokes the gate and fails below 80% |
+| Mutago | Diff-scoped Go mutation analysis of backend runtime seams | Pinned `github.com/quality-gates/mutago/v2/cmd/mutago@v2.7.7` invocation in `bun run test:mutation:go`; `bun run ci` and backend CI invoke the gate against changed Go implementation files with controlled floors of 65% MSI and 75% covered-MSI |
 | React Chaos | Browser fault injection at the Simulation Health presentation boundary | Pinned package version and `tests/e2e/workbench-health-chaos.spec.ts` |
 | Vite | Web build | `vite.config.ts` |
 | Node.js | Utility scripts | Script review and deterministic output |

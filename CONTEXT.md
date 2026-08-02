@@ -121,6 +121,22 @@ _Avoid_: SimOps Run, Slurm job, backend submission, objective evidence
 A backend Simulation Ops execution lifecycle with its own run, worker, event, and artifact outcomes. An eligible Fleet Board intent may request or associate a Run through Artifact Forge, but a local Simulation Job never becomes the Run.
 _Avoid_: Simulation Job, game tick, local job state
 
+**Delivery Attempt**:
+One identified request to deliver one ordered operational-telemetry batch for one SimOps Run. Its identity remains stable across retry and recovery; an observed storage snapshot is evidence of the attempt, not its identity.
+_Avoid_: Artifact status, snapshot ID, broker offset
+
+**Delivery Assurance**:
+The narrow storage fact demonstrated by a completed Delivery Attempt, such as a local manifest write, external-command acknowledgement, or readable Iceberg table data. It is not Artifact Forge eligibility, Objective Evidence, or broker-offset completion.
+_Avoid_: Artifact status, delivery success, objective evidence
+
+**Verified Delivery Evidence**:
+The recorded proof for one Delivery Attempt, including its identity, expected coordinates, achieved Delivery Assurance, and any observed storage result. It explains storage delivery without asserting cross-system atomicity or exactly-once processing.
+_Avoid_: Lineage, artifact eligibility, commit log
+
+**Unknown Commit**:
+A Delivery Attempt whose storage outcome cannot be determined after a process or transport failure. It must be reconciled before a new delivery attempt for the same batch is made.
+_Avoid_: Failed delivery, duplicate delivery, retryable error
+
 **Artifact Forge**:
 The server-side boundary that validates one explicit Fleet Board forge request, associates it with one SimOps Run, and may translate one eligible simulation artifact with Simulated Result State and complete Lineage into one versioned game outcome.
 Operational telemetry, failed Runs, incomplete artifacts, and missing Lineage are ineligible.
@@ -135,8 +151,16 @@ A dry-run-first clearing of accepted local-demo runtime records that preserves s
 _Avoid_: Environment teardown, volume pruning, factory reset
 
 **Workbench Snapshot**:
-One coherent read generation of independently labeled Measured State, Simulated Result State, Twin State, and Lineage returned through the read-only Workbench interface. Live, stale, recovering, and fixture Snapshots must never be field-wise mixed.
+One coherent read generation of independently labeled Measured State, Simulated Result State, Twin State, and Lineage returned through the read-only Workbench interface. Reading it does not reconcile retention or otherwise mutate lifecycle state; live, stale, recovering, and fixture Snapshots must never be field-wise mixed.
 _Avoid_: Best-effort aggregate, mixed-generation response, fixture patch
+
+**Lifecycle Reconciliation**:
+The scheduled fulfilment of distinct expiry and retention obligations for Reactor Telemetry Workers, Artifact Forge records, and dynamic Measured State. It is independent of a Workbench Snapshot read and retains each obligation's own outcome.
+_Avoid_: Read-triggered cleanup, aggregate-only cleanup, request-path garbage collection
+
+**Lifecycle Health**:
+The operational truth of whether the configured Lifecycle Reconciliation obligations have completed successfully and remain within their required interval. It is distinct from process liveness and determines whether the gateway is ready to serve its declared lifecycle policy.
+_Avoid_: Liveness, absence of requests, aggregate error string
 
 **Trust Lens**:
 A focused Simulator Workbench review mode that keeps the selected value's Value Basis, freshness, confidence, Workbench Snapshot generation, and Lineage visible together.

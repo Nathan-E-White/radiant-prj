@@ -10,6 +10,7 @@ const paths = {
   twinSchema: `${schemaRoot}/digital-twin/digital-twin-state.v1.schema.json`,
   lineageSchema: `${schemaRoot}/digital-twin/value-lineage.v1.schema.json`,
   workbenchSchema: `${schemaRoot}/simulator-workbench/workbench-state.v1.schema.json`,
+  snapshotSchema: `${schemaRoot}/simulator-workbench/workbench-snapshot.v1.schema.json`,
   sourceExample: `${exampleRoot}/scada/resident-sources.mixed.json`,
   telemetryExample: `${exampleRoot}/scada/telemetry.mixed.ndjson`,
   twinExample: `${exampleRoot}/digital-twin/twin-state.mixed.json`,
@@ -20,7 +21,11 @@ const paths = {
   ],
   workbenchExample: `${exampleRoot}/simulator-workbench/workbench-state.mixed.json`,
   fleetUnitsExample: `${exampleRoot}/simulator-workbench/fleet-units.mixed.json`,
-  commercialBasisExample: `${exampleRoot}/simulator-workbench/commercial-display-basis.mixed.json`
+  commercialBasisExample: `${exampleRoot}/simulator-workbench/commercial-display-basis.mixed.json`,
+  snapshotValidExample: `${exampleRoot}/simulator-workbench/workbench-snapshot.valid.json`,
+  snapshotGenerationMismatchExample: `${exampleRoot}/simulator-workbench/workbench-snapshot.generation-mismatch.json`,
+  snapshotPartialExample: `${exampleRoot}/simulator-workbench/workbench-snapshot.partial.json`,
+  snapshotInvalidValueBasisExample: `${exampleRoot}/simulator-workbench/workbench-snapshot.invalid-value-basis.json`
 };
 
 const expectedSignalKinds = new Set([
@@ -68,6 +73,7 @@ const telemetrySchema = readJson(paths.telemetrySchema);
 const twinSchema = readJson(paths.twinSchema);
 const lineageSchema = readJson(paths.lineageSchema);
 const workbenchSchema = readJson(paths.workbenchSchema);
+const snapshotSchema = readJson(paths.snapshotSchema);
 
 const source = readJson(paths.sourceExample);
 const telemetry = readNdjson(paths.telemetryExample);
@@ -76,6 +82,10 @@ const lineages = paths.lineageExamples.map((path) => readJson(path));
 const workbench = readJson(paths.workbenchExample);
 const fleetUnits = readJson(paths.fleetUnitsExample);
 const commercialBasis = readJson(paths.commercialBasisExample);
+const snapshotValid = readJson(paths.snapshotValidExample);
+const snapshotGenerationMismatch = readJson(paths.snapshotGenerationMismatchExample);
+const snapshotPartial = readJson(paths.snapshotPartialExample);
+const snapshotInvalidValueBasis = readJson(paths.snapshotInvalidValueBasisExample);
 
 for (const basis of valueBasisValues) {
   validateAgainstSchema(basis, valueBasisSchema, `valueBasis.${basis}`);
@@ -89,6 +99,20 @@ for (const [index, lineage] of lineages.entries()) {
   validateAgainstSchema(lineage, lineageSchema, `lineage example ${index + 1}`);
 }
 validateAgainstSchema(workbench, workbenchSchema, "workbench state example");
+validateAgainstSchema(snapshotValid, snapshotSchema, "valid Snapshot vector");
+validateAgainstSchema(snapshotGenerationMismatch, snapshotSchema, "generation-mismatch Snapshot vector");
+if (snapshotValid.generation !== snapshotValid.state?.snapshotGeneration) {
+  problems.push("valid Snapshot vector has mismatched generation");
+}
+if (snapshotGenerationMismatch.generation === snapshotGenerationMismatch.state?.snapshotGeneration) {
+  problems.push("generation-mismatch Snapshot vector is not invalid");
+}
+if (Object.hasOwn(snapshotPartial, "lineage")) {
+  problems.push("partial Snapshot vector unexpectedly contains lineage");
+}
+if (snapshotInvalidValueBasis.measured?.[0]?.valueBasis === "measured") {
+  problems.push("Value Basis-invalid Snapshot vector is not invalid");
+}
 
 validateSourceCoverage(source);
 validateTelemetrySemantics(source, telemetry);
