@@ -254,16 +254,14 @@ func (c *SimopsController) StopRun(ctx context.Context, runID string) (SimopsRun
 }
 
 func (c *SimopsController) stopRunWorkers(ctx context.Context, record SimopsRunRecord, workers []SimopsWorkerRecord) error {
-	profileStopper, ok := c.spooler.(RunConnectionProfileStopper)
-	if !ok {
-		return c.spooler.StopRun(ctx, record.RunID)
-	}
-
 	profiles, err := c.runWorkerProfiles(record, workers)
 	if err != nil {
 		return err
 	}
-	return profileStopper.StopRunProfiles(ctx, record.RunID, profiles)
+	if err := c.spooler.StopRunProfiles(ctx, record.RunID, profiles); err != nil {
+		return err
+	}
+	return c.spooler.CleanupRunProfiles(ctx, record.RunID, profiles)
 }
 
 func (c *SimopsController) syncRunWorkers(ctx context.Context, record SimopsRunRecord) error {
@@ -271,7 +269,11 @@ func (c *SimopsController) syncRunWorkers(ctx context.Context, record SimopsRunR
 	if err != nil {
 		return err
 	}
-	observations, err := c.spooler.SyncRun(ctx, record, workers)
+	profiles, err := c.runWorkerProfiles(record, workers)
+	if err != nil {
+		return err
+	}
+	observations, err := c.spooler.SyncRunProfiles(ctx, record, profiles)
 	if err != nil {
 		return err
 	}

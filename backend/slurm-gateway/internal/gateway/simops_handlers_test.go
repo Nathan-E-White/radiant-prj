@@ -277,13 +277,31 @@ func (s *countingSimopsSpooler) StartRun(ctx context.Context, run SimopsRunRecor
 	return s.delegate.StartRun(ctx, run, workers)
 }
 
+func (s *countingSimopsSpooler) StartRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	s.starts++
+	return s.delegate.StartRunProfiles(ctx, run, profiles)
+}
+
 func (s *countingSimopsSpooler) StopRun(ctx context.Context, runID string) error {
 	s.stops++
 	return s.delegate.StopRun(ctx, runID)
 }
 
+func (s *countingSimopsSpooler) StopRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	s.stops++
+	return s.delegate.StopRunProfiles(ctx, runID, profiles)
+}
+
+func (s *countingSimopsSpooler) CleanupRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	return s.delegate.CleanupRunProfiles(ctx, runID, profiles)
+}
+
 func (s *countingSimopsSpooler) SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
 	return s.delegate.SyncRun(ctx, run, workers)
+}
+
+func (s *countingSimopsSpooler) SyncRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
+	return s.delegate.SyncRunProfiles(ctx, run, profiles)
 }
 
 func telemetryBatch(runID string, workerID string) string {
