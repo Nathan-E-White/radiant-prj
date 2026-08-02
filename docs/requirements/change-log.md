@@ -36,6 +36,7 @@
 | CHG-024 | 2026-07-12 | Closed the v3 runtime adapter documentation and verification spine across profile, Docker SDK, SyncRun, client-go/Kind, OpenTofu, credential, cleanup, and deferred-scope boundaries. | SW-023, SIMOPS-RUNTIME-CLOSEOUT-001, #27 | `bun run simops:runtime:closeout:check`, `bun run backend:test`, elevated Docker/Kind smokes, `bun run simops:tofu:preflight`, `bun run ci`, `bun run build` |
 | CHG-025 | 2026-07-18 | Concentrated browser Workbench Snapshot acceptance, generation, cancellation, fallback, stale recovery, projection, selection, and Simulation Health policy in one session with assembled recovery and mutation evidence. | SW-024, WORKBENCH-SNAPSHOT-SESSION-001, VVR-WORKBENCH-SNAPSHOT-SESSION-001, #88 | `bun run test`, `bun run test:mutation:workbench`, targeted Playwright Workbench tests, `bun run ci`, `bun run build` |
 | CHG-026 | 2026-07-20 | Replaced source-layout token checks with one manifest-driven repository verifier using executable behavior, parsed Compose/OpenTofu/JSON evidence, and contractual document wording. | #136 | `bun run repository:verify:test`, `bun run repository:verify`, `bun run ci` |
+| CHG-027 | 2026-08-02 | Added the Issue #202 recoverable delivery, Run, and review-truth architecture contract with repository-verification wording evidence. | SW-026, RDRRT-001, #202 | `bun run repository:verify:test`, `bun run repository:verify -- --claim architecture.issue-202-contract` |
 
 ## Control Note
 

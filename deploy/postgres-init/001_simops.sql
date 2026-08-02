@@ -70,6 +70,21 @@ CREATE TABLE IF NOT EXISTS simops_events (
   occurred_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS simops_publication_intents (
+  intent_id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
+  event JSONB NOT NULL,
+  state TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL,
+  published_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_simops_publication_intents_run_state
+  ON simops_publication_intents (run_id, state, created_at);
+
 CREATE TABLE IF NOT EXISTS simops_artifacts (
   artifact_id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
