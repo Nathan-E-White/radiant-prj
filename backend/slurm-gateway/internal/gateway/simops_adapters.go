@@ -10,17 +10,10 @@ import (
 )
 
 type SimopsSpooler interface {
-	StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error)
-	StopRun(ctx context.Context, runID string) error
-	SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error)
-}
-
-type RunConnectionProfileSpooler interface {
 	StartRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error)
-}
-
-type RunConnectionProfileStopper interface {
 	StopRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error
+	CleanupRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error
+	SyncRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]ObservedWorkerLifecycle, error)
 }
 
 type SimopsEventLog interface {
@@ -32,9 +25,10 @@ type SimopsArtifactSink interface {
 }
 
 type SimopsRuntime interface {
-	StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error)
-	StopRun(ctx context.Context, runID string) error
-	SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error)
+	StartRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error)
+	StopRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error
+	CleanupRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error
+	SyncRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]ObservedWorkerLifecycle, error)
 }
 
 type ContractSimopsSpooler struct {
@@ -43,6 +37,33 @@ type ContractSimopsSpooler struct {
 }
 
 func (s ContractSimopsSpooler) StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	profiles := make([]RunConnectionProfile, 0, len(workers))
+	mode := strings.TrimSpace(s.Mode)
+	if mode == "" {
+		mode = "resident"
+	}
+	for _, worker := range workers {
+		workerID := fmt.Sprintf("%s-01", worker)
+		profiles = append(profiles, RunConnectionProfile{
+			RunID:      run.RunID,
+			ScenarioID: run.ScenarioID,
+			LaunchMode: mode,
+			WorkerID:   workerID,
+			WorkerKind: worker,
+			Role:       RunConnectionRoleOrdinaryWorker,
+			Gateway: RunGatewayConnection{
+				IngestURL: fmt.Sprintf("http://simops-bucket-%s:8080", worker),
+			},
+			Labels: map[string]string{
+				"simops.redpanda.topic": "simops.telemetry.v1",
+				"simops.mode":           mode,
+			},
+		})
+	}
+	return s.StartRunProfiles(ctx, run, profiles)
+}
+
+func (s ContractSimopsSpooler) StartRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
 	select {
 	case <-ctx.Done():
 		return nil, nil, ctx.Err()
@@ -53,35 +74,49 @@ func (s ContractSimopsSpooler) StartRun(ctx context.Context, run SimopsRunRecord
 	if s.Now != nil {
 		now = s.Now().UTC()
 	}
-	mode := strings.TrimSpace(s.Mode)
-	if mode == "" {
-		mode = "resident"
-	}
-
-	records := make([]SimopsWorkerRecord, 0, len(workers))
-	commands := make([]SimopsSpoolCommand, 0, len(workers))
-	for _, worker := range workers {
-		workerID := fmt.Sprintf("%s-01", worker)
+	records := make([]SimopsWorkerRecord, 0, len(profiles))
+	commands := make([]SimopsSpoolCommand, 0, len(profiles))
+	for _, profile := range profiles {
+		mode := strings.TrimSpace(profile.LaunchMode)
+		if mode == "" {
+			mode = strings.TrimSpace(s.Mode)
+		}
+		if mode == "" {
+			mode = "resident"
+		}
+		runtimeID := contractRuntimeID(run.RunID, profile.WorkerID)
+		labels := copyRunLabels(profile.Labels)
+		if labels == nil {
+			labels = map[string]string{}
+		}
+		labels["simops.runtime"] = "contract"
+		labels["simops.runtime_adapter"] = "contract"
 		records = append(records, SimopsWorkerRecord{
 			RunID:      run.RunID,
-			WorkerID:   workerID,
-			WorkerKind: worker,
+			WorkerID:   profile.WorkerID,
+			WorkerKind: profile.WorkerKind,
 			Lifecycle:  SimopsStarting,
 			LaunchMode: mode,
-			Endpoint:   fmt.Sprintf("http://simops-bucket-%s:8080", worker),
+			Endpoint:   profile.Gateway.IngestURL,
+			Runtime:    "contract",
+			RuntimeID:  runtimeID,
 			UpdatedAt:  now,
-			Labels: map[string]string{
-				"simops.redpanda.topic": "simops.telemetry.v1",
-				"simops.mode":           mode,
-			},
+			Labels:     labels,
 		})
 		commands = append(commands, SimopsSpoolCommand{
-			CommandID: fmt.Sprintf("%s-%s-start", run.RunID, worker),
+			CommandID: fmt.Sprintf("%s-%s-start", run.RunID, profile.WorkerID),
 			RunID:     run.RunID,
-			WorkerID:  workerID,
+			WorkerID:  profile.WorkerID,
 			Mode:      mode,
 			State:     SimopsStarting,
 			Message:   "Bucket launch command accepted by contract spooler",
+			Metadata: map[string]string{
+				"runtime_adapter": "contract",
+				"runtime_id":      runtimeID,
+				"requested_state": string(SimopsStarting),
+				"worker_id":       profile.WorkerID,
+				"worker_kind":     string(profile.WorkerKind),
+			},
 			CreatedAt: now,
 			UpdatedAt: now,
 		})
@@ -91,6 +126,19 @@ func (s ContractSimopsSpooler) StartRun(ctx context.Context, run SimopsRunRecord
 }
 
 func (s ContractSimopsSpooler) StopRun(ctx context.Context, runID string) error {
+	return s.StopRunProfiles(ctx, runID, nil)
+}
+
+func (s ContractSimopsSpooler) StopRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+		return nil
+	}
+}
+
+func (s ContractSimopsSpooler) CleanupRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
@@ -100,6 +148,19 @@ func (s ContractSimopsSpooler) StopRun(ctx context.Context, runID string) error 
 }
 
 func (s ContractSimopsSpooler) SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
+	profiles := make([]RunConnectionProfile, 0, len(workers))
+	for _, worker := range workers {
+		profiles = append(profiles, RunConnectionProfile{
+			RunID:      run.RunID,
+			WorkerID:   worker.WorkerID,
+			WorkerKind: worker.WorkerKind,
+			Labels:     worker.Labels,
+		})
+	}
+	return s.SyncRunProfiles(ctx, run, profiles)
+}
+
+func (s ContractSimopsSpooler) SyncRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -109,21 +170,51 @@ func (s ContractSimopsSpooler) SyncRun(ctx context.Context, run SimopsRunRecord,
 	if s.Now != nil {
 		now = s.Now().UTC()
 	}
-	observations := make([]ObservedWorkerLifecycle, 0, len(workers))
-	for _, worker := range workers {
+	observations := make([]ObservedWorkerLifecycle, 0, len(profiles))
+	for _, profile := range profiles {
+		state, reason, message := contractObservedLifecycle(run)
 		observations = append(observations, ObservedWorkerLifecycle{
 			RunID:      run.RunID,
-			WorkerID:   worker.WorkerID,
-			WorkerKind: worker.WorkerKind,
-			State:      ObservedWorkerActive,
+			WorkerID:   profile.WorkerID,
+			WorkerKind: profile.WorkerKind,
+			State:      state,
 			Runtime:    "contract",
-			Reason:     "contract-runtime",
-			Message:    "contract runtime reports worker record present",
+			RuntimeID:  contractRuntimeID(run.RunID, profile.WorkerID),
+			Reason:     reason,
+			Message:    message,
 			ObservedAt: now,
-			Labels:     worker.Labels,
+			Labels:     copyRunLabels(profile.Labels),
 		})
 	}
 	return observations, nil
+}
+
+func contractObservedLifecycle(run SimopsRunRecord) (ObservedWorkerState, string, string) {
+	switch run.Lifecycle {
+	case SimopsComplete:
+		return ObservedWorkerSucceeded, "contract-terminal", "contract runtime reports successful terminal worker state"
+	case SimopsFailed, SimopsDegraded:
+		return ObservedWorkerFailed, "contract-retryable-failure", "contract runtime reports a stable retryable worker failure"
+	case SimopsStopped:
+		return ObservedWorkerStopped, "contract-stopped", "contract runtime reports worker stopped by explicit request"
+	default:
+		return ObservedWorkerActive, "contract-runtime", "contract runtime reports worker record present"
+	}
+}
+
+func contractRuntimeID(runID string, workerID string) string {
+	return "contract://" + strings.TrimSpace(runID) + "/" + strings.TrimSpace(workerID)
+}
+
+func copyRunLabels(labels map[string]string) map[string]string {
+	if labels == nil {
+		return nil
+	}
+	copied := make(map[string]string, len(labels))
+	for key, value := range labels {
+		copied[key] = value
+	}
+	return copied
 }
 
 type MemorySimopsEventLog struct {

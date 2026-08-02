@@ -264,8 +264,14 @@ func TestSpoolerStopsRunWorkersByRunWorkerAndRuntimeLabels(t *testing.T) {
 	if !slices.Equal(client.stopped, []string{"container-a", "container-b"}) {
 		t.Fatalf("unexpected stop calls %#v", client.stopped)
 	}
+	if len(client.removed) != 0 {
+		t.Fatalf("stop must not cleanup containers before explicit cleanup, got %#v", client.removed)
+	}
+	if err := spooler.CleanupRunProfiles(context.Background(), "RUN-STOP-001", testDockerProfiles(t, run, gateway.SimopsWorkerScheduler, gateway.SimopsWorkerStorage)); err != nil {
+		t.Fatalf("cleanup run: %v", err)
+	}
 	if !slices.Equal(client.removed, []string{"container-a", "container-b"}) {
-		t.Fatalf("unexpected remove calls %#v", client.removed)
+		t.Fatalf("unexpected cleanup remove calls %#v", client.removed)
 	}
 }
 
@@ -402,7 +408,7 @@ func TestSpoolerSyncRunProfilesMapsDockerContainerStates(t *testing.T) {
 	}
 }
 
-func TestSpoolerSyncRunProfilesCleansSucceededContainersAfterTTL(t *testing.T) {
+func TestSpoolerSyncRunProfilesDoesNotCleanupSucceededContainers(t *testing.T) {
 	run := testDockerRun("RUN-SYNC-CLEANUP")
 	cfg := testDockerConfig()
 	cfg.WorkerAutoRemove = false
@@ -429,8 +435,14 @@ func TestSpoolerSyncRunProfilesCleansSucceededContainersAfterTTL(t *testing.T) {
 	if len(observations) != 1 || observations[0].State != gateway.ObservedWorkerSucceeded {
 		t.Fatalf("expected succeeded observation before cleanup, got %#v", observations)
 	}
+	if len(client.removed) != 0 {
+		t.Fatalf("observation must not cleanup succeeded containers, got removals %#v", client.removed)
+	}
+	if err := spooler.CleanupRunProfiles(context.Background(), run.RunID, testDockerProfilesWithConfig(t, cfg, run, gateway.SimopsWorkerScheduler)); err != nil {
+		t.Fatalf("cleanup profiles: %v", err)
+	}
 	if !slices.Equal(client.removed, []string{"container-success"}) {
-		t.Fatalf("expected succeeded container cleanup, got %#v", client.removed)
+		t.Fatalf("expected explicit cleanup to remove succeeded container, got %#v", client.removed)
 	}
 }
 
