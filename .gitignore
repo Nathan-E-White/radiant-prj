@@ -16,6 +16,7 @@ generated/
 .vite/
 .local/
 *.mhtml
+patches/
 
 # Infrastructure tooling caches
 .terraform/
@@ -33,7 +34,6 @@ backend/slurm-gateway/report.json
 .worktrees/
 target/
 **/target/
-storybook-static/
 
 # Local certificate and Vault development material
 *.key
