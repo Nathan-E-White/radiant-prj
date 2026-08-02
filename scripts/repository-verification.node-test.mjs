@@ -79,6 +79,17 @@ test("both Rust workers are explicit locked repository claims exercised by CI", 
   assert.match(workflow, /uses: dtolnay\/rust-toolchain@stable/);
 });
 
+test("Issue 202 architecture contract is pinned as document evidence", async () => {
+  const manifest = JSON.parse(await readFile("config/repository-verification.json", "utf8"));
+  const claim = manifest.claims.find((candidate) => candidate.id === "architecture.issue-202-contract");
+
+  assert.equal(claim?.evidence.adapter, "document");
+  assert.equal(claim?.evidence.source, "docs/design/recoverable-delivery-run-review-truth.md");
+  assert.ok(claim?.requiredText.includes("at-least-once with stable identity and reconciliation"));
+  assert.ok(claim?.requiredText.includes("No module may imply end-to-end exactly-once processing"));
+  assert.ok(claim?.requiredText.includes("The Workbench Review Context is presentation-only mediation"));
+});
+
 test("complete Go backend profiles are explicit claims run in the prepared backend job", async () => {
   const manifest = JSON.parse(await readFile("config/repository-verification.json", "utf8"));
   const workflow = parseYaml(await readFile(".github/workflows/ci.yml", "utf8"));
