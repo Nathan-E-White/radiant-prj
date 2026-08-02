@@ -4,7 +4,6 @@ package gateway
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -14,10 +13,6 @@ import (
 	"github.com/apache/arrow-go/v18/arrow/memory"
 	"github.com/apache/iceberg-go"
 	icecatalog "github.com/apache/iceberg-go/catalog"
-	_ "github.com/apache/iceberg-go/catalog/sql"
-	sqlcatalog "github.com/apache/iceberg-go/catalog/sql"
-	iceio "github.com/apache/iceberg-go/io"
-	_ "github.com/apache/iceberg-go/io/gocloud"
 	icetable "github.com/apache/iceberg-go/table"
 )
 
@@ -29,11 +24,8 @@ type IcebergGoSimopsArtifactWriter struct {
 }
 
 func NewIcebergGoSimopsArtifactWriter(cfg SimopsConfig, base *simopsArtifactWriterBase) (SimopsArtifactWriter, error) {
-	if strings.TrimSpace(cfg.IcebergCatalogDSN) == "" {
-		return nil, fmt.Errorf("SIMOPS_ICEBERG_CATALOG_DSN is required when SIMOPS_ICEBERG_WRITER_MODE=iceberg-go")
-	}
-	if strings.TrimSpace(cfg.IcebergWarehouse) == "" {
-		return nil, fmt.Errorf("SIMOPS_ICEBERG_WAREHOUSE is required when SIMOPS_ICEBERG_WRITER_MODE=iceberg-go")
+	if err := simopsIcebergLifecycle(cfg).Validate(); err != nil {
+		return nil, err
 	}
 	return &IcebergGoSimopsArtifactWriter{base: base, cfg: cfg}, nil
 }
@@ -81,10 +73,7 @@ func (w *IcebergGoSimopsArtifactWriter) WriteArtifact(runID string, plan SimopsA
 	}
 	defer arrowTable.Release()
 
-	if _, err := tbl.AppendTable(ctx, arrowTable, int64(len(plan.Events)), iceberg.Properties{
-		"simops.run_id":      runID,
-		"simops.batch_topic": plan.Topic,
-	}); err != nil {
+	if _, err := tbl.AppendTable(ctx, arrowTable, int64(len(plan.Events)), simopsIcebergAppendProperties(runID, plan.Topic)); err != nil {
 		return w.base.markRunFailed(runID, err, "append iceberg telemetry")
 	}
 	if err := w.verifyFreshReadback(ctx, cat, runID, plan); err != nil {
@@ -94,6 +83,13 @@ func (w *IcebergGoSimopsArtifactWriter) WriteArtifact(runID string, plan SimopsA
 		return err
 	}
 	return nil
+}
+
+func simopsIcebergAppendProperties(runID string, topic string) iceberg.Properties {
+	return iceberg.Properties{
+		"simops.run_id":      runID,
+		"simops.batch_topic": topic,
+	}
 }
 
 func (w *IcebergGoSimopsArtifactWriter) Commit(runID string) error {
@@ -254,62 +250,22 @@ func icebergOffsetKey(topic string, partition int, offset int64) string {
 }
 
 func (w *IcebergGoSimopsArtifactWriter) loadCatalog(ctx context.Context) (icecatalog.Catalog, error) {
-	props := iceberg.Properties{
-		"type":                "sql",
-		"uri":                 w.cfg.IcebergCatalogDSN,
-		sqlcatalog.DriverKey:  "pgx",
-		sqlcatalog.DialectKey: string(sqlcatalog.Postgres),
-		"init_catalog_tables": "true",
-		"warehouse":           strings.TrimRight(strings.TrimSpace(w.cfg.IcebergWarehouse), "/"),
-	}
-	for key, value := range w.s3Properties() {
-		props[key] = value
-	}
-	return icecatalog.Load(ctx, "simops", props)
+	return simopsIcebergLifecycle(w.cfg).LoadCatalog(ctx, "simops")
 }
 
-func (w *IcebergGoSimopsArtifactWriter) s3Properties() iceberg.Properties {
-	props := iceberg.Properties{}
-	if endpoint := strings.TrimSpace(w.cfg.IcebergS3Endpoint); endpoint != "" {
-		props[iceio.S3EndpointURL] = endpoint
-	}
-	if region := strings.TrimSpace(w.cfg.IcebergS3Region); region != "" {
-		props[iceio.S3Region] = region
-		props[iceio.S3ClientRegion] = region
-	}
-	if accessKey := strings.TrimSpace(w.cfg.IcebergS3AccessKeyID); accessKey != "" {
-		props[iceio.S3AccessKeyID] = accessKey
-	}
-	if secretKey := strings.TrimSpace(w.cfg.IcebergS3SecretKey); secretKey != "" {
-		props[iceio.S3SecretAccessKey] = secretKey
-	}
-	return props
+func simopsIcebergLifecycle(cfg SimopsConfig) IcebergTableLifecycle {
+	return IcebergTableLifecycle{Configuration: IcebergCatalogConfiguration{
+		DSN:           cfg.IcebergCatalogDSN,
+		Warehouse:     cfg.IcebergWarehouse,
+		S3Endpoint:    cfg.IcebergS3Endpoint,
+		S3Region:      cfg.IcebergS3Region,
+		S3AccessKeyID: cfg.IcebergS3AccessKeyID,
+		S3SecretKey:   cfg.IcebergS3SecretKey,
+	}}
 }
 
-func (w *IcebergGoSimopsArtifactWriter) loadOrCreateTable(ctx context.Context, cat icecatalog.Catalog) (*icetable.Table, error) {
-	tbl, err := cat.LoadTable(ctx, simopsIcebergIdentifier)
-	if err == nil {
-		return tbl, nil
-	}
-	if !errors.Is(err, icecatalog.ErrNoSuchTable) {
-		return nil, err
-	}
-	if err := cat.CreateNamespace(ctx, icetable.Identifier{"simops"}, iceberg.Properties{}); err != nil && !errors.Is(err, icecatalog.ErrNamespaceAlreadyExists) {
-		return nil, err
-	}
-	tableProps := iceberg.Properties{icetable.PropertyFormatVersion: "2"}
-	for key, value := range w.s3Properties() {
-		tableProps[key] = value
-	}
-	tbl, err = cat.CreateTable(ctx, simopsIcebergIdentifier, simopsIcebergSchema(),
-		icecatalog.WithProperties(tableProps))
-	if err != nil {
-		if errors.Is(err, icecatalog.ErrTableAlreadyExists) {
-			return cat.LoadTable(ctx, simopsIcebergIdentifier)
-		}
-		return nil, err
-	}
-	return tbl, nil
+func (w *IcebergGoSimopsArtifactWriter) loadOrCreateTable(ctx context.Context, cat icebergTableLifecycleCatalog) (*icetable.Table, error) {
+	return simopsIcebergLifecycle(w.cfg).LoadOrCreateTable(ctx, cat, simopsIcebergIdentifier, simopsIcebergSchema())
 }
 
 func simopsIcebergSchema() *iceberg.Schema {
