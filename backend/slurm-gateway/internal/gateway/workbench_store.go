@@ -37,15 +37,16 @@ type WorkbenchProjectionPersistence interface {
 }
 
 type WorkbenchSnapshotPersistence interface {
-	LatestMeasuredFrames(limit int) ([]ScadaTelemetryFrame, error)
-	LatestResultFrames(limit int) ([]SimopsResultFrame, error)
-	CurrentTwinState() (DigitalTwinState, error)
-	LineageForValue(valueID string) (DigitalTwinValueLineage, error)
 	Snapshot() (WorkbenchSnapshot, error)
 }
 
+type WorkbenchProjectionQueryPersistence interface {
+	LatestMeasuredFrames(limit int) ([]ScadaTelemetryFrame, error)
+	LatestResultFrames(limit int) ([]SimopsResultFrame, error)
+}
+
 type WorkbenchDynamicMeasuredRetention interface {
-	PruneDynamicMeasured(before time.Time) error
+	PruneDynamicMeasured(ctx context.Context, before time.Time) error
 }
 
 type WorkbenchControllerPersistence interface {
@@ -56,6 +57,7 @@ type WorkbenchControllerPersistence interface {
 
 type WorkbenchStore interface {
 	WorkbenchControllerPersistence
+	WorkbenchProjectionQueryPersistence
 	WorkbenchProjectionPersistence
 	ArtifactForgeEligibilityStore
 	SaveTwinStatePublication(publication TwinStatePublication) (bool, error)
@@ -339,7 +341,10 @@ func (s *InMemoryWorkbenchStore) LatestMeasuredFrames(limit int) ([]ScadaTelemet
 	return cloneWorkbenchValue(trimMeasured(frames, limit))
 }
 
-func (s *InMemoryWorkbenchStore) PruneDynamicMeasured(before time.Time) error {
+func (s *InMemoryWorkbenchStore) PruneDynamicMeasured(ctx context.Context, before time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	changed := false
@@ -373,25 +378,6 @@ func (s *InMemoryWorkbenchStore) LatestResultFrames(limit int) ([]SimopsResultFr
 		return results[i].ProducedAt > results[j].ProducedAt
 	})
 	return cloneWorkbenchValue(trimResults(results, limit))
-}
-
-func (s *InMemoryWorkbenchStore) CurrentTwinState() (DigitalTwinState, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	if s.twin.SchemaVersion == "" {
-		return DigitalTwinState{}, ErrWorkbenchNotFound
-	}
-	return cloneWorkbenchValue(s.twin)
-}
-
-func (s *InMemoryWorkbenchStore) LineageForValue(valueID string) (DigitalTwinValueLineage, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	lineage, ok := s.lineageByValue[valueID]
-	if !ok {
-		return DigitalTwinValueLineage{}, ErrWorkbenchNotFound
-	}
-	return cloneWorkbenchValue(lineage)
 }
 
 func (s *InMemoryWorkbenchStore) Snapshot() (WorkbenchSnapshot, error) {
@@ -1034,9 +1020,10 @@ func (s *PostgresWorkbenchStore) LatestMeasuredFrames(limit int) ([]ScadaTelemet
 	return latestMeasuredFrames(ctx, s.db, limit)
 }
 
-func (s *PostgresWorkbenchStore) PruneDynamicMeasured(before time.Time) error {
-	ctx, cancel := simopsSQLContext()
-	defer cancel()
+func (s *PostgresWorkbenchStore) PruneDynamicMeasured(ctx context.Context, before time.Time) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -1133,12 +1120,6 @@ func latestResultFrames(ctx context.Context, queryer workbenchSQLQueryer, limit 
 	return results, rows.Err()
 }
 
-func (s *PostgresWorkbenchStore) CurrentTwinState() (DigitalTwinState, error) {
-	ctx, cancel := simopsSQLContext()
-	defer cancel()
-	return currentTwinState(ctx, s.db)
-}
-
 func currentTwinState(ctx context.Context, queryer workbenchSQLQueryer) (DigitalTwinState, error) {
 	var raw []byte
 	if err := queryer.QueryRowContext(ctx, `
@@ -1157,12 +1138,6 @@ func currentTwinState(ctx context.Context, queryer workbenchSQLQueryer) (Digital
 		return DigitalTwinState{}, err
 	}
 	return state, nil
-}
-
-func (s *PostgresWorkbenchStore) LineageForValue(valueID string) (DigitalTwinValueLineage, error) {
-	ctx, cancel := simopsSQLContext()
-	defer cancel()
-	return lineageForValue(ctx, s.db, valueID)
 }
 
 func lineageForValue(ctx context.Context, queryer workbenchSQLQueryer, valueID string) (DigitalTwinValueLineage, error) {

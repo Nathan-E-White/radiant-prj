@@ -1,0 +1,12 @@
+{
+  "mappings": {
+    ".": { "claim": "browser.delivery" },
+    "backend/slurm-gateway": { "claim": "artifact-forge.behavior" },
+    "workers/scada-standins": { "claim": "scada.standins-behavior" },
+    "workers/simops-generator": { "claim": "simops.generator-behavior" },
+    "infra/terraform": { "claim": "infrastructure.opentofu-valid" },
+    "infra/opentofu/simops-kind-substrate": { "claim": "simops.opentofu-substrate-syntax" },
+    "lib/iceberg-go": { "exclusion": { "rationale": "Compatibility shim for the gateway Iceberg writer; it is not an independently executable module.", "owner": "Systems" } }
+  },
+  "requiredClaims": ["browser.delivery", "storybook.catalog", "artifact-forge.behavior", "scada.standins-behavior", "simops.generator-behavior", "infrastructure.opentofu-valid", "simops.opentofu-substrate-syntax"]
+}

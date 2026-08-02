@@ -3,14 +3,88 @@
 package gateway
 
 import (
+	"context"
+	"database/sql"
 	"errors"
+	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
 
+func TestPostgresArtifactForgeRecoveryAppliesOneEligibleOutcome(t *testing.T) {
+	workbench := openConfiguredDataFlushPostgresTestStore(t)
+	if _, err := workbench.db.Exec(`
+		ALTER TABLE artifact_forge_requests ADD COLUMN IF NOT EXISTS last_activity_at TIMESTAMPTZ;
+		ALTER TABLE artifact_forge_requests ADD COLUMN IF NOT EXISTS session_expires_at TIMESTAMPTZ;
+		ALTER TABLE artifact_forge_requests ADD COLUMN IF NOT EXISTS retain_until TIMESTAMPTZ;
+	`); err != nil {
+		t.Fatalf("upgrade isolated Artifact Forge ledger: %v", err)
+	}
+	forgeStore := &PostgresArtifactForgeStore{db: workbench.db}
+	simopsStore := &PostgresSimopsStore{db: workbench.db}
+	cfg := DefaultConfig().Simops
+	controller := NewSimopsController(cfg, simopsStore, ContractSimopsSpooler{Mode: cfg.LaunchMode}, MemorySimopsEventLog{Store: simopsStore}, IcebergArtifactPlanner{}, nil, nil)
+	controller.runID = func() string { return "forge-postgres-recovery-run" }
+	forge := NewArtifactForgeManager(forgeStore, controller, workbench)
+	request := artifactForgeRequestFixture()
+
+	accepted, created, err := forge.Request(context.Background(), request, "fleet-board-client")
+	if err != nil || !created {
+		t.Fatalf("accept persisted Artifact Forge request: record=%#v created=%v err=%v", accepted, created, err)
+	}
+	if _, err := simopsStore.UpdateRunLifecycle(accepted.RunID, SimopsComplete); err != nil {
+		t.Fatal(err)
+	}
+	seedEligibleArtifactForgeProjection(t, workbench, accepted, request)
+
+	restartedDB := reopenArtifactForgePostgresTestDatabase(t, workbench.db)
+	restartedWorkbench := &PostgresWorkbenchStore{db: restartedDB}
+	restartedSimops := &PostgresSimopsStore{db: restartedDB}
+	restartedController := NewSimopsController(cfg, restartedSimops, ContractSimopsSpooler{Mode: cfg.LaunchMode}, MemorySimopsEventLog{Store: restartedSimops}, IcebergArtifactPlanner{}, nil, nil)
+	restarted := NewArtifactForgeManager(&PostgresArtifactForgeStore{db: restartedDB}, restartedController, restartedWorkbench)
+	recovered, err := restarted.Recover(context.Background(), request.GameSessionID, request.IdempotencyKey)
+	if err != nil || recovered.Decision != ArtifactForgeOutcomeApplied || recovered.Outcome == nil {
+		t.Fatalf("recover persisted eligible outcome: record=%#v err=%v", recovered, err)
+	}
+	replayed, err := restarted.Recover(context.Background(), request.GameSessionID, request.IdempotencyKey)
+	if err != nil || replayed.Outcome == nil || replayed.Outcome.OutcomeID != recovered.Outcome.OutcomeID || artifactForgeEventCount(replayed, ArtifactForgeEventOutcomeApplied) != 1 {
+		t.Fatalf("recovery replay changed the durable outcome: record=%#v err=%v", replayed, err)
+	}
+}
+
+func reopenArtifactForgePostgresTestDatabase(t *testing.T, database *sql.DB) *sql.DB {
+	t.Helper()
+	dsn := strings.TrimSpace(os.Getenv("SIMOPS_POSTGRES_TEST_DSN"))
+	parsed, err := url.Parse(dsn)
+	if err != nil || parsed.Scheme == "" {
+		t.Fatalf("SIMOPS_POSTGRES_TEST_DSN must be a URL: %q", dsn)
+	}
+	var schema string
+	if err := database.QueryRow(`SELECT current_schema()`).Scan(&schema); err != nil {
+		t.Fatalf("read isolated Artifact Forge schema: %v", err)
+	}
+	query := parsed.Query()
+	query.Set("options", "-csearch_path="+schema)
+	parsed.RawQuery = query.Encode()
+	restarted, err := sql.Open("pgx", parsed.String())
+	if err != nil {
+		t.Fatalf("reopen isolated Artifact Forge database: %v", err)
+	}
+	if err := restarted.Ping(); err != nil {
+		_ = restarted.Close()
+		t.Fatalf("ping reopened Artifact Forge database: %v", err)
+	}
+	t.Cleanup(func() { _ = restarted.Close() })
+	return restarted
+}
+
 func TestPostgresArtifactForgeLedgerRecoversAssociationAndProtectsAppliedOutcome(t *testing.T) {
-	dsn := os.Getenv("RADIANT_POSTGRES_TEST_DSN")
+	dsn := strings.TrimSpace(os.Getenv("SIMOPS_POSTGRES_TEST_DSN"))
+	if dsn == "" {
+		t.Skip("set SIMOPS_POSTGRES_TEST_DSN to run Artifact Forge Postgres integration tests")
+	}
 	store, err := NewPostgresArtifactForgeStore(dsn)
 	if err != nil {
 		t.Fatalf("open Artifact Forge ledger: %v", err)
@@ -64,7 +138,7 @@ func TestPostgresArtifactForgeLedgerRecoversAssociationAndProtectsAppliedOutcome
 	if err := store.Save(final); err != nil {
 		t.Fatalf("age retained ledger: %v", err)
 	}
-	if removed, err := store.PruneExpired(now); err != nil || removed != 1 {
+	if removed, err := store.PruneExpired(context.Background(), now); err != nil || removed != 1 {
 		t.Fatalf("prune expired ledger removed=%d err=%v", removed, err)
 	}
 	if _, err := store.Find(record.GameSessionID, record.IdempotencyKey); !errors.Is(err, ErrArtifactForgeNotFound) {

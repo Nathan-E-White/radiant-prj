@@ -3,7 +3,6 @@ package gateway
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -106,47 +105,6 @@ func (g *Gateway) handleSimulatorWorkbench(w http.ResponseWriter, r *http.Reques
 			return
 		}
 		writeJSON(w, http.StatusOK, snapshot)
-	case path == "state":
-		snapshot, err := g.workbench.Snapshot()
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to read workbench state", Code: "workbench_failed"})
-			return
-		}
-		writeJSON(w, http.StatusOK, snapshot.State)
-	case path == "measured":
-		frames, err := g.workbench.Measured()
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to read measured state", Code: "workbench_failed"})
-			return
-		}
-		writeJSON(w, http.StatusOK, map[string]any{"frames": frames})
-	case path == "twin":
-		state, err := g.workbench.Twin()
-		if errors.Is(err, ErrWorkbenchNotFound) {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Twin state not found", Code: "twin_not_found"})
-			return
-		}
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to read twin state", Code: "workbench_failed"})
-			return
-		}
-		writeJSON(w, http.StatusOK, state)
-	case strings.HasPrefix(path, "lineage/"):
-		valueID := strings.TrimSpace(strings.TrimPrefix(path, "lineage/"))
-		if valueID == "" || strings.Contains(valueID, "/") {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Lineage not found", Code: "lineage_not_found"})
-			return
-		}
-		lineage, err := g.workbench.Lineage(valueID)
-		if errors.Is(err, ErrWorkbenchNotFound) {
-			writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Lineage not found", Code: "lineage_not_found"})
-			return
-		}
-		if err != nil {
-			writeJSON(w, http.StatusInternalServerError, ErrorResponse{Error: "Failed to read lineage", Code: "workbench_failed"})
-			return
-		}
-		writeJSON(w, http.StatusOK, lineage)
 	default:
 		writeJSON(w, http.StatusNotFound, ErrorResponse{Error: "Simulator Workbench route not found", Code: "workbench_route_not_found"})
 	}

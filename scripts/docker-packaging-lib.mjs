@@ -42,6 +42,17 @@ export function buildInputIdentity(manifest, role, { root = process.cwd(), platf
   };
 }
 
+export function selectPackagingRoles(allRoles, requestedRoles) {
+  const requested = String(requestedRoles || "").split(",").filter(Boolean);
+  if (requested.length === 0) return allRoles;
+  const knownRoles = new Set(allRoles.map((role) => role.role));
+  const unknownRoles = requested.filter((role) => !knownRoles.has(role));
+  if (unknownRoles.length > 0) {
+    throw new Error(`DOCKER_PACKAGING_ROLES must name one or more known packaging roles; unknown roles: ${unknownRoles.join(", ")}`);
+  }
+  return allRoles.filter((role) => requested.includes(role.role));
+}
+
 export function parseByteSize(value) {
   const match = String(value).trim().match(/^(\d+(?:\.\d+)?)\s*(B|kB|MB|GB|KiB|MiB|GiB)$/);
   if (!match) throw new Error(`Unsupported byte size: ${value}`);

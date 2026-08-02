@@ -128,7 +128,12 @@ func BuildRunWorkerConnectionProfileForRecord(cfg SimopsConfig, run SimopsRunRec
 	if !allowedWorker(worker.WorkerKind) {
 		return RunConnectionProfile{}, fmt.Errorf("worker kind %q is not supported", worker.WorkerKind)
 	}
-	return buildRunConnectionProfile(cfg, run, RunConnectionRoleOrdinaryWorker, worker.WorkerID, worker.WorkerKind, false)
+	profile, err := buildRunConnectionProfile(cfg, run, RunConnectionRoleOrdinaryWorker, worker.WorkerID, worker.WorkerKind, false)
+	if err != nil {
+		return RunConnectionProfile{}, err
+	}
+	applyStoredWorkerRuntime(&profile, worker)
+	return profile, nil
 }
 
 func BuildRunWorkerConnectionProfilesForRecords(cfg SimopsConfig, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]RunConnectionProfile, error) {
@@ -141,6 +146,28 @@ func BuildRunWorkerConnectionProfilesForRecords(cfg SimopsConfig, run SimopsRunR
 		profiles = append(profiles, profile)
 	}
 	return profiles, nil
+}
+
+func applyStoredWorkerRuntime(profile *RunConnectionProfile, worker SimopsWorkerRecord) {
+	switch strings.TrimSpace(worker.Runtime) {
+	case "docker":
+		if runtimeID := strings.TrimSpace(worker.RuntimeID); runtimeID != "" {
+			profile.Runtime.Docker.ContainerName = runtimeID
+		}
+	case "kubernetes":
+		namespace, jobName, ok := parseKubernetesRuntimeID(worker.RuntimeID)
+		if ok {
+			profile.Runtime.Kubernetes.Namespace = namespace
+			profile.Runtime.Kubernetes.JobName = jobName
+		}
+	}
+}
+
+func parseKubernetesRuntimeID(runtimeID string) (string, string, bool) {
+	namespace, jobName, ok := strings.Cut(strings.TrimSpace(runtimeID), "/")
+	namespace = strings.TrimSpace(namespace)
+	jobName = strings.TrimSpace(jobName)
+	return namespace, jobName, ok && namespace != "" && jobName != ""
 }
 
 func BuildTrustedRunConnectionProfile(cfg SimopsConfig, run SimopsRunRecord, role RunConnectionRole) (RunConnectionProfile, error) {

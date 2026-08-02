@@ -17,5 +17,7 @@ FROM ${SIMOPS_GENERATOR_RUNTIME_IMAGE}
 
 COPY --from=builder /src/workers/simops-generator/target/release/simops-generator /simops-generator
 COPY --from=builder /src/examples/simulation-ops /examples/simulation-ops
+COPY --from=builder /src/workers/simops-generator/Cargo.toml /controlled-manifests/simops-generator/Cargo.toml
+COPY --from=builder /src/workers/simops-generator/Cargo.lock /controlled-manifests/simops-generator/Cargo.lock
 
 ENTRYPOINT ["/simops-generator"]

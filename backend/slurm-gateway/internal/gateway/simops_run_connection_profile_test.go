@@ -127,6 +127,30 @@ func TestRunConnectionProfileMapsDockerAndKubernetesRuntimeNeeds(t *testing.T) {
 	}
 }
 
+func TestRunConnectionProfileForRecordPreservesStoredKubernetesRuntimeIdentity(t *testing.T) {
+	cfg := testRunConnectionProfileConfig()
+	cfg.WorkerKubernetesNamespace = "drifted-namespace"
+	run := testRunConnectionProfileRecord()
+	worker := SimopsWorkerRecord{
+		RunID:      run.RunID,
+		WorkerID:   "scheduler-01",
+		WorkerKind: SimopsWorkerScheduler,
+		Runtime:    "kubernetes",
+		RuntimeID:  "original-namespace/original-job",
+	}
+
+	profile, err := BuildRunWorkerConnectionProfileForRecord(cfg, run, worker)
+	if err != nil {
+		t.Fatalf("build profile for record: %v", err)
+	}
+	if profile.Runtime.Kubernetes.Namespace != "original-namespace" || profile.Runtime.Kubernetes.JobName != "original-job" {
+		t.Fatalf("expected stored Kubernetes runtime target, got %#v", profile.Runtime.Kubernetes)
+	}
+	if profile.Runtime.Kubernetes.ServiceAccount != "simops-worker" {
+		t.Fatalf("expected current service account for non-identity config, got %q", profile.Runtime.Kubernetes.ServiceAccount)
+	}
+}
+
 func TestRunConnectionProfileRejectsIncompleteConfig(t *testing.T) {
 	run := testRunConnectionProfileRecord()
 

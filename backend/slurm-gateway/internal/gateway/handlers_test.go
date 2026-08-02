@@ -58,6 +58,65 @@ func TestReadyFailsInSbatchModeWithoutScriptRoot(t *testing.T) {
 	}
 }
 
+func TestLifecycleReadinessStartsBeforeTheInitialCycleAndKeepsLivenessAvailable(t *testing.T) {
+	app := newTestGateway(t, MockSpooler{})
+	app.EnableLifecycleHealth()
+
+	for path, want := range map[string]int{"/healthz": http.StatusOK, "/readyz": http.StatusServiceUnavailable} {
+		rr := httptest.NewRecorder()
+		app.Handler().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, path, nil))
+		if rr.Code != want {
+			t.Fatalf("%s status=%d want=%d", path, rr.Code, want)
+		}
+	}
+	app.lifecycle.RecordOutcomes(time.Now(), nil)
+	rr := httptest.NewRecorder()
+	app.Handler().ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("ready after successful initial cycle: %d", rr.Code)
+	}
+}
+
+func TestLifecycleShutdownCancellationDoesNotOverwriteLastHealthyCycle(t *testing.T) {
+	app := newTestGateway(t, MockSpooler{})
+	app.EnableLifecycleHealth()
+	app.lifecycle.RecordOutcomes(time.Now(), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := app.ReconcileFleetBoardSessions(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("shutdown cancellation: %v", err)
+	}
+	if got := app.lifecycle.State(); got != LifecycleReady {
+		t.Fatalf("shutdown cancellation changed lifecycle state: %s", got)
+	}
+}
+
+func TestLifecycleDeadlineMarksTheInitialCycleNotReady(t *testing.T) {
+	app := newTestGateway(t, MockSpooler{})
+	app.EnableLifecycleHealth()
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	if err := app.ReconcileFleetBoardSessions(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("deadline expiry: %v", err)
+	}
+	if got := app.lifecycle.State(); got != LifecycleNotReady {
+		t.Fatalf("deadline did not mark initial lifecycle state not ready: %s", got)
+	}
+}
+
+func TestLifecycleRequiredTaskBecomesNotReadyAfterItsSuccessWindow(t *testing.T) {
+	health := NewLifecycleHealth(true)
+	now := time.Date(2026, 7, 30, 12, 0, 0, 0, time.UTC)
+	health.RecordOutcomes(now, []LifecycleTaskOutcome{{Name: "measured_retention", Err: nil}})
+	health.RecordOutcomes(now.Add(time.Second), []LifecycleTaskOutcome{{Name: "measured_retention", Err: errors.New("storage unavailable")}})
+	if got := health.StateAt(now.Add(time.Minute)); got != LifecycleDegraded {
+		t.Fatalf("recent failed task should degrade: %s", got)
+	}
+	if got := health.StateAt(now.Add(3 * time.Minute)); got != LifecycleNotReady {
+		t.Fatalf("overdue failed task should be not ready: %s", got)
+	}
+}
+
 func TestSubmitRejectsUnauthorizedIdentity(t *testing.T) {
 	app := newTestGateway(t, MockSpooler{})
 
@@ -200,6 +259,21 @@ func TestMetricsIncludeSubmitCountsWithoutPayloadLabels(t *testing.T) {
 	}
 	if strings.Contains(body, "script_name") || strings.Contains(body, "transport-toy") {
 		t.Fatalf("metrics leaked request payload:\n%s", body)
+	}
+}
+
+func TestLifecycleMetricsHaveFixedTaskCardinality(t *testing.T) {
+	app := newTestGateway(t, MockSpooler{})
+	app.EnableLifecycleHealth()
+	metrics := httptest.NewRecorder()
+	app.Handler().ServeHTTP(metrics, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	body := metrics.Body.String()
+	for _, task := range lifecycleTaskNames {
+		if !strings.Contains(body, `slurm_gateway_lifecycle_task_success{task="`+task+`"}`) ||
+			!strings.Contains(body, `slurm_gateway_lifecycle_task_success_age_seconds{task="`+task+`"}`) ||
+			!strings.Contains(body, `slurm_gateway_lifecycle_task_affected_count{task="`+task+`"}`) {
+			t.Fatalf("missing fixed lifecycle metrics for %s:\n%s", task, body)
+		}
 	}
 }
 
