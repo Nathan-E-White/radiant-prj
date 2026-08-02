@@ -208,6 +208,8 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
 
@@ -231,6 +233,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Fetch Go mutation diff base
+        run: git fetch origin main:refs/remotes/origin/main
+
       - name: Verify complete Go backend claims
         run: >-
           bun run repository:verify --
@@ -246,6 +251,9 @@ jobs:
         run: bun run backend:snapshot:postgres:test
         env:
           SIMOPS_POSTGRES_TEST_DSN: postgres://radiant:radiant@127.0.0.1:5432/radiant?sslmode=disable
+
+      - name: Run Go mutation testing
+        run: bun run test:mutation:go
 
   docker:
     needs: changes
