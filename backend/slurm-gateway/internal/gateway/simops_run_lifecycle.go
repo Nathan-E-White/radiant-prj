@@ -108,7 +108,13 @@ func (p *SimopsRunLifecyclePolicy) Start(ctx context.Context, record SimopsRunRe
 		return p.fail(ctx, outcome, planned, launched, commands, SimopsRunStageLaunchPersistence, err)
 	}
 
-	streaming, err := p.store.UpdateRunLifecycle(stored.RunID, SimopsStreaming)
+	publication := SimopsEvent{
+		RunID:      stored.RunID,
+		EventType:  "run.lifecycle",
+		Lifecycle:  SimopsStreaming,
+		OccurredAt: p.now().UTC(),
+	}
+	streaming, _, err := p.store.UpdateRunLifecycleWithPublicationIntent(stored.RunID, SimopsStreaming, publication)
 	if err != nil {
 		return p.fail(ctx, outcome, planned, launched, commands, SimopsRunStageStreamingTransition, err)
 	}
@@ -124,14 +130,7 @@ func (p *SimopsRunLifecyclePolicy) Start(ctx context.Context, record SimopsRunRe
 		}
 	}
 
-	if err := p.eventLog.Publish(ctx, SimopsEvent{
-		RunID:      streaming.RunID,
-		EventType:  "run.lifecycle",
-		Lifecycle:  streaming.Lifecycle,
-		OccurredAt: p.now().UTC(),
-	}); err != nil {
-		return p.fail(ctx, outcome, planned, launched, commands, SimopsRunStageEventPublication, err)
-	}
+	_ = dispatchSimopsPublicationIntents(ctx, p.store, p.eventLog, streaming.RunID)
 
 	return outcome, nil
 }
@@ -377,4 +376,29 @@ func lifecycleFailureEvent(runID string, stage SimopsRunLifecycleStage, cause, c
 		Frame:      frame,
 		OccurredAt: now,
 	}
+}
+
+func dispatchSimopsPublicationIntents(ctx context.Context, store SimopsStore, eventLog SimopsEventLog, runID string) error {
+	intents, err := store.ListPublicationIntents(runID)
+	if err != nil {
+		return err
+	}
+	var dispatchErrors []error
+	for _, intent := range intents {
+		if intent.State == SimopsPublicationPublished {
+			continue
+		}
+		if err := eventLog.Publish(ctx, intent.Event); err != nil {
+			if markErr := store.MarkPublicationIntentFailed(intent.IntentID, err); markErr != nil {
+				dispatchErrors = append(dispatchErrors, fmt.Errorf("mark publication intent failed: %w", markErr))
+				continue
+			}
+			dispatchErrors = append(dispatchErrors, fmt.Errorf("publish intent %s: %w", intent.IntentID, err))
+			continue
+		}
+		if err := store.MarkPublicationIntentPublished(intent.IntentID, intent.Event); err != nil {
+			dispatchErrors = append(dispatchErrors, fmt.Errorf("mark publication intent published: %w", err))
+		}
+	}
+	return errors.Join(dispatchErrors...)
 }

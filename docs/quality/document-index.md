@@ -52,6 +52,7 @@
 | ADR-0013 Coherent Workbench Snapshot And Lifecycle Reconciliation | Software | Accepted; implementation evidence pending |
 | Workbench Snapshot Read And Lifecycle Policy | Software | Accepted design; implementation evidence pending |
 | Workbench Snapshot And Lifecycle: Primary-Source Research | Software | Research record |
+| Recoverable Delivery, Run, And Review Truth (RDRRT-001) | Software | Rev 1.0; Accepted architecture contract for Issue #202; evidence: `architecture.issue-202-contract` |
 | Capability Ledger Architecture Selection | Software | Selected design input for Issue #175 |
 | Verification Plan | Quality | Draft for v3.0 review |
 | Test Report Template | Quality | Template |

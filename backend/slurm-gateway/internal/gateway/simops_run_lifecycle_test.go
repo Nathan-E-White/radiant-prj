@@ -227,6 +227,35 @@ func TestSimopsControllerIdempotentRetryRecoversStartingRunAtCapacity(t *testing
 	}
 }
 
+func TestSimopsControllerListEventsRecoversRecordedPublicationIntent(t *testing.T) {
+	now := time.Date(2026, 7, 14, 3, 40, 0, 0, time.UTC)
+	store := NewInMemorySimopsStore()
+	controller := NewSimopsController(testRunConnectionProfileConfig(), store, ContractSimopsSpooler{Mode: "auto"}, failingLifecycleEventLog{}, IcebergArtifactPlanner{}, nil, nil)
+	controller.now = func() time.Time { return now }
+	controller.runID = func() string { return "RUN-RECOVER-PUBLICATION" }
+
+	response, status, err := controller.CreateRun(context.Background(), SimopsRunRequest{
+		ScenarioID: "scheduler-drift", WorkerKinds: []string{"scheduler"}, LaunchMode: "auto", IdempotencyKey: "recover-publication",
+	}, "react-backend-client")
+	if err != nil || status != 202 || response.Lifecycle != SimopsStreaming {
+		t.Fatalf("publication delivery failure must leave a visible streaming Run: response=%#v status=%d err=%v", response, status, err)
+	}
+	intents, err := store.ListPublicationIntents(response.RunID)
+	if err != nil || len(intents) != 1 || intents[0].State != SimopsPublicationFailed {
+		t.Fatalf("expected failed publication intent before recovery: intents=%#v err=%v", intents, err)
+	}
+
+	controller.eventLog = MemorySimopsEventLog{Store: store}
+	events, status, err := controller.ListEvents(response.RunID)
+	if err != nil || status != 200 || len(events) != 1 || events[0].Lifecycle != SimopsStreaming {
+		t.Fatalf("event read path did not recover publication: events=%#v status=%d err=%v", events, status, err)
+	}
+	intents, err = store.ListPublicationIntents(response.RunID)
+	if err != nil || len(intents) != 1 || intents[0].State != SimopsPublicationPublished {
+		t.Fatalf("expected recovered publication intent: intents=%#v err=%v", intents, err)
+	}
+}
+
 func TestSimopsRunLifecycleBoundsDetachedRecovery(t *testing.T) {
 	store := NewInMemorySimopsStore()
 	spooler := &blockingRecoveryLifecycleSpooler{delegate: ContractSimopsSpooler{Mode: "auto"}}
@@ -316,17 +345,48 @@ func TestSimopsRunLifecycleCompensatesArtifactPersistenceFailure(t *testing.T) {
 	assertFailedLifecycleOutcome(t, base, outcome, SimopsStopped, SimopsRunStageArtifactPersistence)
 }
 
-func TestSimopsRunLifecyclePersistsEventPublicationFailureAndFailsArtifact(t *testing.T) {
+func TestSimopsRunLifecycleRecordsRetryableEventPublicationFailure(t *testing.T) {
 	store := NewInMemorySimopsStore()
 	spooler := &trackingLifecycleSpooler{delegate: ContractSimopsSpooler{Mode: "auto"}}
 	lifecycle, run := newLifecycleTestPolicy(store, spooler, failingLifecycleEventLog{}, IcebergArtifactPlanner{})
+	run.IdempotencyKey = "publication-retry"
 
 	outcome, err := lifecycle.Start(context.Background(), run, []SimopsWorkerKind{SimopsWorkerScheduler})
-	assertLifecycleErrorStage(t, err, SimopsRunStageEventPublication)
-	assertFailedLifecycleOutcome(t, store, outcome, SimopsStopped, SimopsRunStageEventPublication)
+	if err != nil || outcome.Run.Lifecycle != SimopsStreaming {
+		t.Fatalf("publication failure must not replace the durable Run fact: outcome=%#v err=%v", outcome, err)
+	}
 	artifacts, listErr := store.ListArtifacts(run.RunID)
-	if listErr != nil || len(artifacts) != 1 || artifacts[0].Status != SimopsArtifactStatusFailed {
-		t.Fatalf("expected planned artifact to receive explicit failed disposition, artifacts=%#v err=%v", artifacts, listErr)
+	if listErr != nil || len(artifacts) != 1 || artifacts[0].Status != SimopsArtifactStatusReceived {
+		t.Fatalf("expected planned artifact to remain attached to streaming Run, artifacts=%#v err=%v", artifacts, listErr)
+	}
+	events, listErr := store.ListEvents(run.RunID)
+	if listErr != nil || len(events) != 0 {
+		t.Fatalf("failed publication must not masquerade as delivered event: events=%#v err=%v", events, listErr)
+	}
+	intents, listErr := store.ListPublicationIntents(run.RunID)
+	if listErr != nil || len(intents) != 1 || intents[0].State != SimopsPublicationFailed || intents[0].Attempts != 1 {
+		t.Fatalf("expected one durable retryable publication failure, intents=%#v err=%v", intents, listErr)
+	}
+
+	if err := dispatchSimopsPublicationIntents(context.Background(), store, MemorySimopsEventLog{Store: store}, run.RunID); err != nil {
+		t.Fatalf("retry publication: %v", err)
+	}
+	events, listErr = store.ListEvents(run.RunID)
+	if listErr != nil || len(events) != 1 || events[0].EventType != SimopsEventRunLifecycle || events[0].Lifecycle != SimopsStreaming {
+		t.Fatalf("expected retry to deliver original lifecycle event, events=%#v err=%v", events, listErr)
+	}
+	intents, listErr = store.ListPublicationIntents(run.RunID)
+	if listErr != nil || len(intents) != 1 || intents[0].State != SimopsPublicationPublished || intents[0].Attempts != 1 {
+		t.Fatalf("expected retry to publish the same intent, intents=%#v err=%v", intents, listErr)
+	}
+
+	replayed, err := lifecycle.Start(context.Background(), run, []SimopsWorkerKind{SimopsWorkerStorage})
+	if err != nil || replayed.Created || replayed.Run.RunID != run.RunID {
+		t.Fatalf("idempotent retry must not invent a second Run fact: outcome=%#v err=%v", replayed, err)
+	}
+	intents, _ = store.ListPublicationIntents(run.RunID)
+	if len(intents) != 1 {
+		t.Fatalf("idempotent retry duplicated publication intent: %#v", intents)
 	}
 }
 
@@ -425,6 +485,13 @@ func (s *failingLifecycleStore) UpdateRunLifecycle(runID string, lifecycle Simop
 		return SimopsRunRecord{}, errors.New("streaming transition failed")
 	}
 	return s.SimopsStore.UpdateRunLifecycle(runID, lifecycle)
+}
+
+func (s *failingLifecycleStore) UpdateRunLifecycleWithPublicationIntent(runID string, lifecycle SimopsLifecycle, event SimopsEvent) (SimopsRunRecord, SimopsPublicationIntent, error) {
+	if s.failStreamingTransition && lifecycle == SimopsStreaming {
+		return SimopsRunRecord{}, SimopsPublicationIntent{}, errors.New("streaming transition failed")
+	}
+	return s.SimopsStore.UpdateRunLifecycleWithPublicationIntent(runID, lifecycle, event)
 }
 
 func (s *failingLifecycleStore) SaveArtifact(record SimopsArtifactRecord) error {
