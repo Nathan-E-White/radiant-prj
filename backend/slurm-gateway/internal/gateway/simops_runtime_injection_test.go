@@ -69,16 +69,23 @@ func TestDefaultSimopsControllerUsesInjectedRuntime(t *testing.T) {
 	if len(spooler.stopProfiles) != 1 || spooler.stopProfiles[0].WorkerID != "scheduler-01" || spooler.stopProfiles[0].WorkerKind != SimopsWorkerScheduler {
 		t.Fatalf("unexpected stop profiles %#v", spooler.stopProfiles)
 	}
+	if spooler.profileCleanup != 1 {
+		t.Fatalf("expected injected profile cleanup to run once, got %d", spooler.profileCleanup)
+	}
+	if len(spooler.cleanupProfiles) != 1 || spooler.cleanupProfiles[0].WorkerID != "scheduler-01" || spooler.cleanupProfiles[0].WorkerKind != SimopsWorkerScheduler {
+		t.Fatalf("unexpected cleanup profiles %#v", spooler.cleanupProfiles)
+	}
 }
 
 type recordingSimopsSpooler struct {
-	legacyStarts   int
-	profileStarts  int
-	profileStops   int
-	profileCleanup int
-	runID          string
-	profiles       []RunConnectionProfile
-	stopProfiles   []RunConnectionProfile
+	legacyStarts    int
+	profileStarts   int
+	profileStops    int
+	profileCleanup  int
+	runID           string
+	profiles        []RunConnectionProfile
+	stopProfiles    []RunConnectionProfile
+	cleanupProfiles []RunConnectionProfile
 }
 
 func (s *recordingSimopsSpooler) StartRun(_ context.Context, _ SimopsRunRecord, _ []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
@@ -150,6 +157,7 @@ func (s *recordingSimopsSpooler) CleanupRunProfiles(ctx context.Context, runID s
 	}
 	s.profileCleanup++
 	s.runID = runID
+	s.cleanupProfiles = append([]RunConnectionProfile(nil), profiles...)
 	return nil
 }
 
