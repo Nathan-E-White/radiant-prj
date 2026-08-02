@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"encoding/json"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -44,5 +45,22 @@ func TestBuildTwinStateFromDataProducesImputedStateFromMeasuredAndSimulatedInput
 	if !seenMeasured || !seenSimulated {
 		raw, _ := json.MarshalIndent(imputedLineage, "", "  ")
 		t.Fatalf("expected measured and simulated lineage inputs, got %s", string(raw))
+	}
+}
+
+func TestBuildImputedLineageInputsPreservesMeasuredRunAndModelOrder(t *testing.T) {
+	result := simopsResultFixture("RUN-TWIN-LINEAGE")
+	result.ModelID = "MODEL-TWIN-LINEAGE"
+
+	inputs := buildImputedLineageInputs([]string{"TAG-ALPHA", "TAG-BETA"}, result)
+
+	want := []TwinLineageInput{
+		{SourceKind: "scada-tag", SourceID: "TAG-ALPHA", ValueBasis: WorkbenchValueMeasured},
+		{SourceKind: "scada-tag", SourceID: "TAG-BETA", ValueBasis: WorkbenchValueMeasured},
+		{SourceKind: "simulation-run", SourceID: "RUN-TWIN-LINEAGE", ValueBasis: WorkbenchValueSimulated},
+		{SourceKind: "digital-twin-model", SourceID: "MODEL-TWIN-LINEAGE", ValueBasis: WorkbenchValueImputed},
+	}
+	if !reflect.DeepEqual(inputs, want) {
+		t.Fatalf("imputed lineage inputs = %#v, want %#v", inputs, want)
 	}
 }
