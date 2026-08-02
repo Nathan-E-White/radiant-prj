@@ -42,6 +42,24 @@
       "expected": "least privilege, untrusted pull-request restrictions, trusted publication paths, and required invocations pass their declared policy"
     },
     {
+      "id": "architecture.issue-202-contract",
+      "title": "Issue #202 recoverable delivery, Run, and review truth has a controlled architecture contract",
+      "evidence": { "adapter": "document", "source": "docs/design/recoverable-delivery-run-review-truth.md" },
+      "expected": "the contract preserves at-least-once delivery, stable identity, reconciliation, and the Delivery Assurance, Artifact Forge, Experience Scenario, Run, Snapshot, stream, telemetry, and review boundaries",
+      "requiredText": [
+        "at-least-once with stable identity and reconciliation",
+        "No module may imply end-to-end exactly-once processing",
+        "Delivery Assurance is not broker-offset completion",
+        "An Artifact Forge outcome is not Objective Evidence",
+        "An Experience Scenario is not a Workbench Snapshot or a SimOps Run",
+        "Runtime adapters do not own Run truth",
+        "Unknown Commit must be reconciled before another logical append",
+        "Run stream authorization happens before track selection and fan-out",
+        "Telemetry admission owns one durable disposition",
+        "The Workbench Review Context is presentation-only mediation"
+      ]
+    },
+    {
       "id": "capability-reconciliation.baseline-record",
       "title": "Initial high-risk capability reconciliation has a controlled, classified baseline record",
       "evidence": { "adapter": "document", "source": "docs/verification/capability-reconciliation-baseline.md" },

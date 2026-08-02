@@ -200,6 +200,7 @@ func (c *SimopsController) GetRun(runID string) (SimopsRunResponse, int, error) 
 		return SimopsRunResponse{}, http.StatusInternalServerError, err
 	}
 	_ = c.syncRunWorkers(context.Background(), record)
+	_ = dispatchSimopsPublicationIntents(context.Background(), c.store, c.eventLog, record.RunID)
 	resp, _, err := c.responseFor(record, false)
 	return resp, http.StatusOK, err
 }
@@ -208,6 +209,7 @@ func (c *SimopsController) ListEvents(runID string) ([]SimopsEvent, int, error) 
 	if !runIDPattern.MatchString(runID) {
 		return nil, http.StatusNotFound, ErrSimopsRunNotFound
 	}
+	_ = dispatchSimopsPublicationIntents(context.Background(), c.store, c.eventLog, runID)
 	events, err := c.store.ListEvents(runID)
 	if errors.Is(err, ErrSimopsRunNotFound) {
 		return nil, http.StatusNotFound, err
@@ -234,21 +236,20 @@ func (c *SimopsController) StopRun(ctx context.Context, runID string) (SimopsRun
 	if err := c.stopRunWorkers(ctx, record, workers); err != nil {
 		return SimopsRunResponse{}, http.StatusBadGateway, err
 	}
-	record, err = c.store.UpdateRunLifecycle(runID, SimopsStopped)
+	event := SimopsEvent{
+		RunID:      record.RunID,
+		EventType:  "run.lifecycle",
+		Lifecycle:  SimopsStopped,
+		OccurredAt: c.now().UTC(),
+	}
+	record, _, err = c.store.UpdateRunLifecycleWithPublicationIntent(runID, SimopsStopped, event)
 	if err != nil {
 		return SimopsRunResponse{}, http.StatusInternalServerError, err
 	}
 	for _, worker := range workers {
 		_ = c.store.UpdateWorkerFrames(runID, worker.WorkerID, SimopsStopped, 0)
 	}
-	if err := c.eventLog.Publish(ctx, SimopsEvent{
-		RunID:      record.RunID,
-		EventType:  "run.lifecycle",
-		Lifecycle:  record.Lifecycle,
-		OccurredAt: c.now().UTC(),
-	}); err != nil {
-		return SimopsRunResponse{}, http.StatusBadGateway, err
-	}
+	_ = dispatchSimopsPublicationIntents(ctx, c.store, c.eventLog, record.RunID)
 	resp, _, err := c.responseFor(record, false)
 	return resp, http.StatusOK, err
 }
