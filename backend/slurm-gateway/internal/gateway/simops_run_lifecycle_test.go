@@ -264,7 +264,7 @@ func TestSimopsRunLifecycleBoundsDetachedRecovery(t *testing.T) {
 	lifecycle := NewSimopsRunLifecyclePolicy(cfg, store, spooler, MemorySimopsEventLog{Store: store}, invalidLifecycleArtifactPlanner{})
 	now := time.Date(2026, 7, 14, 3, 45, 0, 0, time.UTC)
 	lifecycle.SetNow(func() time.Time { return now })
-	run := SimopsRunRecord{RunID: "RUN-BOUNDED-RECOVERY", ScenarioID: "scheduler-drift", Lifecycle: SimopsStarting, LaunchMode: "auto", SubmittedBy: "test", CreatedAt: now, UpdatedAt: now}
+	run := SimopsRunRecord{RunID: "RUN-BOUNDED-RECOVERY", ScenarioID: "scheduler-drift", Lifecycle: SimopsStarting, LaunchMode: "auto", SubmittedBy: "test", IngestToken: "test-token", CreatedAt: now, UpdatedAt: now}
 
 	started := time.Now()
 	_, err := lifecycle.Start(context.Background(), run, []SimopsWorkerKind{SimopsWorkerScheduler})
@@ -523,12 +523,30 @@ func (s *recoveringLifecycleSpooler) StartRun(context.Context, SimopsRunRecord, 
 	return nil, nil, errors.New("stranded recovery must not relaunch")
 }
 
+func (s *recoveringLifecycleSpooler) StartRunProfiles(context.Context, SimopsRunRecord, []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	return nil, nil, errors.New("stranded recovery must not relaunch")
+}
+
 func (s *recoveringLifecycleSpooler) StopRun(context.Context, string) error {
 	s.stops++
 	return nil
 }
 
+func (s *recoveringLifecycleSpooler) StopRunProfiles(context.Context, string, []RunConnectionProfile) error {
+	s.stops++
+	return nil
+}
+
+func (s *recoveringLifecycleSpooler) CleanupRunProfiles(context.Context, string, []RunConnectionProfile) error {
+	return nil
+}
+
 func (s *recoveringLifecycleSpooler) SyncRun(context.Context, SimopsRunRecord, []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
+	s.syncs++
+	return append([]ObservedWorkerLifecycle(nil), s.observations...), nil
+}
+
+func (s *recoveringLifecycleSpooler) SyncRunProfiles(context.Context, SimopsRunRecord, []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
 	s.syncs++
 	return append([]ObservedWorkerLifecycle(nil), s.observations...), nil
 }
@@ -541,8 +559,21 @@ func (s *blockingRecoveryLifecycleSpooler) StartRun(ctx context.Context, run Sim
 	return s.delegate.StartRun(ctx, run, workers)
 }
 
+func (s *blockingRecoveryLifecycleSpooler) StartRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	return s.delegate.StartRunProfiles(ctx, run, profiles)
+}
+
 func (*blockingRecoveryLifecycleSpooler) StopRun(ctx context.Context, _ string) error {
 	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (*blockingRecoveryLifecycleSpooler) StopRunProfiles(ctx context.Context, _ string, _ []RunConnectionProfile) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func (*blockingRecoveryLifecycleSpooler) CleanupRunProfiles(ctx context.Context, _ string, _ []RunConnectionProfile) error {
 	return ctx.Err()
 }
 
@@ -550,8 +581,17 @@ func (s *blockingRecoveryLifecycleSpooler) SyncRun(ctx context.Context, run Simo
 	return s.delegate.SyncRun(ctx, run, workers)
 }
 
+func (s *blockingRecoveryLifecycleSpooler) SyncRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
+	return s.delegate.SyncRunProfiles(ctx, run, profiles)
+}
+
 func (s *silentPartialLifecycleSpooler) StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
 	records, commands, err := s.delegate.StartRun(ctx, run, workers[:1])
+	return records, commands, err
+}
+
+func (s *silentPartialLifecycleSpooler) StartRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	records, commands, err := s.delegate.StartRunProfiles(ctx, run, profiles[:1])
 	return records, commands, err
 }
 
@@ -560,13 +600,31 @@ func (s *silentPartialLifecycleSpooler) StopRun(ctx context.Context, runID strin
 	return s.delegate.StopRun(ctx, runID)
 }
 
+func (s *silentPartialLifecycleSpooler) StopRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	s.stops++
+	return s.delegate.StopRunProfiles(ctx, runID, profiles)
+}
+
+func (s *silentPartialLifecycleSpooler) CleanupRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	return s.delegate.CleanupRunProfiles(ctx, runID, profiles)
+}
+
 func (s *silentPartialLifecycleSpooler) SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
 	return s.delegate.SyncRun(ctx, run, workers)
+}
+
+func (s *silentPartialLifecycleSpooler) SyncRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
+	return s.delegate.SyncRunProfiles(ctx, run, profiles)
 }
 
 func (s *trackingLifecycleSpooler) StartRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
 	s.starts++
 	return s.delegate.StartRun(ctx, run, workers)
+}
+
+func (s *trackingLifecycleSpooler) StartRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	s.starts++
+	return s.delegate.StartRunProfiles(ctx, run, profiles)
 }
 
 func (s *trackingLifecycleSpooler) StopRun(ctx context.Context, runID string) error {
@@ -577,8 +635,24 @@ func (s *trackingLifecycleSpooler) StopRun(ctx context.Context, runID string) er
 	return s.delegate.StopRun(ctx, runID)
 }
 
+func (s *trackingLifecycleSpooler) StopRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	s.stops++
+	if s.failStop {
+		return errors.New("stop failed")
+	}
+	return s.delegate.StopRunProfiles(ctx, runID, profiles)
+}
+
+func (s *trackingLifecycleSpooler) CleanupRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	return s.delegate.CleanupRunProfiles(ctx, runID, profiles)
+}
+
 func (s *trackingLifecycleSpooler) SyncRun(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
 	return s.delegate.SyncRun(ctx, run, workers)
+}
+
+func (s *trackingLifecycleSpooler) SyncRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
+	return s.delegate.SyncRunProfiles(ctx, run, profiles)
 }
 
 type invalidLifecycleArtifactPlanner struct{}
@@ -608,11 +682,34 @@ func (s *partialFailureSimopsSpooler) StartRun(_ context.Context, run SimopsRunR
 		}}, errors.New("storage worker launch failed")
 }
 
+func (s *partialFailureSimopsSpooler) StartRunProfiles(_ context.Context, run SimopsRunRecord, _ []RunConnectionProfile) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
+	return []SimopsWorkerRecord{{
+			RunID: run.RunID, WorkerID: "scheduler-01", WorkerKind: SimopsWorkerScheduler,
+			Lifecycle: SimopsStarting, LaunchMode: "auto", Runtime: "test", RuntimeID: "runtime-scheduler", UpdatedAt: s.now,
+		}}, []SimopsSpoolCommand{{
+			CommandID: run.RunID + "-scheduler-01-start", RunID: run.RunID, WorkerID: "scheduler-01",
+			Mode: "auto", State: SimopsStarting, Message: "scheduler launched", CreatedAt: s.now, UpdatedAt: s.now,
+		}}, errors.New("storage worker launch failed")
+}
+
 func (s *partialFailureSimopsSpooler) StopRun(_ context.Context, _ string) error {
 	s.stops++
 	return nil
 }
 
+func (s *partialFailureSimopsSpooler) StopRunProfiles(_ context.Context, _ string, _ []RunConnectionProfile) error {
+	s.stops++
+	return nil
+}
+
+func (s *partialFailureSimopsSpooler) CleanupRunProfiles(_ context.Context, _ string, _ []RunConnectionProfile) error {
+	return nil
+}
+
 func (s *partialFailureSimopsSpooler) SyncRun(_ context.Context, _ SimopsRunRecord, _ []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
+	return nil, nil
+}
+
+func (s *partialFailureSimopsSpooler) SyncRunProfiles(_ context.Context, _ SimopsRunRecord, _ []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
 	return nil, nil
 }

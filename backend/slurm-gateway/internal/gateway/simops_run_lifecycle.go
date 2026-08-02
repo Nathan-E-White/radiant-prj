@@ -148,7 +148,13 @@ func (p *SimopsRunLifecyclePolicy) recoverIncompleteStart(ctx context.Context, o
 		reconcileErrors = append(reconcileErrors, fmt.Errorf("list workers for recovery: %w", workersErr))
 	} else {
 		recoveryCtx, cancel := p.recoveryContext(ctx)
-		observations, err := p.spooler.SyncRun(recoveryCtx, outcome.Run, workers)
+		profiles, profileErr := BuildRunWorkerConnectionProfilesForRecords(p.cfg, outcome.Run, workers)
+		if profileErr != nil {
+			reconcileErrors = append(reconcileErrors, fmt.Errorf("build worker profiles for recovery: %w", profileErr))
+			cancel()
+			return p.fail(ctx, outcome, workers, launched, commands, SimopsRunStageIncompleteRecovery, errors.Join(reconcileErrors...))
+		}
+		observations, err := p.spooler.SyncRunProfiles(recoveryCtx, outcome.Run, profiles)
 		cancel()
 		if err != nil {
 			reconcileErrors = append(reconcileErrors, fmt.Errorf("observe workers for recovery: %w", err))
@@ -180,14 +186,11 @@ func (p *SimopsRunLifecyclePolicy) recoverIncompleteStart(ctx context.Context, o
 }
 
 func (p *SimopsRunLifecyclePolicy) startWorkers(ctx context.Context, record SimopsRunRecord, workers []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
-	if profileSpooler, ok := p.spooler.(RunConnectionProfileSpooler); ok {
-		profiles, err := BuildRunWorkerConnectionProfiles(p.cfg, record, workers)
-		if err != nil {
-			return nil, nil, err
-		}
-		return profileSpooler.StartRunProfiles(ctx, record, profiles)
+	profiles, err := BuildRunWorkerConnectionProfiles(p.cfg, record, workers)
+	if err != nil {
+		return nil, nil, err
 	}
-	return p.spooler.StartRun(ctx, record, workers)
+	return p.spooler.StartRunProfiles(ctx, record, profiles)
 }
 
 func (p *SimopsRunLifecyclePolicy) fail(ctx context.Context, outcome SimopsRunLifecycleOutcome, planned, launched []SimopsWorkerRecord, commands []SimopsSpoolCommand, stage SimopsRunLifecycleStage, cause error) (SimopsRunLifecycleOutcome, error) {
@@ -251,14 +254,14 @@ func (p *SimopsRunLifecyclePolicy) recoveryContext(ctx context.Context) (context
 }
 
 func (p *SimopsRunLifecyclePolicy) compensate(ctx context.Context, run SimopsRunRecord, workers []SimopsWorkerRecord) error {
-	if profileStopper, ok := p.spooler.(RunConnectionProfileStopper); ok {
-		profiles, err := BuildRunWorkerConnectionProfilesForRecords(p.cfg, run, workers)
-		if err != nil {
-			return err
-		}
-		return profileStopper.StopRunProfiles(ctx, run.RunID, profiles)
+	profiles, err := BuildRunWorkerConnectionProfilesForRecords(p.cfg, run, workers)
+	if err != nil {
+		return err
 	}
-	return p.spooler.StopRun(ctx, run.RunID)
+	if err := p.spooler.StopRunProfiles(ctx, run.RunID, profiles); err != nil {
+		return err
+	}
+	return p.spooler.CleanupRunProfiles(ctx, run.RunID, profiles)
 }
 
 func validatePlannedArtifact(runID string, artifact SimopsArtifactRecord) error {
