@@ -22,6 +22,8 @@ patches/
 .terraform/
 .terraform.lock.hcl
 terraform.tfstate*
+backend/slurm-gateway/mutago-*.json
+backend/slurm-gateway/report.json
 
 # Local environment
 .env

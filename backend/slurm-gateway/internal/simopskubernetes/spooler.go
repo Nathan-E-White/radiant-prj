@@ -139,6 +139,17 @@ func (s Spooler) StopRunProfiles(ctx context.Context, runID string, profiles []g
 	if s.Client == nil {
 		return fmt.Errorf("Kubernetes client is required")
 	}
+	return s.deleteRunProfileJobs(ctx, runID, profiles)
+}
+
+func (s Spooler) CleanupRunProfiles(ctx context.Context, runID string, profiles []gateway.RunConnectionProfile) error {
+	if s.Client == nil {
+		return fmt.Errorf("Kubernetes client is required")
+	}
+	return s.deleteRunProfileJobs(ctx, runID, profiles)
+}
+
+func (s Spooler) deleteRunProfileJobs(ctx context.Context, runID string, profiles []gateway.RunConnectionProfile) error {
 	policy := metav1.DeletePropagationForeground
 	var firstErr error
 	for _, profile := range profiles {

@@ -22,6 +22,7 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 | --- | --- | --- |
 | Browser delivery | `bun run browser:verify` | One claim runs TypeScript checking, the complete frontend suite, one production build, and entry/lazy/raster/total output budgets |
 | Backend gateway tests | `bun run backend:test` | Go test output |
+| Backend Go mutation testing | `bun run test:mutation:go` | Mutago diff-scoped MSI and covered-MSI output for changed Go implementation files, gated at 65% MSI and 75% covered-MSI |
 | Fixture validation | `bun run validate:fixtures` | Validation output |
 | Evidence generation | `bun run evidence:generate` | Generated index under `generated/` |
 | Infrastructure checks | `bun run infra:check` | Required artifact inventory, parsed Ansible/Compose/Prometheus configuration, TLS behavior, source-set safety contracts, and OpenTofu parser/validation output |
@@ -45,7 +46,7 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 | Live Workbench read boundary | `bun run test`, `bun run test:e2e -- tests/e2e/workbench-live-read.spec.ts`, `bun run backend:test` | Atomic generation acceptance, executable whole-Snapshot contract vectors, Value Basis separation, explicit stale/recovery/error states, development-only whole-Snapshot fixture fallback, credential-free browser reads, and no field-read client/routes |
 | Lifecycle reconciliation and health (Issue #135 target) | Focused backend tests plus Docker dataflow smoke | Initial-cycle startup state, independent named task outcomes, deadline versus shutdown cancellation, read-only Snapshot behavior, readiness/liveness separation, fixed-label lifecycle metrics, and scheduler-driven expiry without a Snapshot mutation |
 | SimOps generator tests | `bun run simops:generator:test` | Rust test output |
-| Docker/OrbStack SimOps runtime smoke | `bun run simops:smoke:docker-orbstack` (`SIMOPS_SMOKE_BUILD=always` for forced image rebuild) | Docker/OrbStack launch, gateway-ingest, lifecycle sync, zero-TTL success cleanup, failed-worker retention/log evidence, and smoke-forced cleanup output |
+| Docker/OrbStack SimOps runtime smoke | `bun run simops:smoke:docker-orbstack` (`SIMOPS_SMOKE_BUILD=always` for forced image rebuild) | Docker/OrbStack launch, gateway-ingest, read-only lifecycle sync, explicit success cleanup, failed-worker retention/log evidence, and smoke-forced cleanup output |
 | Kind/client-go SimOps runtime smoke | `bun run simops:smoke:kind -- --timeout 300 --build auto` | Kind context, namespace, Job names, run IDs, gateway-only worker inputs, frame ingest, success/image-pull lifecycle, TTL, retention, and cleanup output |
 | OpenTofu substrate preflight | `bun run simops:tofu:preflight` | Fmt/init/validate and `6 to add, 0 to change, 0 to destroy` no-mutation plan with adapter configuration evidence |
 | Runtime closeout documentation | `bun run simops:runtime:closeout:check` | Implemented runtime lanes, credential/cleanup boundaries, commands, and deferred items remain explicit |
@@ -63,7 +64,7 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 - Generated evidence can be recreated from controlled fixtures.
 - Slurm gateway handlers reject missing or unauthorized certificates and validate job requests before spooling.
 - Simulation Ops contract examples validate against the documented envelope, payload, manifest, and summary schemas.
-- Docker/OrbStack runtime proof launches workers through the SimOps API, verifies gateway-only worker ingest, observes runtime lifecycle, removes succeeded workers through the configured zero-TTL cleanup policy, retains failed-worker evidence before forced cleanup, and removes labeled failed-worker containers after smoke cleanup; fresh-image verification sets `SIMOPS_SMOKE_BUILD=always`.
+- Docker/OrbStack runtime proof launches workers through the SimOps API, verifies gateway-only worker ingest, observes runtime lifecycle without cleanup, explicitly removes succeeded workers after success evidence, retains failed-worker evidence before forced cleanup, and removes labeled failed-worker containers after smoke cleanup; fresh-image verification sets `SIMOPS_SMOKE_BUILD=always`.
 - Kind runtime proof launches Jobs through the same SimOps API, verifies labels and Gateway-Only Worker Ingest, observes successful and image-pull-failed lifecycle states, records frames and runtime identifiers, and cleans the cluster after evidence capture.
 - OpenTofu preflight plans only static namespace, service-account, RBAC, and ConfigMap substrate and never applies per-run Jobs.
 - Issue #135 lifecycle and Snapshot evidence is required before the accepted read-boundary and scheduler-health design may be described as implemented.
