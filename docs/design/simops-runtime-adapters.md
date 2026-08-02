@@ -9,19 +9,22 @@ The existing Simulation Ops run API owns run creation, identity, persistence,
 and lifecycle presentation. Before launch, the gateway builds one
 `RunConnectionProfile` per worker. The profile carries run and worker identity,
 worker image and manifest, labels, gateway ingest URLs and token, cleanup
-policy, and runtime-specific naming. Runtime adapters consume this profile; API
-handlers do not construct Docker containers or Kubernetes Jobs.
+policy, and runtime-specific naming. Runtime adapters consume this profile for
+start, observe, stop, and cleanup; API handlers do not construct Docker
+containers or Kubernetes Jobs and do not probe for optional profile capabilities.
 
-`SyncRun` returns Observed Worker Lifecycle only. It does not infer telemetry
-health, artifact disposition, Redpanda/Postgres/Iceberg health, simulated result
+`SyncRunProfiles` returns Observed Worker Lifecycle only. It reports runtime
+facts without cleaning up resources. It does not infer telemetry health,
+artifact disposition, Redpanda/Postgres/Iceberg health, simulated result
 quality, or imputed twin state.
 
 ## Runtime implementations
 
 The Docker adapter uses the Docker SDK through a narrow fakeable client. It
 creates labeled run-scoped containers, records structured runtime metadata,
-observes container state, and stops only containers matching the run and adapter
-labels. It does not assemble or execute Docker CLI command strings.
+observes container state, stops only containers matching the run and adapter
+labels, and removes them only through explicit cleanup. It does not assemble or
+execute Docker CLI command strings.
 
 The Kubernetes adapter uses `client-go` and native `batch/v1` Jobs. It maps the
 profile into Job and Pod labels, worker arguments, namespace, service account,
@@ -46,7 +49,7 @@ delete and Pod get/list/watch permissions.
 
 | Outcome and mode | Policy |
 | --- | --- |
-| Successful Docker smoke worker | Zero-TTL proof removes the container after success evidence |
+| Successful Docker smoke worker | Runtime observation records success; explicit cleanup removes the container after success evidence |
 | Failed Docker local worker | Retained for logs by default; smoke force cleanup removes labeled containers |
 | Successful Kubernetes Job | `ttlSecondsAfterFinished` is rendered from the profile; smoke verifies the value and deletes the proved Job |
 | Failed Kubernetes local Job | Retained when `SIMOPS_KIND_FORCE_CLEANUP=0`; automated smoke defaults force cleanup on |
@@ -91,7 +94,7 @@ its run. A targeted `--build always` rebuilt only the gateway and worker images;
 the subsequent proof passed:
 
 ```text
-RUN-340A19182FB1: succeeded, runtime=docker, frames=2, zero-TTL container cleanup
+RUN-340A19182FB1: succeeded, runtime=docker, frames=2, explicit container cleanup
 RUN-31086CA4E4C5: failed, worker logs retained, then force-cleaned
 Docker/OrbStack SimOps runtime smoke passed
 ```
