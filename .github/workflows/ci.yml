@@ -217,14 +217,16 @@ jobs:
           cache: true
           cache-dependency-path: backend/slurm-gateway/go.sum
 
-      - name: Download Reactor Telemetry worker image
+      - name: Download verified worker delivery artifacts
         uses: actions/download-artifact@v4
         with:
-          name: reactor-telemetry-image
-          path: .local/reactor-telemetry-image
+          name: worker-delivery-artifacts
+          path: .local/worker-delivery-artifacts
 
-      - name: Load Reactor Telemetry worker image
-        run: docker load --input .local/reactor-telemetry-image/radiant-scada-standins.tar
+      - name: Load verified worker delivery artifacts
+        run: |-
+          docker load --input .local/worker-delivery-artifacts/radiant-scada-standins.tar
+          docker load --input .local/worker-delivery-artifacts/radiant-simops-generator.tar
 
       - name: Install dependencies
         run: bun install
@@ -269,9 +271,11 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Verify Docker packaging budgets
-        run: bun run docker:packaging:verify
+      - name: Verify worker delivery artifacts
+        run: bun run repository:verify -- --claim workers.delivery-artifacts
         env:
+          RUN_WORKER_IMAGE_DELIVERY_VERIFICATION: "true"
+          DOCKER_PACKAGING_ROLES: reactor-telemetry-worker,simops-generator
           DOCKER_CONTEXT: default
           DOCKER_PACKAGING_PLATFORM: linux/amd64
           DOCKER_PACKAGING_REGISTRY_REUSE: "true"
@@ -287,14 +291,18 @@ jobs:
           DOCKER_BAKE_CACHE_TO_SIMOPS_GENERATOR: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=radiant-simops-generator-main,mode=max,ignore-error=true' || '' }}
           DOCKER_BAKE_CACHE_TO_GO_RUNTIME: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=radiant-go-runtime-main,mode=max,ignore-error=true' || '' }}
 
-      - name: Export Reactor Telemetry worker image
-        run: docker save radiant-scada-standins:ci --output radiant-scada-standins.tar
+      - name: Export verified worker delivery artifacts
+        run: |-
+          docker save radiant-scada-standins:ci --output radiant-scada-standins.tar
+          docker save radiant-simops-generator:latest --output radiant-simops-generator.tar
 
-      - name: Upload Reactor Telemetry worker image
+      - name: Upload verified worker delivery artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: reactor-telemetry-image
-          path: radiant-scada-standins.tar
+          name: worker-delivery-artifacts
+          path: |-
+            radiant-scada-standins.tar
+            radiant-simops-generator.tar
           retention-days: 1
 
       - name: Upload Docker packaging evidence
