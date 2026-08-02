@@ -146,8 +146,21 @@ func TestContractSimopsSpoolerUsesRunConnectionProfilesForRuntimeContract(t *tes
 	if workers[0].Endpoint != profiles[0].Gateway.IngestURL {
 		t.Fatalf("expected profile ingest URL, got %#v", workers[0])
 	}
-	if commands[0].Metadata["runtime_adapter"] != "contract" || commands[0].Metadata["requested_state"] != "starting" {
-		t.Fatalf("expected requested runtime metadata, got %#v", commands[0].Metadata)
+	if workers[0].Labels["simops.runtime"] != "contract" || workers[0].Labels["simops.runtime_adapter"] != "contract" || workers[0].Labels["simops.worker_id"] != "scheduler-01" {
+		t.Fatalf("expected profile labels plus contract runtime labels, got %#v", workers[0].Labels)
+	}
+	wantMetadata := map[string]string{
+		"runtime_adapter": "contract",
+		"runtime_id":      "contract://RUN-CONTRACT-PROFILE/scheduler-01",
+		"requested_state": "starting",
+		"worker_id":       "scheduler-01",
+		"worker_kind":     "scheduler",
+	}
+	if commands[0].CommandID != "RUN-CONTRACT-PROFILE-scheduler-01-start" || commands[0].WorkerID != "scheduler-01" || commands[0].Mode != "auto" || commands[0].State != SimopsStarting {
+		t.Fatalf("expected stable contract command fields, got %#v", commands[0])
+	}
+	if !mapsEqual(commands[0].Metadata, wantMetadata) {
+		t.Fatalf("expected requested runtime metadata %#v, got %#v", wantMetadata, commands[0].Metadata)
 	}
 
 	observations, err := spooler.SyncRunProfiles(context.Background(), run, profiles)
@@ -156,6 +169,19 @@ func TestContractSimopsSpoolerUsesRunConnectionProfilesForRuntimeContract(t *tes
 	}
 	if len(observations) != 2 || observations[0].State != ObservedWorkerActive || observations[0].RuntimeID != workers[0].RuntimeID {
 		t.Fatalf("expected active contract observations, got %#v", observations)
+	}
+	if observations[0].Runtime != "contract" || observations[0].Reason != "contract-runtime" || observations[0].Labels["simops.worker_id"] != "scheduler-01" {
+		t.Fatalf("expected active contract observation metadata, got %#v", observations[0])
+	}
+
+	completeRun := run
+	completeRun.Lifecycle = SimopsComplete
+	observations, err = spooler.SyncRunProfiles(context.Background(), completeRun, profiles[:1])
+	if err != nil {
+		t.Fatalf("sync complete profiles: %v", err)
+	}
+	if observations[0].State != ObservedWorkerSucceeded || observations[0].Reason != "contract-terminal" {
+		t.Fatalf("expected terminal success mapping, got %#v", observations[0])
 	}
 
 	failedRun := run
@@ -183,6 +209,18 @@ func TestContractSimopsSpoolerUsesRunConnectionProfilesForRuntimeContract(t *tes
 	if observations[0].State != ObservedWorkerStopped || observations[0].Reason != "contract-stopped" {
 		t.Fatalf("expected stopped contract mapping, got %#v", observations[0])
 	}
+}
+
+func mapsEqual(left map[string]string, right map[string]string) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	for key, value := range right {
+		if left[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func TestWorkerTelemetryDoesNotOverwriteObservedRuntimeLifecycle(t *testing.T) {

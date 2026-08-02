@@ -22,6 +22,7 @@ The scope includes application type checking, frontend/domain unit tests, Go bac
 | --- | --- | --- |
 | Browser delivery | `bun run browser:verify` | One claim runs TypeScript checking, the complete frontend suite, one production build, and entry/lazy/raster/total output budgets |
 | Backend gateway tests | `bun run backend:test` | Go test output |
+| Backend Go mutation testing | `bun run test:mutation:go` | Mutago diff-scoped MSI and covered-MSI output for changed Go implementation files, gated at 65% MSI and 75% covered-MSI |
 | Fixture validation | `bun run validate:fixtures` | Validation output |
 | Evidence generation | `bun run evidence:generate` | Generated index under `generated/` |
 | Infrastructure checks | `bun run infra:check` | Required artifact inventory, parsed Ansible/Compose/Prometheus configuration, TLS behavior, source-set safety contracts, and OpenTofu parser/validation output |
