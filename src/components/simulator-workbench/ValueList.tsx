@@ -1,4 +1,5 @@
 import type { ProjectedWorkbenchValue } from "../../domain/simulator-workbench";
+import { ValueBasisMarker } from "../../features/shared/presentation";
 
 export function WorkbenchValueList({
   selectedValueId,
@@ -48,6 +49,7 @@ function ValueButton({
         <small>{value.unit}</small>
       </span>
       <span className="simwb-value-meta">
+        <ValueBasisMarker basis={value.valueBasis} />
         {value.freshnessLabel && <small>{value.freshnessLabel}</small>}
         <small>{value.confidencePct}%</small>
         <small>{value.sourceQuality}</small>

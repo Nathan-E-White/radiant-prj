@@ -279,7 +279,7 @@ function conciseOutput(...values) {
 
 async function executeEvidenceCommand(claim, { root, run }, command, args) {
   const cwd = path.resolve(root, claim.evidence.cwd ?? ".");
-  const result = await run(command, args, { cwd, env: { ...process.env, ...claim.evidence.env } });
+  const result = await run(command, args, { cwd, env: commandEnvironment(claim.evidence.env) });
   if (result.error?.code === "ENOENT") return { failure: claimFailure(claim, `tool not found: ${command}`) };
   if (result.error) return { failure: claimFailure(claim, result.error.message) };
   if (result.status === 0 && claim.evidence.cleanPaths?.length) {
@@ -290,6 +290,16 @@ async function executeEvidenceCommand(claim, { root, run }, command, args) {
     if (status.stdout.trim()) return { failure: claimFailure(claim, `worktree changed: ${status.stdout.trim().split(/\r?\n/).join(", ")}`) };
   }
   return { result };
+}
+
+function commandEnvironment(configuredEnv = {}) {
+  const env = { ...process.env, ...configuredEnv };
+  for (const key of Object.keys(configuredEnv)) {
+    if (process.env[key]) {
+      env[key] = process.env[key];
+    }
+  }
+  return env;
 }
 
 function runProcess(command, args, options) {

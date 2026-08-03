@@ -22,7 +22,7 @@ import {
   validateTraceability
 } from "../../domain/readiness";
 import type { ComputeJob, ControlledEvidenceRecord, DeploymentCheck, EvidencePack, Requirement, SchedulerState } from "../../domain/types";
-import { DeploymentCard, Finding, LogBlock, Metric, StatusPill } from "../shared/presentation";
+import { DeploymentCard, Finding, LogBlock, Metric, StatusPill, VisualGrammarSpecimen } from "../shared/presentation";
 
 type BundleState = "ready" | "running" | "complete";
 
@@ -473,6 +473,10 @@ export function EvidenceTab({
             <DeploymentCard check={check} key={check.id} />
           ))}
         </div>
+      </div>
+
+      <div className="panel grammar-panel">
+        <VisualGrammarSpecimen />
       </div>
     </section>
   );
