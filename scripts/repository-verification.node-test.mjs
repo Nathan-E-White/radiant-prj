@@ -122,6 +122,10 @@ test("source-set contracts survive behavior-preserving token moves between files
 });
 
 test("command adapters report missing tools and observable output", async () => {
+  const previousGoCache = process.env.GOCACHE;
+  const previousGoModCache = process.env.GOMODCACHE;
+  delete process.env.GOCACHE;
+  delete process.env.GOMODCACHE;
   const calls = [];
   const run = async (command, args, options) => {
     calls.push({ command, args, options });
@@ -131,22 +135,83 @@ test("command adapters report missing tools and observable output", async () => 
     return { status: 0, stdout: "contract passed\n", stderr: "" };
   };
 
-  const report = await verifyRepository({
-    root: "/repo",
-    run,
-    manifest: manifest([
-      { ...commandClaim("behavior.ok", ["go", "test", "./..."], "command succeeds"), evidence: { adapter: "command", source: "go test ./...", command: ["go", "test", "./..."], cwd: "backend", env: { GOCACHE: "/tmp/go-cache" } } },
-      commandClaim("behavior.tool", ["missing-tool", "--check"], "tool is available"),
-    ]),
-  });
+  try {
+    const report = await verifyRepository({
+      root: "/repo",
+      run,
+      manifest: manifest([
+        { ...commandClaim("behavior.ok", ["go", "test", "./..."], "command succeeds"), evidence: { adapter: "command", source: "go test ./...", command: ["go", "test", "./..."], cwd: "backend", env: { GOCACHE: "/tmp/go-cache" } } },
+        commandClaim("behavior.tool", ["missing-tool", "--check"], "tool is available"),
+      ]),
+    });
 
-  assert.equal(report.exitCode, 1);
-  assert.equal(report.results[0].observed, "exit 0: contract passed");
-  assert.equal(report.results[1].observed, "tool not found: missing-tool");
-  assert.deepEqual(calls[0].args, ["test", "./..."]);
-  assert.equal(calls[0].options.cwd, "/repo/backend");
-  assert.equal(calls[0].options.env.GOCACHE, "/tmp/go-cache");
-  assert.equal(calls[0].options.env.PATH, process.env.PATH);
+    assert.equal(report.exitCode, 1);
+    assert.equal(report.results[0].observed, "exit 0: contract passed");
+    assert.equal(report.results[1].observed, "tool not found: missing-tool");
+    assert.deepEqual(calls[0].args, ["test", "./..."]);
+    assert.equal(calls[0].options.cwd, "/repo/backend");
+    assert.equal(calls[0].options.env.GOCACHE, "/tmp/go-cache");
+    assert.equal(calls[0].options.env.PATH, process.env.PATH);
+  } finally {
+    if (previousGoCache === undefined) {
+      delete process.env.GOCACHE;
+    } else {
+      process.env.GOCACHE = previousGoCache;
+    }
+    if (previousGoModCache === undefined) {
+      delete process.env.GOMODCACHE;
+    } else {
+      process.env.GOMODCACHE = previousGoModCache;
+    }
+  }
+});
+
+test("command adapters allow process env to override configured command env keys", async () => {
+  const previousGoCache = process.env.GOCACHE;
+  const previousGoModCache = process.env.GOMODCACHE;
+  process.env.GOCACHE = "/tmp/override-go-cache";
+  process.env.GOMODCACHE = "/tmp/override-go-mod-cache";
+  const calls = [];
+  const run = async (command, args, options) => {
+    calls.push({ command, args, options });
+    return { status: 0, stdout: "contract passed\n", stderr: "" };
+  };
+
+  try {
+    const report = await verifyRepository({
+      root: "/repo",
+      run,
+      manifest: manifest([
+        {
+          ...commandClaim("behavior.ok", ["go", "test", "./..."], "command succeeds"),
+          evidence: {
+            adapter: "command",
+            source: "go test ./...",
+            command: ["go", "test", "./..."],
+            env: {
+              GOCACHE: "/tmp/configured-go-cache",
+              GOMODCACHE: "/tmp/configured-go-mod-cache"
+            }
+          }
+        }
+      ]),
+    });
+
+    assert.equal(report.exitCode, 0);
+    assert.equal(calls[0].options.env.GOCACHE, "/tmp/override-go-cache");
+    assert.equal(calls[0].options.env.GOMODCACHE, "/tmp/override-go-mod-cache");
+  } finally {
+    if (previousGoCache === undefined) {
+      delete process.env.GOCACHE;
+    } else {
+      process.env.GOCACHE = previousGoCache;
+    }
+    if (previousGoModCache === undefined) {
+      delete process.env.GOMODCACHE;
+    } else {
+      process.env.GOMODCACHE = previousGoModCache;
+    }
+  }
 });
 
 test("environment-gated executable evidence is explicit when unavailable", async () => {

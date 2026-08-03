@@ -26,6 +26,8 @@ test("Workbench cadence recovers fixture and stale states by replacing the whole
   await fixtureMeasured.getByRole("button", { name: /Electric Output/ }).click();
   await expect(fixtureMeasured.getByRole("button", { name: /Electric Output/ })).toHaveAttribute("aria-pressed", "true");
 
+  await page.locator('button[data-unit-id="KAL-01"]').click();
+  await expect(page.getByRole("heading", { name: "Kaleidos Unit 01" })).toBeVisible();
   const measuredValue = page.getByRole("button", { name: /Flux Axial Low/ });
   await measuredValue.click();
   await expect(measuredValue).toHaveAttribute("aria-pressed", "true");
@@ -46,7 +48,8 @@ test("Workbench cadence recovers fixture and stale states by replacing the whole
   await unit02.click();
   await expect(unit02).toHaveAttribute("aria-pressed", "true");
   await expect(unit01).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByText("Commercial Display Basis")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Kaleidos Unit 02" })).toBeVisible();
+  await expect(page.getByLabel("Bottom Explanation Rail").getByRole("heading", { name: "Engineering Lineage" })).toBeVisible();
 
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
   await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();

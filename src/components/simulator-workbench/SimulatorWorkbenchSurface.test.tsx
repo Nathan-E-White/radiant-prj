@@ -97,6 +97,12 @@ describe("SimulatorWorkbenchSurface", () => {
     expect(markup).toContain("Measured State");
     expect(markup).toContain("Imputed State");
     expect(markup).toContain("Simulated Result State");
+    expect(markup).toContain("value-basis-marker measured");
+    expect(markup).toContain("value-basis-marker imputed");
+    expect(markup).toContain("value-basis-marker simulated");
+    expect(markup).toContain("solid");
+    expect(markup).toContain("double");
+    expect(markup).toContain("dashed");
     expect(markup).toContain("Kaleidos Unit twin topology overlay");
     expect(markup).toContain("Kaleidos Unit public-safe digital twin schematic");
     expect(markup).toContain('id="core"');
