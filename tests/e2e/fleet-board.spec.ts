@@ -10,9 +10,9 @@ test("Fleet Board is the default Status Workbench experience and accepts board i
 
   await expect(page.getByRole("region", { name: "Fleet Board" })).toBeVisible();
   await expect(page.getByText("30-day contract sprint")).toBeVisible();
-  await expect(page.getByText("Measured State")).toBeVisible();
-  await expect(page.getByText("Imputed State")).toBeVisible();
-  await expect(page.getByText("Simulated Result State")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Measured State" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Imputed State" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Simulated Result State" })).toBeVisible();
 
   const canvas = page.locator('[data-testid="fleet-board-canvas"] canvas');
   await expect(canvas).toBeVisible();
