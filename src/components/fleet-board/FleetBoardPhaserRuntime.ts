@@ -89,6 +89,9 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
 
   class FleetBoardScene extends Phaser.Scene {
     private dynamicLayer: Phaser.GameObjects.Container | null = null;
+    private routePulse: Phaser.GameObjects.Image | null = null;
+    private routePulseBaseX = 0;
+    private routePulseTween: Phaser.Tweens.Tween | null = null;
 
     preload() {
       this.load.spritesheet("fleet-board-placeholder", spriteSheetUrl, {
@@ -118,18 +121,11 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
         grid.lineBetween(offset.x, y, offset.x + scene.grid.columns * tileSize, y);
       }
 
-      const routePulse = this.add
+      this.routePulse = this.add
         .image(offset.x + 10.5 * tileSize, offset.y + 0.85 * tileSize, "fleet-board-placeholder", frameBySpriteKey.routePulse)
         .setDisplaySize(50, 36)
         .setAlpha(0.75);
-      this.tweens.add({
-        targets: routePulse,
-        alpha: 0.25,
-        x: routePulse.x - 80,
-        duration: 1100,
-        yoyo: true,
-        repeat: -1
-      });
+      this.routePulseBaseX = this.routePulse.x;
 
       const dragCard = this.add
         .image(offset.x + 0.7 * tileSize, offset.y + 6.9 * tileSize, "fleet-board-placeholder", frameBySpriteKey.reactor)
@@ -200,7 +196,35 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
       });
 
       this.dynamicLayer = this.add.container();
+      this.applySceneSettings(latest.scene);
       this.render(latest.scene);
+    }
+
+    applySceneSettings(scene: FleetBoardSceneModel) {
+      if (scene.camera) {
+        this.cameras.main.setZoom(scene.camera.zoom);
+        this.cameras.main.setScroll(scene.camera.panX, scene.camera.panY);
+      }
+      if (!this.routePulse) {
+        return;
+      }
+      if (scene.reducedMotion) {
+        this.routePulseTween?.stop();
+        this.routePulseTween?.remove();
+        this.routePulseTween = null;
+        this.routePulse.setAlpha(0.75).setX(this.routePulseBaseX);
+        return;
+      }
+      if (!this.routePulseTween) {
+        this.routePulseTween = this.tweens.add({
+          targets: this.routePulse,
+          alpha: 0.25,
+          x: this.routePulseBaseX - 80,
+          duration: 1100,
+          yoyo: true,
+          repeat: -1
+        });
+      }
     }
 
     render(scene: FleetBoardSceneModel) {
@@ -344,6 +368,7 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
   return {
     update(next) {
       latest = { ...next, host: mount.host };
+      mountedScene?.applySceneSettings(next.scene);
       mountedScene?.render(next.scene);
     },
     destroy() {
