@@ -795,7 +795,17 @@ func (s *PostgresSimopsStore) CreateDeliveryAttempt(request DeliveryAttemptReque
 func (s *PostgresSimopsStore) GetDeliveryAttempt(id string) (DeliveryAttempt, error) {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
-	return scanDeliveryAttempt(s.db.QueryRowContext(ctx, `SELECT attempt_id, run_id, target, coordinates, state, reason, evidence, created_at, updated_at FROM simops_delivery_attempts WHERE attempt_id = $1`, id))
+	return scanDeliveryAttempt(s.db.QueryRowContext(ctx, `SELECT attempt_id, run_id, target, location, coordinates, state, reason, evidence, created_at, updated_at FROM simops_delivery_attempts WHERE attempt_id = $1`, id))
+}
+
+func (s *PostgresSimopsStore) PrepareDeliveryAttempt(id string, location string) error {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	result, err := s.db.ExecContext(ctx, `UPDATE simops_delivery_attempts SET location=$2, updated_at=$3 WHERE attempt_id=$1`, id, nullableString(location), time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	return requireAffected(result, ErrDeliveryAttemptNotFound)
 }
 
 func (s *PostgresSimopsStore) ResolveDeliveryAttempt(id string, evidence VerifiedDeliveryEvidence) error {
@@ -831,7 +841,7 @@ func (s *PostgresSimopsStore) MarkDeliveryAttemptUnknown(id string, reason strin
 func (s *PostgresSimopsStore) ListDeliveryAttempts(runID string) ([]DeliveryAttempt, error) {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
-	rows, err := s.db.QueryContext(ctx, `SELECT attempt_id, run_id, target, coordinates, state, reason, evidence, created_at, updated_at FROM simops_delivery_attempts WHERE run_id=$1 ORDER BY created_at, attempt_id`, runID)
+	rows, err := s.db.QueryContext(ctx, `SELECT attempt_id, run_id, target, location, coordinates, state, reason, evidence, created_at, updated_at FROM simops_delivery_attempts WHERE run_id=$1 ORDER BY created_at, attempt_id`, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -860,9 +870,9 @@ type deliveryAttemptScanner interface{ Scan(...any) error }
 func scanDeliveryAttempt(row deliveryAttemptScanner) (DeliveryAttempt, error) {
 	var attempt DeliveryAttempt
 	var state string
-	var reason sql.NullString
+	var location, reason sql.NullString
 	var coordinates, evidence []byte
-	if err := row.Scan(&attempt.AttemptID, &attempt.RunID, &attempt.Target, &coordinates, &state, &reason, &evidence, &attempt.CreatedAt, &attempt.UpdatedAt); err != nil {
+	if err := row.Scan(&attempt.AttemptID, &attempt.RunID, &attempt.Target, &location, &coordinates, &state, &reason, &evidence, &attempt.CreatedAt, &attempt.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return DeliveryAttempt{}, ErrDeliveryAttemptNotFound
 		}
@@ -872,6 +882,9 @@ func scanDeliveryAttempt(row deliveryAttemptScanner) (DeliveryAttempt, error) {
 		return DeliveryAttempt{}, err
 	}
 	attempt.State = DeliveryAttemptState(state)
+	if location.Valid {
+		attempt.Location = location.String
+	}
 	if reason.Valid {
 		attempt.Reason = reason.String
 	}

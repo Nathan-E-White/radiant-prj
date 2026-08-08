@@ -74,7 +74,7 @@ func NewDefaultSimopsControllerWithSpooler(cfg SimopsConfig, spooler SimopsSpool
 	if err != nil {
 		return nil, err
 	}
-	intent := NewSimopsArtifactIntentProcessor(writer, eventLog, cfg.RedpandaTopic, 1, time.Now)
+	intent := NewSimopsArtifactIntentProcessorWithDeliveryStore(writer, eventLog, cfg.RedpandaTopic, 1, time.Now, store)
 
 	return NewSimopsController(
 		cfg,
@@ -108,7 +108,7 @@ func NewSimopsController(cfg SimopsConfig, store SimopsStore, spooler SimopsSpoo
 		writer = &DisabledSimopsArtifactWriter{base: &simopsArtifactWriterBase{store: store, topic: cfg.RedpandaTopic, manifestDir: cfg.IcebergManifestDir, now: time.Now}}
 	}
 	if intent == nil {
-		intent = NewSimopsArtifactIntentProcessor(writer, eventLog, cfg.RedpandaTopic, 1, time.Now)
+		intent = NewSimopsArtifactIntentProcessorWithDeliveryStore(writer, eventLog, cfg.RedpandaTopic, 1, time.Now, store)
 	}
 	controller := &SimopsController{
 		cfg:      cfg,

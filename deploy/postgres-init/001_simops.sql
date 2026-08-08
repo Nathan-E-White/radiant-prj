@@ -100,6 +100,7 @@ CREATE TABLE IF NOT EXISTS simops_delivery_attempts (
   attempt_id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
   target TEXT NOT NULL,
+  location TEXT,
   coordinates JSONB NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('pending', 'unknown', 'resolved')),
   reason TEXT,

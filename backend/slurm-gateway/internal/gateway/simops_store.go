@@ -13,6 +13,7 @@ var ErrDeliveryAttemptNotFound = errors.New("delivery attempt not found")
 var ErrDeliveryAttemptNotFound = errors.New("delivery attempt not found")
 
 type SimopsStore interface {
+	DeliveryAttemptStore
 	CreateRun(record SimopsRunRecord, workers []SimopsWorkerRecord, commands []SimopsSpoolCommand) (SimopsRunRecord, bool, error)
 	SaveLaunch(runID string, workers []SimopsWorkerRecord, commands []SimopsSpoolCommand) error
 	GetRunByIdempotency(identity string, key string) (SimopsRunRecord, error)
@@ -110,6 +111,19 @@ func (s *InMemorySimopsStore) GetDeliveryAttempt(id string) (DeliveryAttempt, er
 		return DeliveryAttempt{}, ErrDeliveryAttemptNotFound
 	}
 	return cloneDeliveryAttempt(attempt), nil
+}
+
+func (s *InMemorySimopsStore) PrepareDeliveryAttempt(id string, location string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	attempt, ok := s.deliveryAttempts[id]
+	if !ok {
+		return ErrDeliveryAttemptNotFound
+	}
+	attempt.Location = location
+	attempt.UpdatedAt = time.Now().UTC()
+	s.deliveryAttempts[id] = attempt
+	return nil
 }
 
 func (s *InMemorySimopsStore) ResolveDeliveryAttempt(id string, evidence VerifiedDeliveryEvidence) error {

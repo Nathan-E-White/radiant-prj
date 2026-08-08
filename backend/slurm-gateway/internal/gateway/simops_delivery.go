@@ -8,6 +8,8 @@ import (
 	"time"
 )
 
+var ErrUnknownDeliveryAttempt = fmt.Errorf("delivery attempt requires reconciliation")
+
 type DeliveryAttemptState string
 
 const (
@@ -53,6 +55,7 @@ type DeliveryAttempt struct {
 	AttemptID   string                    `json:"attempt_id"`
 	RunID       string                    `json:"run_id"`
 	Target      string                    `json:"target"`
+	Location    string                    `json:"location,omitempty"`
 	Coordinates []DeliveryCoordinate      `json:"coordinates"`
 	State       DeliveryAttemptState      `json:"state"`
 	Reason      string                    `json:"reason,omitempty"`
@@ -64,6 +67,7 @@ type DeliveryAttempt struct {
 type DeliveryAttemptStore interface {
 	CreateDeliveryAttempt(DeliveryAttemptRequest) (DeliveryAttempt, bool, error)
 	GetDeliveryAttempt(string) (DeliveryAttempt, error)
+	PrepareDeliveryAttempt(string, string) error
 	ResolveDeliveryAttempt(string, VerifiedDeliveryEvidence) error
 	MarkDeliveryAttemptUnknown(string, string) error
 	ListDeliveryAttempts(string) ([]DeliveryAttempt, error)
