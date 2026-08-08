@@ -80,3 +80,17 @@ bun run fleet-board:prototype
 ```
 
 It uses the same reducer as the app. Its purpose is to tune the economy and pawn pressure before Phaser polish hides weak mechanics.
+
+## Board Scene Workbench
+
+Issue #155 folds prototype learning into a deterministic Board Scene Workbench. Contributors can inspect starter, capacity, queued/running/completed Simulation Job, Insight Token, pressure, and terminal board states without reconstructing them through the full app. Each scene keeps seed, day, selected reactor, camera, density, and reduced-motion conditions explicit, and renders the Phaser scene beside a Board Navigator projection so canvas state and non-canvas review stay aligned.
+
+Prototype behavior verdicts:
+
+| Behavior | Verdict | Reason |
+| --- | --- | --- |
+| Fleet Board map mode | Accepted | The map made fleet state legible and became the implemented Fleet Board scene model. |
+| Service-flow board routes | Accepted | Routes explain local game consequences while staying separate from plant dispatch or billing. |
+| Unit Cutaway diorama | Deferred | The cutaway remains promising, but this slice needs board-state inspection rather than a second visual mode. |
+| Replay Triage scrubber | Deferred | Replay needs coherent Workbench Snapshot history before it can be more than a static timeline toy. |
+| Phaser owns data loading | Rejected | React and the domain model own data and accessibility; Phaser receives a small scene model only. |

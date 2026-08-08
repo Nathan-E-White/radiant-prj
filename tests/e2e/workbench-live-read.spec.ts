@@ -26,6 +26,10 @@ test("Workbench cadence recovers fixture and stale states by replacing the whole
   await fixtureMeasured.getByRole("button", { name: /Electric Output/ }).click();
   await expect(fixtureMeasured.getByRole("button", { name: /Electric Output/ })).toHaveAttribute("aria-pressed", "true");
 
+  const unit01 = page.locator('button[data-unit-id="KAL-01"]');
+  await unit01.click();
+  await expect(unit01).toHaveAttribute("aria-pressed", "true");
+
   const measuredValue = page.getByRole("button", { name: /Flux Axial Low/ });
   await measuredValue.click();
   await expect(measuredValue).toHaveAttribute("aria-pressed", "true");
@@ -41,12 +45,11 @@ test("Workbench cadence recovers fixture and stale states by replacing the whole
   await expect(missingLineageValue).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText(/Lineage pending for VAL-KAL-01-IMPUTED-BLOCK-TEMP/)).toBeVisible();
 
-  const unit01 = page.locator('button[data-unit-id="KAL-01"]');
   const unit02 = page.locator('button[data-unit-id="KAL-02"]');
   await unit02.click();
   await expect(unit02).toHaveAttribute("aria-pressed", "true");
   await expect(unit01).toHaveAttribute("aria-pressed", "false");
-  await expect(page.getByText("Commercial Display Basis")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Kaleidos Unit 02" })).toBeVisible();
 
   await page.getByRole("button", { name: "Refresh live Snapshot" }).click();
   await expect(page.getByText("Fixture fallback", { exact: true })).toBeVisible();

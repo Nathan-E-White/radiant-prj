@@ -5,11 +5,13 @@ import { createFleetBoardPhaserRuntime } from "./FleetBoardPhaserRuntime";
 export function FleetBoardCanvas({
   scene,
   onPlaceFacility,
-  onSelectReactor
+  onSelectReactor,
+  testId = "fleet-board-canvas"
 }: {
   scene: FleetBoardSceneModel;
   onPlaceFacility: (facilityKind: FleetBoardFacilityKind, x: number, y: number) => void;
   onSelectReactor: (facilityId: string) => void;
+  testId?: string;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const runtimeRef = useRef<ReturnType<typeof createFleetBoardPhaserRuntime> | null>(null);
@@ -39,5 +41,5 @@ export function FleetBoardCanvas({
     runtimeRef.current?.update({ scene, onPlaceFacility, onSelectReactor });
   }, [scene, onPlaceFacility, onSelectReactor]);
 
-  return <div className="fleet-board-canvas" data-testid="fleet-board-canvas" ref={hostRef} />;
+  return <div className="fleet-board-canvas" data-testid={testId} ref={hostRef} />;
 }

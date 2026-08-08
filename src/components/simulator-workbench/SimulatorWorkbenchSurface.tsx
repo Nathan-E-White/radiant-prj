@@ -10,7 +10,7 @@ import {
 } from "./SimulationHealthPanel";
 import { TwinStatePanel } from "./TwinStatePanel";
 import { TwinViewport } from "./TwinViewport";
-import { FleetBoardSurface } from "../fleet-board";
+import { BoardSceneWorkbench, FleetBoardSurface } from "../fleet-board";
 import { diagnoseJob } from "../../domain/readiness";
 import { workbenchReadLabel, type WorkbenchProjection, type WorkbenchReadState } from "../../domain/simulator-workbench";
 import type { ComputeJob } from "../../domain/types";
@@ -76,6 +76,7 @@ export function SimulatorWorkbenchSurface({
 
       <FleetStrip units={projection.fleetUnits} onSelectUnit={onSelectUnit} />
       <FleetBoardSurface projection={projection} />
+      <BoardSceneWorkbench projection={projection} />
 
       <div className="simwb-grid">
         <aside className="simwb-stack">

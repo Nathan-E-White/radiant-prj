@@ -57,6 +57,7 @@ export type FleetBoardSceneModel = {
   selectedUnitId: string;
   selectedReactorId: string | null;
   day: number;
+  reducedMotion?: boolean;
   grid: { columns: number; rows: number; tileSize: number };
   facilities: FleetBoardSceneFacility[];
   pawns: FleetBoardScenePawn[];
