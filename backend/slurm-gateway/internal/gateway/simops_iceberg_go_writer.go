@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -19,8 +20,10 @@ import (
 var simopsIcebergIdentifier = icetable.Identifier{"simops", "telemetry_frames"}
 
 type IcebergGoSimopsArtifactWriter struct {
-	base *simopsArtifactWriterBase
-	cfg  SimopsConfig
+	base        *simopsArtifactWriterBase
+	cfg         SimopsConfig
+	appendTable func(context.Context, *icetable.Table, arrow.Table, int64, iceberg.Properties) (*icetable.Table, error)
+	reloadTable func(context.Context, icecatalog.Catalog) (*icetable.Table, error)
 }
 
 func NewIcebergGoSimopsArtifactWriter(cfg SimopsConfig, base *simopsArtifactWriterBase) (SimopsArtifactWriter, error) {
@@ -73,7 +76,7 @@ func (w *IcebergGoSimopsArtifactWriter) WriteArtifact(runID string, plan SimopsA
 	}
 	defer arrowTable.Release()
 
-	if _, err := tbl.AppendTable(ctx, arrowTable, int64(len(plan.Events)), simopsIcebergAppendProperties(runID, plan.Topic, plan.DeliveryAttemptID)); err != nil {
+	if err := w.appendWithCatalogRetry(ctx, cat, tbl, arrowTable, int64(len(plan.Events)), simopsIcebergAppendProperties(runID, plan.Topic, plan.DeliveryAttemptID)); err != nil {
 		return w.base.markRunFailed(runID, err, "append iceberg telemetry")
 	}
 	if err := w.verifyFreshReadback(ctx, cat, runID, plan); err != nil {
@@ -83,6 +86,37 @@ func (w *IcebergGoSimopsArtifactWriter) WriteArtifact(runID string, plan SimopsA
 		return err
 	}
 	return nil
+}
+
+// appendWithCatalogRetry performs one writer-level refresh after a catalog
+// conflict. iceberg-go retries within a table transaction; this outer retry
+// covers an exhausted transaction whose metadata must be reloaded before the
+// same identified delivery can be retried.
+func (w *IcebergGoSimopsArtifactWriter) appendWithCatalogRetry(ctx context.Context, cat icecatalog.Catalog, table *icetable.Table, rows arrow.Table, batchSize int64, properties iceberg.Properties) error {
+	appendTable := w.appendTable
+	if appendTable == nil {
+		appendTable = func(ctx context.Context, table *icetable.Table, rows arrow.Table, batchSize int64, properties iceberg.Properties) (*icetable.Table, error) {
+			return table.AppendTable(ctx, rows, batchSize, properties)
+		}
+	}
+	if _, err := appendTable(ctx, table, rows, batchSize, properties); err == nil {
+		return nil
+	} else if !errors.Is(err, icetable.ErrCommitFailed) {
+		return err
+	}
+
+	reloadTable := w.reloadTable
+	if reloadTable == nil {
+		reloadTable = func(ctx context.Context, cat icecatalog.Catalog) (*icetable.Table, error) {
+			return cat.LoadTable(ctx, simopsIcebergIdentifier)
+		}
+	}
+	fresh, err := reloadTable(ctx, cat)
+	if err != nil {
+		return fmt.Errorf("reload iceberg table after catalog conflict: %w", err)
+	}
+	_, err = appendTable(ctx, fresh, rows, batchSize, properties)
+	return err
 }
 
 func simopsIcebergAppendProperties(runID string, topic string, attemptIDs ...string) iceberg.Properties {

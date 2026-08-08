@@ -10,7 +10,6 @@ var ErrSimopsRunNotFound = errors.New("simops run not found")
 var ErrSimopsArtifactNotFound = errors.New("simops artifact not found")
 var ErrSimopsConflict = errors.New("simops conflict")
 var ErrDeliveryAttemptNotFound = errors.New("delivery attempt not found")
-var ErrDeliveryAttemptNotFound = errors.New("delivery attempt not found")
 
 type SimopsStore interface {
 	DeliveryAttemptStore
