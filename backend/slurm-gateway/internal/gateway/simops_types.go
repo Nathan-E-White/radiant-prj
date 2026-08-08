@@ -79,20 +79,34 @@ type SimopsRunRequest struct {
 }
 
 type SimopsRunResponse struct {
-	RunID           string                 `json:"run_id"`
-	ScenarioID      string                 `json:"scenario_id"`
-	Lifecycle       SimopsLifecycle        `json:"lifecycle"`
-	Source          string                 `json:"source"`
-	LaunchMode      string                 `json:"launch_mode"`
-	RuntimeLimitSec int                    `json:"runtime_limit_sec"`
-	Created         bool                   `json:"created"`
-	SubmittedBy     string                 `json:"submitted_by"`
-	CreatedAt       time.Time              `json:"created_at"`
-	UpdatedAt       time.Time              `json:"updated_at"`
-	MoQSubscription SimopsMoQSubscription  `json:"moq_subscription"`
-	Workers         []SimopsWorkerRecord   `json:"workers"`
-	SpoolCommands   []SimopsSpoolCommand   `json:"spool_commands"`
-	Artifacts       []SimopsArtifactRecord `json:"artifacts"`
+	RunID            string                 `json:"run_id"`
+	ScenarioID       string                 `json:"scenario_id"`
+	Lifecycle        SimopsLifecycle        `json:"lifecycle"`
+	Source           string                 `json:"source"`
+	LaunchMode       string                 `json:"launch_mode"`
+	RuntimeLimitSec  int                    `json:"runtime_limit_sec"`
+	Created          bool                   `json:"created"`
+	SubmittedBy      string                 `json:"submitted_by"`
+	CreatedAt        time.Time              `json:"created_at"`
+	UpdatedAt        time.Time              `json:"updated_at"`
+	MoQSubscription  SimopsMoQSubscription  `json:"moq_subscription"`
+	Workers          []SimopsWorkerRecord   `json:"workers"`
+	SpoolCommands    []SimopsSpoolCommand   `json:"spool_commands"`
+	Artifacts        []SimopsArtifactRecord `json:"artifacts"`
+	DeliveryAttempts []DeliveryAttemptView  `json:"delivery_attempts,omitempty"`
+}
+
+// DeliveryAttemptView is the credential-free recovery proof exposed with a
+// Run. It intentionally omits writer locations and failure text.
+type DeliveryAttemptView struct {
+	AttemptID      string                 `json:"attempt_id"`
+	State          DeliveryAttemptState   `json:"state"`
+	Assurance      DeliveryAssurance      `json:"assurance,omitempty"`
+	Coordinates    []DeliveryCoordinate   `json:"coordinates"`
+	Reconciliation DeliveryReconciliation `json:"reconciliation,omitempty"`
+	ObservedAt     *time.Time             `json:"observed_at,omitempty"`
+	Location       string                 `json:"-"`
+	Reason         string                 `json:"-"`
 }
 
 type SimopsRunRecord struct {
