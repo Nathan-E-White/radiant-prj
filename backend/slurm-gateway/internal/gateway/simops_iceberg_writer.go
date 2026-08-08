@@ -62,6 +62,8 @@ type SimopsDeliveryAttemptReconciler interface {
 	ReconcileDeliveryAttempt(DeliveryAttempt) (VerifiedDeliveryEvidence, bool, error)
 }
 
+type SimopsDeliveryAssurer interface{ DeliveryAssurance() DeliveryAssurance }
+
 // NewSimopsArtifactWriter constructs a writer adapter for the configured mode.
 func NewSimopsArtifactWriter(cfg SimopsConfig, store SimopsStore, now func() time.Time) (SimopsArtifactWriter, error) {
 	mode := strings.ToLower(strings.TrimSpace(cfg.IcebergWriterMode))
@@ -282,6 +284,10 @@ func (w *ManifestSimopsArtifactWriter) Commit(runID string) error {
 	return w.base.ensureStoreStatus(runID, artifactID, SimopsArtifactStatusCommitted)
 }
 
+func (*ManifestSimopsArtifactWriter) DeliveryAssurance() DeliveryAssurance {
+	return DeliveryAssuranceManifestWritten
+}
+
 func (w *ManifestSimopsArtifactWriter) ReconcileDeliveryAttempt(attempt DeliveryAttempt) (VerifiedDeliveryEvidence, bool, error) {
 	if strings.TrimSpace(attempt.Location) == "" {
 		return VerifiedDeliveryEvidence{}, false, nil
@@ -366,6 +372,10 @@ func (w *ExternalCommandSimopsArtifactWriter) Commit(runID string) error {
 	return nil
 }
 
+func (*ExternalCommandSimopsArtifactWriter) DeliveryAssurance() DeliveryAssurance {
+	return DeliveryAssuranceExternalCommandAcknowledged
+}
+
 // DisabledSimopsArtifactWriter keeps the runtime path explicit while performing no-op
 // writes.
 type DisabledSimopsArtifactWriter struct {
@@ -382,6 +392,10 @@ func (w *DisabledSimopsArtifactWriter) WriteArtifact(runID string, plan SimopsAr
 
 func (w *DisabledSimopsArtifactWriter) Commit(runID string) error {
 	return nil
+}
+
+func (*DisabledSimopsArtifactWriter) DeliveryAssurance() DeliveryAssurance {
+	return DeliveryAssuranceDisabled
 }
 
 func ensureCommandAvailable(command []string) error {
@@ -586,19 +600,10 @@ func deliveryCoordinates(topic string, events []SimopsEvent) []DeliveryCoordinat
 }
 
 func deliveryAssuranceForWriter(writer SimopsArtifactWriter) DeliveryAssurance {
-	switch writer.(type) {
-	case *ManifestSimopsArtifactWriter:
-		return DeliveryAssuranceManifestWritten
-	case *ExternalCommandSimopsArtifactWriter:
-		return DeliveryAssuranceExternalCommandAcknowledged
-	case *DisabledSimopsArtifactWriter:
-		return DeliveryAssuranceDisabled
-	default:
-		if strings.Contains(fmt.Sprintf("%T", writer), "IcebergGoSimopsArtifactWriter") {
-			return DeliveryAssuranceIcebergReadbackVerified
-		}
-		return DeliveryAssuranceExternalCommandAcknowledged
+	if assurer, ok := writer.(SimopsDeliveryAssurer); ok {
+		return assurer.DeliveryAssurance()
 	}
+	return ""
 }
 
 func (p *SimopsArtifactIntentProcessor) ensureRunState(runID string) *simopsArtifactIntentRunState {

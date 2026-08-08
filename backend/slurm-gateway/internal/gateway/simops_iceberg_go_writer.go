@@ -73,7 +73,7 @@ func (w *IcebergGoSimopsArtifactWriter) WriteArtifact(runID string, plan SimopsA
 	}
 	defer arrowTable.Release()
 
-	if _, err := tbl.AppendTable(ctx, arrowTable, int64(len(plan.Events)), simopsIcebergAppendProperties(runID, plan.Topic)); err != nil {
+	if _, err := tbl.AppendTable(ctx, arrowTable, int64(len(plan.Events)), simopsIcebergAppendProperties(runID, plan.Topic, plan.DeliveryAttemptID)); err != nil {
 		return w.base.markRunFailed(runID, err, "append iceberg telemetry")
 	}
 	if err := w.verifyFreshReadback(ctx, cat, runID, plan); err != nil {
@@ -85,11 +85,65 @@ func (w *IcebergGoSimopsArtifactWriter) WriteArtifact(runID string, plan SimopsA
 	return nil
 }
 
-func simopsIcebergAppendProperties(runID string, topic string) iceberg.Properties {
-	return iceberg.Properties{
+func simopsIcebergAppendProperties(runID string, topic string, attemptIDs ...string) iceberg.Properties {
+	properties := iceberg.Properties{
 		"simops.run_id":      runID,
 		"simops.batch_topic": topic,
 	}
+	if len(attemptIDs) > 0 {
+		properties["simops.delivery_attempt_id"] = attemptIDs[0]
+	}
+	return properties
+}
+
+func (*IcebergGoSimopsArtifactWriter) DeliveryAssurance() DeliveryAssurance {
+	return DeliveryAssuranceIcebergReadbackVerified
+}
+
+func (w *IcebergGoSimopsArtifactWriter) ReconcileDeliveryAttempt(attempt DeliveryAttempt) (VerifiedDeliveryEvidence, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cat, err := w.loadCatalog(ctx)
+	if err != nil {
+		return VerifiedDeliveryEvidence{}, false, err
+	}
+	table, err := cat.LoadTable(ctx, simopsIcebergIdentifier)
+	if err != nil {
+		return VerifiedDeliveryEvidence{}, false, err
+	}
+	found := false
+	for _, snapshot := range table.Metadata().Snapshots() {
+		if snapshot.Summary != nil && snapshot.Summary.Properties["simops.delivery_attempt_id"] == attempt.AttemptID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return VerifiedDeliveryEvidence{}, false, nil
+	}
+	if err := verifyIcebergAttemptCoordinates(ctx, table, attempt); err != nil {
+		return VerifiedDeliveryEvidence{}, false, err
+	}
+	return VerifiedDeliveryEvidence{AttemptID: attempt.AttemptID, Assurance: DeliveryAssuranceIcebergReadbackVerified, Coordinates: cloneDeliveryCoordinates(attempt.Coordinates), Reconciliation: DeliveryReconciliationVerified, ObservedAt: w.base.resolvedNow()}, true, nil
+}
+
+func verifyIcebergAttemptCoordinates(ctx context.Context, table *icetable.Table, attempt DeliveryAttempt) error {
+	scan := table.Scan(icetable.WithRowFilter(iceberg.EqualTo(iceberg.Reference("run_id"), attempt.RunID)), icetable.WithSelectedFields("redpanda_topic", "redpanda_partition", "redpanda_offset"))
+	readback, err := scan.ToArrowTable(ctx)
+	if err != nil {
+		return fmt.Errorf("read iceberg delivery attempt: %w", err)
+	}
+	defer readback.Release()
+	observed, err := observedIcebergOffsets(readback)
+	if err != nil {
+		return err
+	}
+	for _, coordinate := range attempt.Coordinates {
+		if _, ok := observed[icebergOffsetKey(coordinate.Topic, coordinate.Partition, coordinate.Offset)]; !ok {
+			return fmt.Errorf("iceberg readback missing delivery coordinate %s", icebergOffsetKey(coordinate.Topic, coordinate.Partition, coordinate.Offset))
+		}
+	}
+	return nil
 }
 
 func (w *IcebergGoSimopsArtifactWriter) Commit(runID string) error {

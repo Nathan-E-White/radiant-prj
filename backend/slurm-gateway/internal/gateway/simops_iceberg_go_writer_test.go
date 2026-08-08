@@ -90,3 +90,10 @@ func TestIcebergReadbackOffsetHelpersRejectNoTelemetry(t *testing.T) {
 		t.Fatalf("expected no-telemetry readback plan to fail")
 	}
 }
+
+func TestIcebergAppendPropertiesCarryStableDeliveryAttemptIdentity(t *testing.T) {
+	properties := simopsIcebergAppendProperties("RUN-DELIVERY-PROPERTIES", "simops.telemetry.v1", "delivery-stable")
+	if properties["simops.delivery_attempt_id"] != "delivery-stable" {
+		t.Fatalf("missing stable delivery attempt property: %#v", properties)
+	}
+}

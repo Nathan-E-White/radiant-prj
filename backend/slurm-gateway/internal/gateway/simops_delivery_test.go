@@ -111,6 +111,24 @@ func TestManifestWriterReconcilesOriginalAttemptFromStableIdentity(t *testing.T)
 	}
 }
 
+func TestDeliveryAssuranceMatchesWriterProofStrength(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		writer SimopsArtifactWriter
+		want   DeliveryAssurance
+	}{
+		{"manifest", &ManifestSimopsArtifactWriter{}, DeliveryAssuranceManifestWritten},
+		{"external", &ExternalCommandSimopsArtifactWriter{}, DeliveryAssuranceExternalCommandAcknowledged},
+		{"disabled", &DisabledSimopsArtifactWriter{}, DeliveryAssuranceDisabled},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := deliveryAssuranceForWriter(test.writer); got != test.want {
+				t.Fatalf("assurance=%q want=%q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestRunReaderExposesSanitizedVerifiedDeliveryEvidence(t *testing.T) {
 	app, _ := newSimopsTestGateway(t, "RUN-DELIVERY-READER")
 	create := signedRequest(http.MethodPost, "/api/simops/runs", `{"scenario_id":"scheduler-drift","worker_kinds":["scheduler"]}`, "react-backend-client")
