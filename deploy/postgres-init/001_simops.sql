@@ -96,6 +96,21 @@ CREATE TABLE IF NOT EXISTS simops_artifacts (
   created_at TIMESTAMPTZ NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS simops_delivery_attempts (
+  attempt_id TEXT PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
+  target TEXT NOT NULL,
+  coordinates JSONB NOT NULL,
+  state TEXT NOT NULL CHECK (state IN ('pending', 'unknown', 'resolved')),
+  reason TEXT,
+  evidence JSONB,
+  created_at TIMESTAMPTZ NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_simops_delivery_attempts_run_created
+  ON simops_delivery_attempts (run_id, created_at, attempt_id);
+
 CREATE TABLE IF NOT EXISTS simops_telemetry_frames (
   received_at TIMESTAMPTZ NOT NULL,
   emitted_at TIMESTAMPTZ NOT NULL,

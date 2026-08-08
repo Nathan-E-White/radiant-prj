@@ -765,6 +765,126 @@ func (s *PostgresSimopsStore) UpdateArtifactStatus(runID string, artifactID stri
 	return requireAffected(result, ErrSimopsArtifactNotFound)
 }
 
+func (s *PostgresSimopsStore) CreateDeliveryAttempt(request DeliveryAttemptRequest) (DeliveryAttempt, bool, error) {
+	id, err := deliveryAttemptID(request)
+	if err != nil {
+		return DeliveryAttempt{}, false, err
+	}
+	coordinates, err := json.Marshal(request.Coordinates)
+	if err != nil {
+		return DeliveryAttempt{}, false, err
+	}
+	now := time.Now().UTC()
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	result, err := s.db.ExecContext(ctx, `
+		INSERT INTO simops_delivery_attempts (attempt_id, run_id, target, coordinates, state, created_at, updated_at)
+		VALUES ($1,$2,$3,$4::jsonb,$5,$6,$6) ON CONFLICT (attempt_id) DO NOTHING`,
+		id, request.RunID, request.Target, coordinates, string(DeliveryAttemptPending), now)
+	if err != nil {
+		return DeliveryAttempt{}, false, err
+	}
+	created, err := result.RowsAffected()
+	if err != nil {
+		return DeliveryAttempt{}, false, err
+	}
+	attempt, err := s.GetDeliveryAttempt(id)
+	return attempt, created == 1, err
+}
+
+func (s *PostgresSimopsStore) GetDeliveryAttempt(id string) (DeliveryAttempt, error) {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	return scanDeliveryAttempt(s.db.QueryRowContext(ctx, `SELECT attempt_id, run_id, target, coordinates, state, reason, evidence, created_at, updated_at FROM simops_delivery_attempts WHERE attempt_id = $1`, id))
+}
+
+func (s *PostgresSimopsStore) ResolveDeliveryAttempt(id string, evidence VerifiedDeliveryEvidence) error {
+	attempt, err := s.GetDeliveryAttempt(id)
+	if err != nil {
+		return err
+	}
+	evidence.AttemptID = id
+	evidence.Coordinates = cloneDeliveryCoordinates(attempt.Coordinates)
+	payload, err := json.Marshal(evidence)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	result, err := s.db.ExecContext(ctx, `UPDATE simops_delivery_attempts SET state=$2, reason=NULL, evidence=$3::jsonb, updated_at=$4 WHERE attempt_id=$1`, id, string(DeliveryAttemptResolved), payload, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	return requireAffected(result, ErrDeliveryAttemptNotFound)
+}
+
+func (s *PostgresSimopsStore) MarkDeliveryAttemptUnknown(id string, reason string) error {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	result, err := s.db.ExecContext(ctx, `UPDATE simops_delivery_attempts SET state=$2, reason=$3, updated_at=$4 WHERE attempt_id=$1`, id, string(DeliveryAttemptUnknown), nullableString(reason), time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	return requireAffected(result, ErrDeliveryAttemptNotFound)
+}
+
+func (s *PostgresSimopsStore) ListDeliveryAttempts(runID string) ([]DeliveryAttempt, error) {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	rows, err := s.db.QueryContext(ctx, `SELECT attempt_id, run_id, target, coordinates, state, reason, evidence, created_at, updated_at FROM simops_delivery_attempts WHERE run_id=$1 ORDER BY created_at, attempt_id`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	attempts := []DeliveryAttempt{}
+	for rows.Next() {
+		attempt, err := scanDeliveryAttempt(rows)
+		if err != nil {
+			return nil, err
+		}
+		attempts = append(attempts, attempt)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(attempts) == 0 {
+		if _, err := s.GetRun(runID); err != nil {
+			return nil, err
+		}
+	}
+	return attempts, nil
+}
+
+type deliveryAttemptScanner interface{ Scan(...any) error }
+
+func scanDeliveryAttempt(row deliveryAttemptScanner) (DeliveryAttempt, error) {
+	var attempt DeliveryAttempt
+	var state string
+	var reason sql.NullString
+	var coordinates, evidence []byte
+	if err := row.Scan(&attempt.AttemptID, &attempt.RunID, &attempt.Target, &coordinates, &state, &reason, &evidence, &attempt.CreatedAt, &attempt.UpdatedAt); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return DeliveryAttempt{}, ErrDeliveryAttemptNotFound
+		}
+		return DeliveryAttempt{}, err
+	}
+	if err := json.Unmarshal(coordinates, &attempt.Coordinates); err != nil {
+		return DeliveryAttempt{}, err
+	}
+	attempt.State = DeliveryAttemptState(state)
+	if reason.Valid {
+		attempt.Reason = reason.String
+	}
+	if len(evidence) > 0 {
+		var decoded VerifiedDeliveryEvidence
+		if err := json.Unmarshal(evidence, &decoded); err != nil {
+			return DeliveryAttempt{}, err
+		}
+		attempt.Evidence = &decoded
+	}
+	return attempt, nil
+}
+
 func (s *PostgresSimopsStore) ActiveRunCount() int {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
