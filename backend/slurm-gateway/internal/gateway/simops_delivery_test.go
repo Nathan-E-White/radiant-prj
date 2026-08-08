@@ -93,6 +93,29 @@ func TestArtifactIntentProcessorReplayAfterVerifiedDeliveryWritesOnce(t *testing
 	}
 }
 
+func TestArtifactIntentProcessorReplayThenNextBatchDoesNotReappendResolvedCoordinate(t *testing.T) {
+	store := NewInMemorySimopsStore()
+	run := SimopsRunRecord{RunID: "RUN-REPLAY-NEXT", ScenarioID: "delivery", Lifecycle: SimopsStreaming, Source: "test", WorkScript: "test", LaunchMode: "contract", RuntimeLimitSec: 1, SubmittedBy: "test", IngestToken: "token", CreatedAt: time.Now().UTC(), UpdatedAt: time.Now().UTC()}
+	if _, _, err := store.CreateRun(run, nil, nil); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	writer := &recordingDeliveryWriter{}
+	processor := NewSimopsArtifactIntentProcessorWithDeliveryStore(writer, nil, "simops.telemetry.v1", 1, time.Now, store)
+	first := SimopsEvent{RunID: run.RunID, EventType: SimopsEventWorkerTelemetry, RedpandaTopic: "simops.telemetry.v1", RedpandaPartition: 0, RedpandaOffset: 41}
+	next := SimopsEvent{RunID: run.RunID, EventType: SimopsEventWorkerTelemetry, RedpandaTopic: "simops.telemetry.v1", RedpandaPartition: 0, RedpandaOffset: 42}
+	for _, event := range []SimopsEvent{first, first, next} {
+		if _, err := processor.ProcessEvent(context.Background(), event); err != nil {
+			t.Fatalf("process offset %d: %v", event.RedpandaOffset, err)
+		}
+	}
+	if len(writer.plans) != 2 {
+		t.Fatalf("writes=%d want 2", len(writer.plans))
+	}
+	if got := writer.plans[1].Events; len(got) != 1 || got[0].RedpandaOffset != 42 {
+		t.Fatalf("next batch retained replayed event: %#v", got)
+	}
+}
+
 func TestManifestWriterReconcilesOriginalAttemptFromStableIdentity(t *testing.T) {
 	writer := &ManifestSimopsArtifactWriter{base: &simopsArtifactWriterBase{manifestDir: t.TempDir(), now: time.Now}}
 	plan, err := writer.Prepare(SimopsArtifactWritePlan{Artifact: SimopsArtifactRecord{RunID: "RUN-MANIFEST-RECOVERY", ArtifactID: "artifact"}, DeliveryAttemptID: "delivery-original", Topic: "simops.telemetry.v1", Partition: "run_id=RUN-MANIFEST-RECOVERY", Sequence: 1, EventCount: 1})
@@ -175,6 +198,17 @@ func (w *uncertainDeliveryWriter) WriteArtifact(string, SimopsArtifactWritePlan)
 	return w.err
 }
 func (w *uncertainDeliveryWriter) Commit(string) error { return nil }
+
+type recordingDeliveryWriter struct{ plans []SimopsArtifactWritePlan }
+
+func (w *recordingDeliveryWriter) Prepare(plan SimopsArtifactWritePlan) (SimopsArtifactWritePlan, error) {
+	return plan, nil
+}
+func (w *recordingDeliveryWriter) WriteArtifact(_ string, plan SimopsArtifactWritePlan) error {
+	w.plans = append(w.plans, plan)
+	return nil
+}
+func (w *recordingDeliveryWriter) Commit(string) error { return nil }
 
 func TestDeliveryAttemptStoreRejectsReplacementWhileUnknown(t *testing.T) {
 	store := NewInMemorySimopsStore()

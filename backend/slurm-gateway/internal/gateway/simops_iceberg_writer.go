@@ -506,9 +506,11 @@ func (p *SimopsArtifactIntentProcessor) ProcessEvent(ctx context.Context, event 
 			if err := p.deliveryStore.ResolveDeliveryAttempt(attempt.AttemptID, evidence); err != nil {
 				return 0, err
 			}
+			p.clearPending(event.RunID)
 			return 1, nil
 		}
 		if attempt.State == DeliveryAttemptResolved {
+			p.clearPending(event.RunID)
 			return 1, nil
 		}
 	}
