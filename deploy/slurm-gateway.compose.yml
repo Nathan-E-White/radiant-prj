@@ -195,6 +195,7 @@ services:
     labels:
       org.opencontainers.image.title: "Kaleidos SimOps Timescale Writer"
       org.opencontainers.image.description: "Redpanda consumer projecting telemetry frames into Timescale hypertables"
+      com.radiant.chaos-enabled: "true"
 
   simops-iceberg-writer:
     build:
