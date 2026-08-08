@@ -3,6 +3,7 @@ import { buildWorkbenchProjection, loadFixtureWorkbenchData } from "../simulator
 import {
   buildBoardSceneWorkbench,
   boardSceneWorkbenchScenarioIds,
+  resolveBoardSceneWorkbenchView,
   type BoardSceneWorkbenchScenarioId
 } from "./boardSceneWorkbench";
 
@@ -26,6 +27,7 @@ describe("Board Scene Workbench", () => {
     expect(workbench.scenarios.every((scenario) => scenario.purpose && scenario.expectedVisibleOutcome)).toBe(true);
     expect(workbench.scenarios.map((scenario) => scenario.scene.day)).toEqual([0, 0, 0, 1, 3, 6, 6, 30, 3]);
     expect(workbench.controls).toMatchObject({
+      scenarioId: "starter",
       seed: "starter",
       day: 0,
       selectedReactorId: "reactor-2",
@@ -55,9 +57,51 @@ describe("Board Scene Workbench", () => {
       const scenario = byId[scenarioId];
       expect(scenario.navigator.facilities.length).toBe(scenario.scene.facilities.length);
       expect(scenario.navigator.routes.length).toBe(scenario.scene.routes.length);
+      expect(scenario.navigator.routes.map((route) => route.label)).toEqual(
+        scenario.scene.routes.map((route) => `${route.from.label} -> ${route.to.label}`)
+      );
       expect(scenario.navigator.reactorSlotRails.length).toBe(scenario.scene.reactorSlotRails.length);
       expect(scenario.scene.pawns.map((pawn) => pawn.kind)).toEqual(["inspector", "trouble"]);
     }
+    expect(byId.starter.navigator.routes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ label: "Reactor -> TRISO Supply" })])
+    );
+  });
+
+  it("resolves effective scene controls into a normalized contributor review view", () => {
+    const projection = buildWorkbenchProjection(loadFixtureWorkbenchData(), { selectedUnitId: "KAL-03" });
+    const workbench = buildBoardSceneWorkbench(projection);
+    const view = resolveBoardSceneWorkbenchView(projection, {
+      ...workbench.controls,
+      scenarioId: "jobQueued",
+      seed: "custom-seed-42",
+      day: 2,
+      selectedReactorId: "",
+      camera: { zoom: 2, panX: 24, panY: 12 },
+      density: "compact",
+      reducedMotion: false
+    });
+
+    expect(view.controls).toEqual({
+      scenarioId: "jobQueued",
+      seed: "custom-seed-42",
+      day: 2,
+      selectedReactorId: "",
+      camera: { zoom: 1.25, panX: 24, panY: 12 },
+      density: "compact",
+      reducedMotion: false
+    });
+    expect(view.scene.selectedReactorId).toBeNull();
+    expect(view.scene.day).toBe(2);
+    expect(view.scene.camera).toEqual({ zoom: 1.25, panX: 24, panY: 12 });
+    expect(view.scene.reducedMotion).toBe(false);
+    expect(view.navigator.routes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ label: "Reactor -> TRISO Supply" })])
+    );
+    expect(view.reactors).toEqual([expect.objectContaining({ id: "reactor-2", label: "Reactor" })]);
+
+    const clampedView = resolveBoardSceneWorkbenchView(projection, { ...workbench.controls, day: 99 });
+    expect(clampedView.controls.day).toBe(30);
   });
 
   it("exposes the asset atlas and records prototype decisions with accepted, rejected, or deferred verdicts", () => {

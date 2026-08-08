@@ -1,10 +1,12 @@
 import { expect, test, type Locator } from "@playwright/test";
+import { canvasHasNonBlankPixels } from "./fleet-board-canvas-helpers";
 
 test("mounted Fleet Board keeps selection, drag, camera, and assets across scene updates", async ({ page }) => {
   await page.goto("/tests/e2e/fixtures/fleet-board-runtime.html");
 
   const canvas = page.locator('[data-testid="fleet-board-canvas"] canvas');
   await expect(canvas).toBeVisible();
+  await expect.poll(() => canvasHasNonBlankPixels(canvas), { timeout: 15_000 }).toBe(true);
   await canvas.evaluate((element) => {
     element.dataset.runtimeInstance = "original";
   });
