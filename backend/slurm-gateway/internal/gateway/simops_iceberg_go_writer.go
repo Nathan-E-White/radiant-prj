@@ -4,6 +4,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -19,8 +20,10 @@ import (
 var simopsIcebergIdentifier = icetable.Identifier{"simops", "telemetry_frames"}
 
 type IcebergGoSimopsArtifactWriter struct {
-	base *simopsArtifactWriterBase
-	cfg  SimopsConfig
+	base        *simopsArtifactWriterBase
+	cfg         SimopsConfig
+	appendTable func(context.Context, *icetable.Table, arrow.Table, int64, iceberg.Properties) (*icetable.Table, error)
+	reloadTable func(context.Context, icecatalog.Catalog) (*icetable.Table, error)
 }
 
 func NewIcebergGoSimopsArtifactWriter(cfg SimopsConfig, base *simopsArtifactWriterBase) (SimopsArtifactWriter, error) {
@@ -73,7 +76,7 @@ func (w *IcebergGoSimopsArtifactWriter) WriteArtifact(runID string, plan SimopsA
 	}
 	defer arrowTable.Release()
 
-	if _, err := tbl.AppendTable(ctx, arrowTable, int64(len(plan.Events)), simopsIcebergAppendProperties(runID, plan.Topic)); err != nil {
+	if err := w.appendWithCatalogRetry(ctx, cat, tbl, arrowTable, int64(len(plan.Events)), simopsIcebergAppendProperties(runID, plan.Topic, plan.DeliveryAttemptID)); err != nil {
 		return w.base.markRunFailed(runID, err, "append iceberg telemetry")
 	}
 	if err := w.verifyFreshReadback(ctx, cat, runID, plan); err != nil {
@@ -85,11 +88,96 @@ func (w *IcebergGoSimopsArtifactWriter) WriteArtifact(runID string, plan SimopsA
 	return nil
 }
 
-func simopsIcebergAppendProperties(runID string, topic string) iceberg.Properties {
-	return iceberg.Properties{
+// appendWithCatalogRetry performs one writer-level refresh after a catalog
+// conflict. iceberg-go retries within a table transaction; this outer retry
+// covers an exhausted transaction whose metadata must be reloaded before the
+// same identified delivery can be retried.
+func (w *IcebergGoSimopsArtifactWriter) appendWithCatalogRetry(ctx context.Context, cat icecatalog.Catalog, table *icetable.Table, rows arrow.Table, batchSize int64, properties iceberg.Properties) error {
+	appendTable := w.appendTable
+	if appendTable == nil {
+		appendTable = func(ctx context.Context, table *icetable.Table, rows arrow.Table, batchSize int64, properties iceberg.Properties) (*icetable.Table, error) {
+			return table.AppendTable(ctx, rows, batchSize, properties)
+		}
+	}
+	if _, err := appendTable(ctx, table, rows, batchSize, properties); err == nil {
+		return nil
+	} else if !errors.Is(err, icetable.ErrCommitFailed) {
+		return err
+	}
+
+	reloadTable := w.reloadTable
+	if reloadTable == nil {
+		reloadTable = func(ctx context.Context, cat icecatalog.Catalog) (*icetable.Table, error) {
+			return cat.LoadTable(ctx, simopsIcebergIdentifier)
+		}
+	}
+	fresh, err := reloadTable(ctx, cat)
+	if err != nil {
+		return fmt.Errorf("reload iceberg table after catalog conflict: %w", err)
+	}
+	_, err = appendTable(ctx, fresh, rows, batchSize, properties)
+	return err
+}
+
+func simopsIcebergAppendProperties(runID string, topic string, attemptIDs ...string) iceberg.Properties {
+	properties := iceberg.Properties{
 		"simops.run_id":      runID,
 		"simops.batch_topic": topic,
 	}
+	if len(attemptIDs) > 0 {
+		properties["simops.delivery_attempt_id"] = attemptIDs[0]
+	}
+	return properties
+}
+
+func (*IcebergGoSimopsArtifactWriter) DeliveryAssurance() DeliveryAssurance {
+	return DeliveryAssuranceIcebergReadbackVerified
+}
+
+func (w *IcebergGoSimopsArtifactWriter) ReconcileDeliveryAttempt(attempt DeliveryAttempt) (VerifiedDeliveryEvidence, bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cat, err := w.loadCatalog(ctx)
+	if err != nil {
+		return VerifiedDeliveryEvidence{}, false, err
+	}
+	table, err := cat.LoadTable(ctx, simopsIcebergIdentifier)
+	if err != nil {
+		return VerifiedDeliveryEvidence{}, false, err
+	}
+	found := false
+	for _, snapshot := range table.Metadata().Snapshots() {
+		if snapshot.Summary != nil && snapshot.Summary.Properties["simops.delivery_attempt_id"] == attempt.AttemptID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return VerifiedDeliveryEvidence{}, false, nil
+	}
+	if err := verifyIcebergAttemptCoordinates(ctx, table, attempt); err != nil {
+		return VerifiedDeliveryEvidence{}, false, err
+	}
+	return VerifiedDeliveryEvidence{AttemptID: attempt.AttemptID, Assurance: DeliveryAssuranceIcebergReadbackVerified, Coordinates: cloneDeliveryCoordinates(attempt.Coordinates), Reconciliation: DeliveryReconciliationVerified, ObservedAt: w.base.resolvedNow()}, true, nil
+}
+
+func verifyIcebergAttemptCoordinates(ctx context.Context, table *icetable.Table, attempt DeliveryAttempt) error {
+	scan := table.Scan(icetable.WithRowFilter(iceberg.EqualTo(iceberg.Reference("run_id"), attempt.RunID)), icetable.WithSelectedFields("redpanda_topic", "redpanda_partition", "redpanda_offset"))
+	readback, err := scan.ToArrowTable(ctx)
+	if err != nil {
+		return fmt.Errorf("read iceberg delivery attempt: %w", err)
+	}
+	defer readback.Release()
+	observed, err := observedIcebergOffsets(readback)
+	if err != nil {
+		return err
+	}
+	for _, coordinate := range attempt.Coordinates {
+		if _, ok := observed[icebergOffsetKey(coordinate.Topic, coordinate.Partition, coordinate.Offset)]; !ok {
+			return fmt.Errorf("iceberg readback missing delivery coordinate %s", icebergOffsetKey(coordinate.Topic, coordinate.Partition, coordinate.Offset))
+		}
+	}
+	return nil
 }
 
 func (w *IcebergGoSimopsArtifactWriter) Commit(runID string) error {

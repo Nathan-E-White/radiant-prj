@@ -29,24 +29,26 @@ const (
 // SimopsArtifactWritePlan captures the normalized commit shape used by the
 // Iceberg writer adapters.
 type SimopsArtifactWritePlan struct {
-	Artifact   SimopsArtifactRecord
-	Topic      string
-	Partition  string
-	Sequence   uint64
-	EventCount int
-	Events     []SimopsEvent
+	Artifact          SimopsArtifactRecord
+	DeliveryAttemptID string
+	Topic             string
+	Partition         string
+	Sequence          uint64
+	EventCount        int
+	Events            []SimopsEvent
 }
 
 // SimopsArtifactCommitIntent is the payload emitted to both writer backends and
 // event intents.
 type SimopsArtifactCommitIntent struct {
-	RunID      string `json:"run_id"`
-	Sequence   uint64 `json:"sequence"`
-	Topic      string `json:"topic"`
-	EventCount int    `json:"event_count"`
-	Partition  string `json:"partition"`
-	ArtifactID string `json:"artifact_id"`
-	Location   string `json:"location"`
+	DeliveryAttemptID string `json:"delivery_attempt_id,omitempty"`
+	RunID             string `json:"run_id"`
+	Sequence          uint64 `json:"sequence"`
+	Topic             string `json:"topic"`
+	EventCount        int    `json:"event_count"`
+	Partition         string `json:"partition"`
+	ArtifactID        string `json:"artifact_id"`
+	Location          string `json:"location"`
 }
 
 // SimopsArtifactWriter defines the Iceberg writer contract.
@@ -55,6 +57,12 @@ type SimopsArtifactWriter interface {
 	WriteArtifact(runID string, plan SimopsArtifactWritePlan) error
 	Commit(runID string) error
 }
+
+type SimopsDeliveryAttemptReconciler interface {
+	ReconcileDeliveryAttempt(DeliveryAttempt) (VerifiedDeliveryEvidence, bool, error)
+}
+
+type SimopsDeliveryAssurer interface{ DeliveryAssurance() DeliveryAssurance }
 
 // NewSimopsArtifactWriter constructs a writer adapter for the configured mode.
 func NewSimopsArtifactWriter(cfg SimopsConfig, store SimopsStore, now func() time.Time) (SimopsArtifactWriter, error) {
@@ -98,6 +106,12 @@ func NewSimopsArtifactWriter(cfg SimopsConfig, store SimopsStore, now func() tim
 
 // NewSimopsArtifactIntentProcessor creates a run-grouped artifact intent processor.
 func NewSimopsArtifactIntentProcessor(writer SimopsArtifactWriter, eventLog SimopsEventLog, topic string, batchSize int, now func() time.Time) *SimopsArtifactIntentProcessor {
+	return NewSimopsArtifactIntentProcessorWithDeliveryStore(writer, eventLog, topic, batchSize, now, nil)
+}
+
+// NewSimopsArtifactIntentProcessorWithDeliveryStore adds durable delivery
+// identity and recovery to the existing artifact writer boundary.
+func NewSimopsArtifactIntentProcessorWithDeliveryStore(writer SimopsArtifactWriter, eventLog SimopsEventLog, topic string, batchSize int, now func() time.Time, deliveryStore DeliveryAttemptStore) *SimopsArtifactIntentProcessor {
 	if writer == nil {
 		panic("SimopsArtifactIntentProcessor requires a writer")
 	}
@@ -108,12 +122,13 @@ func NewSimopsArtifactIntentProcessor(writer SimopsArtifactWriter, eventLog Simo
 		now = time.Now
 	}
 	return &SimopsArtifactIntentProcessor{
-		writer:    writer,
-		eventLog:  eventLog,
-		topic:     normalizeTopic(topic),
-		batchSize: batchSize,
-		now:       now,
-		states:    make(map[string]*simopsArtifactIntentRunState),
+		writer:        writer,
+		eventLog:      eventLog,
+		topic:         normalizeTopic(topic),
+		batchSize:     batchSize,
+		now:           now,
+		states:        make(map[string]*simopsArtifactIntentRunState),
+		deliveryStore: deliveryStore,
 	}
 }
 
@@ -196,13 +211,14 @@ func (w *simopsArtifactWriterBase) markRunFailed(runID string, err error, contex
 
 func (w *simopsArtifactWriterBase) writeCommitPayload(plan SimopsArtifactWritePlan) ([]byte, error) {
 	intent := SimopsArtifactCommitIntent{
-		RunID:      strings.TrimSpace(plan.Artifact.RunID),
-		Sequence:   plan.Sequence,
-		Topic:      strings.TrimSpace(plan.Topic),
-		EventCount: plan.EventCount,
-		Partition:  strings.TrimSpace(plan.Partition),
-		ArtifactID: strings.TrimSpace(plan.Artifact.ArtifactID),
-		Location:   strings.TrimSpace(plan.Artifact.Location),
+		DeliveryAttemptID: strings.TrimSpace(plan.DeliveryAttemptID),
+		RunID:             strings.TrimSpace(plan.Artifact.RunID),
+		Sequence:          plan.Sequence,
+		Topic:             strings.TrimSpace(plan.Topic),
+		EventCount:        plan.EventCount,
+		Partition:         strings.TrimSpace(plan.Partition),
+		ArtifactID:        strings.TrimSpace(plan.Artifact.ArtifactID),
+		Location:          strings.TrimSpace(plan.Artifact.Location),
 	}
 	payload, err := json.Marshal(intent)
 	if err != nil {
@@ -268,6 +284,31 @@ func (w *ManifestSimopsArtifactWriter) Commit(runID string) error {
 	return w.base.ensureStoreStatus(runID, artifactID, SimopsArtifactStatusCommitted)
 }
 
+func (*ManifestSimopsArtifactWriter) DeliveryAssurance() DeliveryAssurance {
+	return DeliveryAssuranceManifestWritten
+}
+
+func (w *ManifestSimopsArtifactWriter) ReconcileDeliveryAttempt(attempt DeliveryAttempt) (VerifiedDeliveryEvidence, bool, error) {
+	if strings.TrimSpace(attempt.Location) == "" {
+		return VerifiedDeliveryEvidence{}, false, nil
+	}
+	payload, err := os.ReadFile(filepath.Clean(attempt.Location))
+	if os.IsNotExist(err) {
+		return VerifiedDeliveryEvidence{}, false, nil
+	}
+	if err != nil {
+		return VerifiedDeliveryEvidence{}, false, err
+	}
+	var intent SimopsArtifactCommitIntent
+	if err := json.Unmarshal(payload, &intent); err != nil {
+		return VerifiedDeliveryEvidence{}, false, err
+	}
+	if intent.DeliveryAttemptID != attempt.AttemptID {
+		return VerifiedDeliveryEvidence{}, false, nil
+	}
+	return VerifiedDeliveryEvidence{AttemptID: attempt.AttemptID, Assurance: DeliveryAssuranceManifestWritten, Coordinates: cloneDeliveryCoordinates(attempt.Coordinates), Reconciliation: DeliveryReconciliationVerified, ObservedAt: w.base.resolvedNow()}, true, nil
+}
+
 // ExternalCommandSimopsArtifactWriter runs an external process and forwards the
 // normalized payload over stdin.
 type ExternalCommandSimopsArtifactWriter struct {
@@ -331,6 +372,10 @@ func (w *ExternalCommandSimopsArtifactWriter) Commit(runID string) error {
 	return nil
 }
 
+func (*ExternalCommandSimopsArtifactWriter) DeliveryAssurance() DeliveryAssurance {
+	return DeliveryAssuranceExternalCommandAcknowledged
+}
+
 // DisabledSimopsArtifactWriter keeps the runtime path explicit while performing no-op
 // writes.
 type DisabledSimopsArtifactWriter struct {
@@ -347,6 +392,10 @@ func (w *DisabledSimopsArtifactWriter) WriteArtifact(runID string, plan SimopsAr
 
 func (w *DisabledSimopsArtifactWriter) Commit(runID string) error {
 	return nil
+}
+
+func (*DisabledSimopsArtifactWriter) DeliveryAssurance() DeliveryAssurance {
+	return DeliveryAssuranceDisabled
 }
 
 func ensureCommandAvailable(command []string) error {
@@ -373,11 +422,12 @@ type simopsArtifactIntentRunState struct {
 }
 
 type SimopsArtifactIntentProcessor struct {
-	writer    SimopsArtifactWriter
-	eventLog  SimopsEventLog
-	topic     string
-	batchSize int
-	now       func() time.Time
+	writer        SimopsArtifactWriter
+	eventLog      SimopsEventLog
+	topic         string
+	batchSize     int
+	now           func() time.Time
+	deliveryStore DeliveryAttemptStore
 
 	mu     sync.Mutex
 	states map[string]*simopsArtifactIntentRunState
@@ -433,15 +483,65 @@ func (p *SimopsArtifactIntentProcessor) ProcessEvent(ctx context.Context, event 
 		EventCount: eventCount,
 		Events:     events,
 	}
+	var attempt DeliveryAttempt
+	if p.deliveryStore != nil {
+		createdAttempt, _, createErr := p.deliveryStore.CreateDeliveryAttempt(DeliveryAttemptRequest{RunID: event.RunID, Target: plan.Artifact.IcebergTable, Coordinates: deliveryCoordinates(plan.Topic, plan.Events)})
+		if createErr != nil {
+			return 0, createErr
+		}
+		attempt = createdAttempt
+		plan.DeliveryAttemptID = attempt.AttemptID
+		if attempt.State == DeliveryAttemptUnknown {
+			reconciler, ok := p.writer.(SimopsDeliveryAttemptReconciler)
+			if !ok {
+				return 0, ErrUnknownDeliveryAttempt
+			}
+			evidence, resolved, reconcileErr := reconciler.ReconcileDeliveryAttempt(attempt)
+			if reconcileErr != nil {
+				return 0, reconcileErr
+			}
+			if !resolved {
+				return 0, ErrUnknownDeliveryAttempt
+			}
+			if err := p.deliveryStore.ResolveDeliveryAttempt(attempt.AttemptID, evidence); err != nil {
+				return 0, err
+			}
+			p.clearPending(event.RunID)
+			return 1, nil
+		}
+		if attempt.State == DeliveryAttemptResolved {
+			p.clearPending(event.RunID)
+			return 1, nil
+		}
+	}
 	prepared, err := p.writer.Prepare(plan)
 	if err != nil {
+		p.clearPending(event.RunID)
 		return 0, err
 	}
+	if p.deliveryStore != nil {
+		if err := p.deliveryStore.PrepareDeliveryAttempt(attempt.AttemptID, prepared.Artifact.Location); err != nil {
+			return 0, err
+		}
+	}
 	if err := p.writer.WriteArtifact(event.RunID, prepared); err != nil {
+		if p.deliveryStore != nil {
+			_ = p.deliveryStore.MarkDeliveryAttemptUnknown(attempt.AttemptID, err.Error())
+		}
+		p.clearPending(event.RunID)
 		return 0, err
 	}
 	if err := p.writer.Commit(event.RunID); err != nil {
+		if p.deliveryStore != nil {
+			_ = p.deliveryStore.MarkDeliveryAttemptUnknown(attempt.AttemptID, err.Error())
+		}
+		p.clearPending(event.RunID)
 		return 0, err
+	}
+	if p.deliveryStore != nil {
+		if err := p.deliveryStore.ResolveDeliveryAttempt(attempt.AttemptID, VerifiedDeliveryEvidence{AttemptID: attempt.AttemptID, Assurance: deliveryAssuranceForWriter(p.writer), Coordinates: attempt.Coordinates, Reconciliation: DeliveryReconciliationVerified, ObservedAt: p.now().UTC()}); err != nil {
+			return 0, err
+		}
 	}
 
 	p.mu.Lock()
@@ -453,13 +553,14 @@ func (p *SimopsArtifactIntentProcessor) ProcessEvent(ctx context.Context, event 
 	p.mu.Unlock()
 
 	intent := SimopsArtifactCommitIntent{
-		RunID:      event.RunID,
-		Sequence:   prepared.Sequence,
-		Topic:      p.topic,
-		EventCount: prepared.EventCount,
-		Partition:  prepared.Partition,
-		ArtifactID: prepared.Artifact.ArtifactID,
-		Location:   prepared.Artifact.Location,
+		DeliveryAttemptID: prepared.DeliveryAttemptID,
+		RunID:             event.RunID,
+		Sequence:          prepared.Sequence,
+		Topic:             p.topic,
+		EventCount:        prepared.EventCount,
+		Partition:         prepared.Partition,
+		ArtifactID:        prepared.Artifact.ArtifactID,
+		Location:          prepared.Artifact.Location,
 	}
 	frame, err := json.Marshal(intent)
 	if err != nil {
@@ -477,6 +578,34 @@ func (p *SimopsArtifactIntentProcessor) ProcessEvent(ctx context.Context, event 
 	}
 
 	return 1, nil
+}
+
+func (p *SimopsArtifactIntentProcessor) clearPending(runID string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if state := p.states[runID]; state != nil {
+		state.pending = 0
+		state.pendingEvents = nil
+	}
+}
+
+func deliveryCoordinates(topic string, events []SimopsEvent) []DeliveryCoordinate {
+	coordinates := make([]DeliveryCoordinate, 0, len(events))
+	for _, event := range events {
+		eventTopic := strings.TrimSpace(event.RedpandaTopic)
+		if eventTopic == "" {
+			eventTopic = topic
+		}
+		coordinates = append(coordinates, DeliveryCoordinate{Topic: eventTopic, Partition: event.RedpandaPartition, Offset: event.RedpandaOffset})
+	}
+	return coordinates
+}
+
+func deliveryAssuranceForWriter(writer SimopsArtifactWriter) DeliveryAssurance {
+	if assurer, ok := writer.(SimopsDeliveryAssurer); ok {
+		return assurer.DeliveryAssurance()
+	}
+	return ""
 }
 
 func (p *SimopsArtifactIntentProcessor) ensureRunState(runID string) *simopsArtifactIntentRunState {

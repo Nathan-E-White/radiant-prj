@@ -3,9 +3,17 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
+
+	"github.com/apache/arrow-go/v18/arrow"
+	"github.com/apache/iceberg-go"
+	icecatalog "github.com/apache/iceberg-go/catalog"
+	icetable "github.com/apache/iceberg-go/table"
 )
 
 func TestIcebergGoBatchBuildsArrowTableFromTelemetryEvents(t *testing.T) {
@@ -88,5 +96,49 @@ func TestIcebergReadbackOffsetHelpersRejectNoTelemetry(t *testing.T) {
 	}})
 	if err == nil {
 		t.Fatalf("expected no-telemetry readback plan to fail")
+	}
+}
+
+func TestIcebergAppendPropertiesCarryStableDeliveryAttemptIdentity(t *testing.T) {
+	properties := simopsIcebergAppendProperties("RUN-DELIVERY-PROPERTIES", "simops.telemetry.v1", "delivery-stable")
+	if properties["simops.delivery_attempt_id"] != "delivery-stable" {
+		t.Fatalf("missing stable delivery attempt property: %#v", properties)
+	}
+}
+
+func TestIcebergAppendRetriesCatalogConflictAfterFreshReloadWithStableAttemptID(t *testing.T) {
+	writer := &IcebergGoSimopsArtifactWriter{}
+	attempts := 0
+	reloads := 0
+	var delivered []string
+	writer.appendTable = func(_ context.Context, _ *icetable.Table, _ arrow.Table, _ int64, properties iceberg.Properties) (*icetable.Table, error) {
+		attempts++
+		delivered = append(delivered, properties["simops.delivery_attempt_id"])
+		if attempts == 1 {
+			return nil, fmt.Errorf("catalog conflict: %w", icetable.ErrCommitFailed)
+		}
+		return nil, nil
+	}
+	writer.reloadTable = func(_ context.Context, _ icecatalog.Catalog) (*icetable.Table, error) {
+		reloads++
+		return nil, nil
+	}
+
+	properties := simopsIcebergAppendProperties("RUN-CONFLICT", "simops.telemetry.v1", "delivery-stable")
+	if err := writer.appendWithCatalogRetry(context.Background(), nil, nil, nil, 1, properties); err != nil {
+		t.Fatalf("append after conflict: %v", err)
+	}
+	if attempts != 2 || reloads != 1 {
+		t.Fatalf("attempts=%d reloads=%d, want one conflict, reload, and retry", attempts, reloads)
+	}
+	if len(delivered) != 2 || delivered[0] != "delivery-stable" || delivered[1] != "delivery-stable" {
+		t.Fatalf("retry changed delivery attempt identity: %#v", delivered)
+	}
+
+	writer.appendTable = func(context.Context, *icetable.Table, arrow.Table, int64, iceberg.Properties) (*icetable.Table, error) {
+		return nil, errors.New("unknown append failure")
+	}
+	if err := writer.appendWithCatalogRetry(context.Background(), nil, nil, nil, 1, properties); err == nil {
+		t.Fatal("non-conflict append failure must not be retried")
 	}
 }

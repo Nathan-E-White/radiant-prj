@@ -9,8 +9,10 @@ import (
 var ErrSimopsRunNotFound = errors.New("simops run not found")
 var ErrSimopsArtifactNotFound = errors.New("simops artifact not found")
 var ErrSimopsConflict = errors.New("simops conflict")
+var ErrDeliveryAttemptNotFound = errors.New("delivery attempt not found")
 
 type SimopsStore interface {
+	DeliveryAttemptStore
 	CreateRun(record SimopsRunRecord, workers []SimopsWorkerRecord, commands []SimopsSpoolCommand) (SimopsRunRecord, bool, error)
 	SaveLaunch(runID string, workers []SimopsWorkerRecord, commands []SimopsSpoolCommand) error
 	GetRunByIdempotency(identity string, key string) (SimopsRunRecord, error)
@@ -29,6 +31,12 @@ type SimopsStore interface {
 	MarkPublicationIntentPublished(intentID string, event SimopsEvent) error
 	MarkPublicationIntentFailed(intentID string, err error) error
 	UpdateArtifactStatus(runID string, artifactID string, status string) error
+	CreateDeliveryAttempt(DeliveryAttemptRequest) (DeliveryAttempt, bool, error)
+	GetDeliveryAttempt(string) (DeliveryAttempt, error)
+	PrepareDeliveryAttempt(string, string) error
+	ResolveDeliveryAttempt(string, VerifiedDeliveryEvidence) error
+	MarkDeliveryAttemptUnknown(string, string) error
+	ListDeliveryAttempts(string) ([]DeliveryAttempt, error)
 	ActiveRunCount() int
 }
 
@@ -51,26 +59,116 @@ type SimopsPublicationIntent struct {
 }
 
 type InMemorySimopsStore struct {
-	mu             sync.RWMutex
-	runs           map[string]SimopsRunRecord
-	idempotency    map[string]string
-	workersByRun   map[string]map[string]SimopsWorkerRecord
-	commandsByRun  map[string][]SimopsSpoolCommand
-	artifactsByRun map[string][]SimopsArtifactRecord
-	eventsByRun    map[string][]SimopsEvent
-	intentsByRun   map[string]map[string]SimopsPublicationIntent
+	mu               sync.RWMutex
+	runs             map[string]SimopsRunRecord
+	idempotency      map[string]string
+	workersByRun     map[string]map[string]SimopsWorkerRecord
+	commandsByRun    map[string][]SimopsSpoolCommand
+	artifactsByRun   map[string][]SimopsArtifactRecord
+	eventsByRun      map[string][]SimopsEvent
+	intentsByRun     map[string]map[string]SimopsPublicationIntent
+	deliveryAttempts map[string]DeliveryAttempt
 }
 
 func NewInMemorySimopsStore() *InMemorySimopsStore {
 	return &InMemorySimopsStore{
-		runs:           make(map[string]SimopsRunRecord),
-		idempotency:    make(map[string]string),
-		workersByRun:   make(map[string]map[string]SimopsWorkerRecord),
-		commandsByRun:  make(map[string][]SimopsSpoolCommand),
-		artifactsByRun: make(map[string][]SimopsArtifactRecord),
-		eventsByRun:    make(map[string][]SimopsEvent),
-		intentsByRun:   make(map[string]map[string]SimopsPublicationIntent),
+		runs:             make(map[string]SimopsRunRecord),
+		idempotency:      make(map[string]string),
+		workersByRun:     make(map[string]map[string]SimopsWorkerRecord),
+		commandsByRun:    make(map[string][]SimopsSpoolCommand),
+		artifactsByRun:   make(map[string][]SimopsArtifactRecord),
+		eventsByRun:      make(map[string][]SimopsEvent),
+		intentsByRun:     make(map[string]map[string]SimopsPublicationIntent),
+		deliveryAttempts: make(map[string]DeliveryAttempt),
 	}
+}
+
+func (s *InMemorySimopsStore) CreateDeliveryAttempt(request DeliveryAttemptRequest) (DeliveryAttempt, bool, error) {
+	id, err := deliveryAttemptID(request)
+	if err != nil {
+		return DeliveryAttempt{}, false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.runs[request.RunID]; !ok {
+		return DeliveryAttempt{}, false, ErrSimopsRunNotFound
+	}
+	if existing, ok := s.deliveryAttempts[id]; ok {
+		return cloneDeliveryAttempt(existing), false, nil
+	}
+	now := time.Now().UTC()
+	attempt := DeliveryAttempt{AttemptID: id, RunID: request.RunID, Target: request.Target, Coordinates: cloneDeliveryCoordinates(request.Coordinates), State: DeliveryAttemptPending, CreatedAt: now, UpdatedAt: now}
+	s.deliveryAttempts[id] = attempt
+	return cloneDeliveryAttempt(attempt), true, nil
+}
+
+func (s *InMemorySimopsStore) GetDeliveryAttempt(id string) (DeliveryAttempt, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	attempt, ok := s.deliveryAttempts[id]
+	if !ok {
+		return DeliveryAttempt{}, ErrDeliveryAttemptNotFound
+	}
+	return cloneDeliveryAttempt(attempt), nil
+}
+
+func (s *InMemorySimopsStore) PrepareDeliveryAttempt(id string, location string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	attempt, ok := s.deliveryAttempts[id]
+	if !ok {
+		return ErrDeliveryAttemptNotFound
+	}
+	attempt.Location = location
+	attempt.UpdatedAt = time.Now().UTC()
+	s.deliveryAttempts[id] = attempt
+	return nil
+}
+
+func (s *InMemorySimopsStore) ResolveDeliveryAttempt(id string, evidence VerifiedDeliveryEvidence) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	attempt, ok := s.deliveryAttempts[id]
+	if !ok {
+		return ErrDeliveryAttemptNotFound
+	}
+	evidence.AttemptID = id
+	evidence.Coordinates = cloneDeliveryCoordinates(attempt.Coordinates)
+	attempt.Evidence = &evidence
+	attempt.State = DeliveryAttemptResolved
+	attempt.Reason = ""
+	attempt.UpdatedAt = time.Now().UTC()
+	s.deliveryAttempts[id] = attempt
+	return nil
+}
+
+func (s *InMemorySimopsStore) MarkDeliveryAttemptUnknown(id string, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	attempt, ok := s.deliveryAttempts[id]
+	if !ok {
+		return ErrDeliveryAttemptNotFound
+	}
+	attempt.State = DeliveryAttemptUnknown
+	attempt.Reason = reason
+	attempt.UpdatedAt = time.Now().UTC()
+	s.deliveryAttempts[id] = attempt
+	return nil
+}
+
+func (s *InMemorySimopsStore) ListDeliveryAttempts(runID string) ([]DeliveryAttempt, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.runs[runID]; !ok {
+		return nil, ErrSimopsRunNotFound
+	}
+	var attempts []DeliveryAttempt
+	for _, attempt := range s.deliveryAttempts {
+		if attempt.RunID == runID {
+			attempts = append(attempts, cloneDeliveryAttempt(attempt))
+		}
+	}
+	return attempts, nil
 }
 
 func (s *InMemorySimopsStore) CreateRun(record SimopsRunRecord, workers []SimopsWorkerRecord, commands []SimopsSpoolCommand) (SimopsRunRecord, bool, error) {

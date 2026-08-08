@@ -74,7 +74,7 @@ func NewDefaultSimopsControllerWithSpooler(cfg SimopsConfig, spooler SimopsSpool
 	if err != nil {
 		return nil, err
 	}
-	intent := NewSimopsArtifactIntentProcessor(writer, eventLog, cfg.RedpandaTopic, 1, time.Now)
+	intent := NewSimopsArtifactIntentProcessorWithDeliveryStore(writer, eventLog, cfg.RedpandaTopic, 1, time.Now, store)
 
 	return NewSimopsController(
 		cfg,
@@ -108,7 +108,7 @@ func NewSimopsController(cfg SimopsConfig, store SimopsStore, spooler SimopsSpoo
 		writer = &DisabledSimopsArtifactWriter{base: &simopsArtifactWriterBase{store: store, topic: cfg.RedpandaTopic, manifestDir: cfg.IcebergManifestDir, now: time.Now}}
 	}
 	if intent == nil {
-		intent = NewSimopsArtifactIntentProcessor(writer, eventLog, cfg.RedpandaTopic, 1, time.Now)
+		intent = NewSimopsArtifactIntentProcessorWithDeliveryStore(writer, eventLog, cfg.RedpandaTopic, 1, time.Now, store)
 	}
 	controller := &SimopsController{
 		cfg:      cfg,
@@ -392,22 +392,38 @@ func (c *SimopsController) responseFor(record SimopsRunRecord, created bool) (Si
 	if err != nil {
 		return SimopsRunResponse{}, http.StatusInternalServerError, err
 	}
+	attempts, err := c.store.ListDeliveryAttempts(record.RunID)
+	if err != nil {
+		return SimopsRunResponse{}, http.StatusInternalServerError, err
+	}
+	views := make([]DeliveryAttemptView, 0, len(attempts))
+	for _, attempt := range attempts {
+		view := DeliveryAttemptView{AttemptID: attempt.AttemptID, State: attempt.State, Coordinates: cloneDeliveryCoordinates(attempt.Coordinates)}
+		if attempt.Evidence != nil {
+			view.Assurance = attempt.Evidence.Assurance
+			view.Reconciliation = attempt.Evidence.Reconciliation
+			observedAt := attempt.Evidence.ObservedAt
+			view.ObservedAt = &observedAt
+		}
+		views = append(views, view)
+	}
 
 	return SimopsRunResponse{
-		RunID:           record.RunID,
-		ScenarioID:      record.ScenarioID,
-		Lifecycle:       record.Lifecycle,
-		Source:          record.Source,
-		LaunchMode:      record.LaunchMode,
-		RuntimeLimitSec: record.RuntimeLimitSec,
-		Created:         created,
-		SubmittedBy:     record.SubmittedBy,
-		CreatedAt:       record.CreatedAt,
-		UpdatedAt:       record.UpdatedAt,
-		MoQSubscription: buildMoQSubscription(c.cfg, record, workers, c.now().UTC()),
-		Workers:         workers,
-		SpoolCommands:   commands,
-		Artifacts:       artifacts,
+		RunID:            record.RunID,
+		ScenarioID:       record.ScenarioID,
+		Lifecycle:        record.Lifecycle,
+		Source:           record.Source,
+		LaunchMode:       record.LaunchMode,
+		RuntimeLimitSec:  record.RuntimeLimitSec,
+		Created:          created,
+		SubmittedBy:      record.SubmittedBy,
+		CreatedAt:        record.CreatedAt,
+		UpdatedAt:        record.UpdatedAt,
+		MoQSubscription:  buildMoQSubscription(c.cfg, record, workers, c.now().UTC()),
+		Workers:          workers,
+		SpoolCommands:    commands,
+		Artifacts:        artifacts,
+		DeliveryAttempts: views,
 	}, http.StatusAccepted, nil
 }
 

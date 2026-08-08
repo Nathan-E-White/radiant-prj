@@ -238,6 +238,11 @@ CREATE TABLE simops_artifacts (
   kind TEXT NOT NULL, media_type TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'received',
   location TEXT NOT NULL, iceberg_table TEXT, created_at TIMESTAMPTZ NOT NULL
 );
+CREATE TABLE simops_delivery_attempts (
+  attempt_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
+  target TEXT NOT NULL, location TEXT, coordinates JSONB NOT NULL, state TEXT NOT NULL,
+  reason TEXT, evidence JSONB, created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL
+);
 CREATE TABLE simops_telemetry_frames (
   received_at TIMESTAMPTZ NOT NULL, run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
   frame JSONB NOT NULL
