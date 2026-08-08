@@ -125,7 +125,9 @@ async function startFleetBoardPhaserGame(mount: FleetBoardPhaserMount): Promise<
         .image(offset.x + 10.5 * tileSize, offset.y + 0.85 * tileSize, "fleet-board-placeholder", frameBySpriteKey.routePulse)
         .setDisplaySize(50, 36)
         .setAlpha(0.75);
-      this.routePulseBaseX = this.routePulse.x;
+      if (!scene.reducedMotion) {
+        this.routePulseBaseX = this.routePulse.x;
+      }
 
       const dragCard = this.add
         .image(offset.x + 0.7 * tileSize, offset.y + 6.9 * tileSize, "fleet-board-placeholder", frameBySpriteKey.reactor)

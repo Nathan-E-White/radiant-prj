@@ -666,7 +666,7 @@ select:disabled {
   gap: 8px;
 }
 
-.board-scene-list article {
+.board-scene-list button {
   display: grid;
   gap: 5px;
   width: 100%;
@@ -678,12 +678,12 @@ select:disabled {
   text-align: left;
 }
 
-.board-scene-list article.active {
+.board-scene-list button.active {
   border-color: #315f70;
   background: #e8f2f2;
 }
 
-.board-scene-list article span,
+.board-scene-list button span,
 .board-scene-summary strong,
 .board-navigator-list strong,
 .prototype-decision-list strong {
@@ -691,7 +691,7 @@ select:disabled {
   font-size: 0.85rem;
 }
 
-.board-scene-list article small,
+.board-scene-list button small,
 .board-scene-summary span,
 .board-navigator-list span,
 .prototype-decision-list p {
@@ -761,6 +761,7 @@ select:disabled {
 
 .board-scene-control-field span,
 .board-scene-effective-state span {
+.board-scene-control span {
   color: #60706a;
   font-size: 0.72rem;
   font-weight: 800;
@@ -772,6 +773,7 @@ select:disabled {
   color: #1f2b27;
   font-size: 0.82rem;
 }
+
 
 .board-scene-camera-controls {
   margin: 0;

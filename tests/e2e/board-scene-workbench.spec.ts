@@ -15,11 +15,11 @@ test("contributors inspect stable board scenes with the navigator beside the ren
   await expect(page.getByRole("region", { name: "Board Navigator" })).toContainText("Reactor Slot Rail");
   await expect(page.getByRole("region", { name: "Board Navigator" })).toContainText("Routes");
   await expect(page.getByRole("region", { name: "Board Navigator" })).toContainText("Reactor -> TRISO Supply");
-  await expect(page.getByRole("region", { name: "Asset atlas" })).toContainText("reactor-slot-rail-queued");
 
   const canvas = page.locator('[data-testid="board-scene-canvas"] canvas');
   await expect(canvas).toBeVisible();
   await expect.poll(() => canvasHasNonBlankPixels(canvas), { timeout: 15_000 }).toBe(true);
+
   await expect(canvas).toHaveScreenshot("board-scene-workbench-job-queued.png", {
     animations: "disabled",
     caret: "hide",

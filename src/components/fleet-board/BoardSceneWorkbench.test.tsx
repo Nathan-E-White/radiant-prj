@@ -14,6 +14,7 @@ describe("BoardSceneWorkbench", () => {
     expect(markup).toContain("Queued Simulation Job");
     expect(markup).toContain("Terminal removed");
     expect(markup).toContain("Seed");
+
     expect(markup).toContain("type=\"text\"");
     expect(markup).toContain("Day");
     expect(markup).toContain("type=\"number\"");
@@ -30,6 +31,7 @@ describe("BoardSceneWorkbench", () => {
     expect(markup).toContain("Board Navigator");
     expect(markup).toContain("Routes");
     expect(markup).toContain("Reactor -&gt; TRISO Supply");
+
     expect(markup).toContain("Reactor Slot Rail");
     expect(markup).toContain("Fleet Board map mode");
     expect(markup).toContain("accepted");
