@@ -523,6 +523,11 @@ func applyObservedWorkerLifecycle(worker *SimopsWorkerRecord, observation Observ
 	if observedAt.IsZero() {
 		observedAt = now().UTC()
 	}
+	if observedWorkerStateIsTerminal(worker.ObservedLifecycle) && !observedWorkerStateIsTerminal(observation.State) {
+		worker.ObservedMessage = observedWorkerContradiction(worker.ObservedLifecycle, observation.State, observation.Message)
+		worker.UpdatedAt = observedAt
+		return
+	}
 	worker.ObservedLifecycle = observation.State
 	worker.ObservedReason = observation.Reason
 	worker.ObservedMessage = observation.Message
@@ -534,6 +539,23 @@ func applyObservedWorkerLifecycle(worker *SimopsWorkerRecord, observation Observ
 	if len(observation.Labels) > 0 {
 		worker.Labels = copyStringMap(observation.Labels)
 	}
+}
+
+func observedWorkerStateIsTerminal(state ObservedWorkerState) bool {
+	switch state {
+	case ObservedWorkerSucceeded, ObservedWorkerFailed, ObservedWorkerImagePullFailed, ObservedWorkerStopped:
+		return true
+	default:
+		return false
+	}
+}
+
+func observedWorkerContradiction(terminal ObservedWorkerState, reported ObservedWorkerState, message string) string {
+	prefix := "contradictory runtime observation " + string(reported) + " retained after terminal " + string(terminal)
+	if message == "" {
+		return prefix
+	}
+	return prefix + ": " + message
 }
 
 func copyStringMap(values map[string]string) map[string]string {

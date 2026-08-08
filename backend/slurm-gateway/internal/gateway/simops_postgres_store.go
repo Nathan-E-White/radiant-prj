@@ -544,13 +544,23 @@ func (s *PostgresSimopsStore) UpdateWorkerObservedLifecycle(observation Observed
 	}
 	result, err := s.db.ExecContext(ctx, `
 		UPDATE simops_workers
-		SET observed_lifecycle = $3,
+		SET observed_lifecycle = CASE
+				WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped')
+					AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped')
+				THEN observed_lifecycle
+				ELSE $3
+			END,
 		    observed_reason = $4,
-		    observed_message = $5,
-		    runtime = $6,
-		    runtime_id = $7,
-		    observed_exit_code = $8,
-		    observed_at = $9,
+		    observed_message = CASE
+				WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped')
+					AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped')
+				THEN CONCAT('contradictory runtime observation ', $3, ' retained after terminal ', observed_lifecycle, CASE WHEN $5 IS NULL THEN '' ELSE CONCAT(': ', $5) END)
+				ELSE $5
+			END,
+		    runtime = CASE WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') THEN runtime ELSE $6 END,
+		    runtime_id = CASE WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') THEN runtime_id ELSE $7 END,
+		    observed_exit_code = CASE WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') THEN observed_exit_code ELSE $8 END,
+		    observed_at = CASE WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') THEN observed_at ELSE $9 END,
 		    updated_at = $9
 		WHERE run_id = $1 AND worker_id = $2
 	`, observation.RunID, observation.WorkerID, nullableString(string(observation.State)), nullableString(observation.Reason), nullableString(observation.Message), nullableString(observation.Runtime), nullableString(observation.RuntimeID), nullableInt(observation.ExitCode), observedAt)
