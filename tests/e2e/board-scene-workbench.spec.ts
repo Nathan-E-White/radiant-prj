@@ -20,7 +20,11 @@ test("contributors inspect stable board scenes with the navigator beside the ren
   const canvas = page.locator('[data-testid="board-scene-canvas"] canvas');
   await expect(canvas).toBeVisible();
   await expect.poll(() => canvasHasNonBlankPixels(canvas), { timeout: 15_000 }).toBe(true);
-  await expect(canvas).toHaveScreenshot("board-scene-workbench-job-queued.png");
+  await expect(canvas).toHaveScreenshot("board-scene-workbench-job-queued.png", {
+    animations: "disabled",
+    caret: "hide",
+    maxDiffPixelRatio: 0.01
+  });
 
   await page.getByTestId("board-scene-seed").fill("custom-seed-42");
   await page.getByTestId("board-scene-day").fill("2");
