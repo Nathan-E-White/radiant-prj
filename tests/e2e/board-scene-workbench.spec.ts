@@ -23,7 +23,7 @@ test("contributors inspect stable board scenes with the navigator beside the ren
   await expect(canvas).toHaveScreenshot("board-scene-workbench-job-queued.png", {
     animations: "disabled",
     caret: "hide",
-    maxDiffPixelRatio: 0.01
+    maxDiffPixels: 150
   });
 
   await page.getByTestId("board-scene-seed").fill("custom-seed-42");
