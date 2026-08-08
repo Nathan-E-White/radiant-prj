@@ -347,14 +347,13 @@ Proposed API groups:
 
 | API | Purpose |
 | --- | --- |
-| `GET /api/simulator-workbench/state` | Current top-level workbench state. |
-| `GET /api/simulator-workbench/measured` | Measured state for selected assets/tags. |
-| `GET /api/simulator-workbench/twin` | Current twin state and imputed values. |
+| `GET /api/simulator-workbench/snapshot` | One coherent, generation-bound, non-mutating workbench read for state, measured, results, twin, and lineage. |
 | `GET /api/simulator-workbench/simulations` | Active and recent simulation runs. |
-| `GET /api/simulator-workbench/lineage/{value_id}` | Source and artifact lineage for a displayed value. |
 | existing `POST /api/simops/runs` | Keep for launching run-scoped simulations. |
 | existing `GET /api/simops/runs/{run_id}` | Keep for run inspection. |
 | existing `POST /api/simops/runs/{run_id}/stop` | Keep for controlled stop. |
+
+The field-read routes shown in earlier planning are superseded by ADR-0013. They must not be reintroduced as convenience aliases; the browser's single Snapshot is the public read contract, while projection queries stay internal to the backend.
 
 The `/api/simops/runs/{run_id}/events` endpoint should remain recovery/inspection and should not become the final live telemetry stream.
 

@@ -464,6 +464,61 @@ func (s *PostgresSimopsStore) UpdateRunLifecycle(runID string, lifecycle SimopsL
 	return scanSimopsRun(row)
 }
 
+func (s *PostgresSimopsStore) UpdateRunLifecycleWithPublicationIntent(runID string, lifecycle SimopsLifecycle, event SimopsEvent) (SimopsRunRecord, SimopsPublicationIntent, error) {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SimopsRunRecord{}, SimopsPublicationIntent{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := time.Now().UTC()
+	if event.RunID == "" {
+		event.RunID = runID
+	}
+	if event.OccurredAt.IsZero() {
+		event.OccurredAt = now
+	}
+	intent := newSimopsPublicationIntent(event, now)
+	eventRaw, err := json.Marshal(event)
+	if err != nil {
+		return SimopsRunRecord{}, SimopsPublicationIntent{}, err
+	}
+
+	record, err := scanSimopsRun(tx.QueryRowContext(ctx, `
+		UPDATE simops_runs
+		SET lifecycle = $2, updated_at = $3
+		WHERE run_id = $1
+		RETURNING run_id, scenario_id, lifecycle, source, work_script, launch_mode,
+		          runtime_limit_sec, idempotency_key, submitted_by, ingest_token,
+		          created_at, updated_at
+	`, runID, string(lifecycle), now))
+	if err != nil {
+		return SimopsRunRecord{}, SimopsPublicationIntent{}, err
+	}
+
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO simops_publication_intents (
+			intent_id, run_id, event, state, attempts, created_at, updated_at
+		)
+		VALUES ($1,$2,$3::jsonb,$4,0,$5,$6)
+		ON CONFLICT (intent_id) DO NOTHING
+	`, intent.IntentID, intent.RunID, string(eventRaw), intent.State, intent.CreatedAt, intent.UpdatedAt); err != nil {
+		return SimopsRunRecord{}, SimopsPublicationIntent{}, err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return SimopsRunRecord{}, SimopsPublicationIntent{}, err
+	}
+	canonical, err := s.getPublicationIntent(intent.IntentID)
+	if err != nil {
+		return SimopsRunRecord{}, SimopsPublicationIntent{}, err
+	}
+	return record, canonical, nil
+}
+
 func (s *PostgresSimopsStore) UpdateWorkerFrames(runID string, workerID string, lifecycle SimopsLifecycle, framesDelta int) error {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
@@ -590,6 +645,112 @@ func (s *PostgresSimopsStore) ListEvents(runID string) ([]SimopsEvent, error) {
 	return events, nil
 }
 
+func (s *PostgresSimopsStore) ListPublicationIntents(runID string) ([]SimopsPublicationIntent, error) {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT intent_id, run_id, event, state, attempts, COALESCE(last_error, ''), created_at, updated_at, published_at
+		FROM simops_publication_intents
+		WHERE run_id = $1
+		ORDER BY created_at, intent_id
+	`, runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	intents := []SimopsPublicationIntent{}
+	for rows.Next() {
+		intent, err := scanPublicationIntent(rows)
+		if err != nil {
+			return nil, err
+		}
+		intents = append(intents, intent)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(intents) == 0 {
+		if _, err := s.GetRun(runID); err != nil {
+			return nil, err
+		}
+	}
+	return intents, nil
+}
+
+func (s *PostgresSimopsStore) MarkPublicationIntentPublished(intentID string, event SimopsEvent) error {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	occurredAt := event.OccurredAt
+	if occurredAt.IsZero() {
+		occurredAt = time.Now().UTC()
+	}
+	var frame any
+	if len(event.Frame) > 0 {
+		frame = string(event.Frame)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO simops_events (run_id, worker_id, event_type, lifecycle, frame, occurred_at)
+		SELECT $1,$2,$3,$4,$5::jsonb,$6
+		WHERE NOT EXISTS (
+			SELECT 1
+			FROM simops_events
+			WHERE run_id = $1
+			  AND COALESCE(worker_id, '') = COALESCE($2, '')
+			  AND event_type = $3
+			  AND COALESCE(lifecycle, '') = COALESCE($4, '')
+		)
+	`, event.RunID, nullableString(event.WorkerID), event.EventType, nullableString(string(event.Lifecycle)), frame, occurredAt); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `
+		UPDATE simops_publication_intents
+		SET state = $2, last_error = NULL, updated_at = $3, published_at = $3
+		WHERE intent_id = $1
+	`, intentID, SimopsPublicationPublished, time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	if err := requireAffected(result, ErrSimopsRunNotFound); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *PostgresSimopsStore) MarkPublicationIntentFailed(intentID string, publishErr error) error {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	message := ""
+	if publishErr != nil {
+		message = publishErr.Error()
+	}
+	result, err := s.db.ExecContext(ctx, `
+		UPDATE simops_publication_intents
+		SET state = $2, attempts = attempts + 1, last_error = $3, updated_at = $4
+		WHERE intent_id = $1
+	`, intentID, SimopsPublicationFailed, nullableString(message), time.Now().UTC())
+	if err != nil {
+		return err
+	}
+	return requireAffected(result, ErrSimopsRunNotFound)
+}
+
+func (s *PostgresSimopsStore) getPublicationIntent(intentID string) (SimopsPublicationIntent, error) {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	return scanPublicationIntent(s.db.QueryRowContext(ctx, `
+		SELECT intent_id, run_id, event, state, attempts, COALESCE(last_error, ''), created_at, updated_at, published_at
+		FROM simops_publication_intents
+		WHERE intent_id = $1
+	`, intentID))
+}
+
 func (s *PostgresSimopsStore) UpdateArtifactStatus(runID string, artifactID string, status string) error {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()
@@ -626,6 +787,10 @@ type simopsRunScanner interface {
 	Scan(dest ...any) error
 }
 
+type simopsPublicationIntentScanner interface {
+	Scan(dest ...any) error
+}
+
 func scanSimopsRun(row simopsRunScanner) (SimopsRunRecord, error) {
 	var record SimopsRunRecord
 	var lifecycle string
@@ -654,6 +819,35 @@ func scanSimopsRun(row simopsRunScanner) (SimopsRunRecord, error) {
 		record.IdempotencyKey = idempotency.String
 	}
 	return record, nil
+}
+
+func scanPublicationIntent(row simopsPublicationIntentScanner) (SimopsPublicationIntent, error) {
+	var intent SimopsPublicationIntent
+	var eventRaw []byte
+	var publishedAt sql.NullTime
+	if err := row.Scan(
+		&intent.IntentID,
+		&intent.RunID,
+		&eventRaw,
+		&intent.State,
+		&intent.Attempts,
+		&intent.LastError,
+		&intent.CreatedAt,
+		&intent.UpdatedAt,
+		&publishedAt,
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return SimopsPublicationIntent{}, ErrSimopsRunNotFound
+		}
+		return SimopsPublicationIntent{}, err
+	}
+	if err := json.Unmarshal(eventRaw, &intent.Event); err != nil {
+		return SimopsPublicationIntent{}, err
+	}
+	if publishedAt.Valid {
+		intent.PublishedAt = &publishedAt.Time
+	}
+	return intent, nil
 }
 
 func simopsSQLContext() (context.Context, context.CancelFunc) {

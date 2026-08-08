@@ -97,7 +97,7 @@ minio_ready() {
 }
 
 slurm_gateway_ready() {
-  curl -fsS http://127.0.0.1:8081/healthz >/dev/null 2>&1
+  curl -fsS http://127.0.0.1:8081/readyz >/dev/null 2>&1
 }
 
 workbench_projection_writer_ready() {
@@ -202,10 +202,7 @@ while [[ "$SECONDS" -lt "$deadline" ]]; do
     [[ "${lineage_rows:-0}" -ge 1 ]] &&
     [[ "${iceberg_tables:-0}" -ge 4 ]] &&
     [[ "${parquet_files:-0}" -ge 4 ]]; then
-    curl -fsS http://127.0.0.1:8081/api/simulator-workbench/state | node scripts/workbench-dataflow-json.mjs state-ready
-    curl -fsS http://127.0.0.1:8081/api/simulator-workbench/measured | node scripts/workbench-dataflow-json.mjs frames-ready
-    curl -fsS http://127.0.0.1:8081/api/simulator-workbench/twin | node scripts/workbench-dataflow-json.mjs twin-ready
-    curl -fsS http://127.0.0.1:8081/api/simulator-workbench/lineage/VAL-IMPUTED-CORE-MARGIN | node scripts/workbench-dataflow-json.mjs lineage-ready
+    curl -fsS http://127.0.0.1:8081/api/simulator-workbench/snapshot | node scripts/workbench-dataflow-json.mjs snapshot-ready
     echo "Simulator Workbench dataflow smoke passed for ${run_id}: SCADA=${scada_rows}, telemetry=${telemetry_rows}, results=${result_rows}, imputed=${twin_rows}, Iceberg tables=${iceberg_tables}, Parquet files=${parquet_files}."
     exit 0
   fi

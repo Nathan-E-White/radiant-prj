@@ -81,6 +81,8 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
 
+      - uses: dtolnay/rust-toolchain@stable
+
       - name: Install dependencies
         run: bun install
 
@@ -206,37 +208,52 @@ jobs:
           --health-retries 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: oven-sh/setup-bun@v2
 
       - uses: actions/setup-go@v5
         with:
           go-version-file: backend/slurm-gateway/go.mod
+          cache: true
+          cache-dependency-path: backend/slurm-gateway/go.sum
 
-      - name: Download Reactor Telemetry worker image
+      - name: Download verified worker delivery artifacts
         uses: actions/download-artifact@v4
         with:
-          name: reactor-telemetry-image
-          path: .local/reactor-telemetry-image
+          name: worker-delivery-artifacts
+          path: .local/worker-delivery-artifacts
 
-      - name: Load Reactor Telemetry worker image
-        run: docker load --input .local/reactor-telemetry-image/radiant-scada-standins.tar
+      - name: Load verified worker delivery artifacts
+        run: |-
+          docker load --input .local/worker-delivery-artifacts/radiant-scada-standins.tar
+          docker load --input .local/worker-delivery-artifacts/radiant-simops-generator.tar
 
       - name: Install dependencies
         run: bun install
 
-      - name: Backend gateway tests
-        run: bun run backend:test
-        env:
-          REACTOR_TELEMETRY_TEST_IMAGE: radiant-scada-standins:ci
+      - name: Fetch Go mutation diff base
+        run: git fetch origin main:refs/remotes/origin/main
 
-      - name: Backend dataplane and Iceberg tests
-        run: bun run backend:dataplane:test
+      - name: Verify complete Go backend claims
+        run: >-
+          bun run repository:verify --
+          --claim backend.go.default
+          --claim backend.go.docker-runtime
+          --claim backend.go.dataplane-iceberg
+          --claim backend.go.docker-compatibility-shim
+        env:
+          RUN_BACKEND_GO_PROFILES: "true"
+          REACTOR_TELEMETRY_TEST_IMAGE: radiant-scada-standins:ci
 
       - name: Postgres coherent Snapshot tests
         run: bun run backend:snapshot:postgres:test
         env:
           SIMOPS_POSTGRES_TEST_DSN: postgres://radiant:radiant@127.0.0.1:5432/radiant?sslmode=disable
+
+      - name: Run Go mutation testing
+        run: bun run test:mutation:go
 
   docker:
     needs: changes
@@ -262,9 +279,11 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Verify Docker packaging budgets
-        run: bun run docker:packaging:verify
+      - name: Verify worker delivery artifacts
+        run: bun run repository:verify -- --claim workers.delivery-artifacts
         env:
+          RUN_WORKER_IMAGE_DELIVERY_VERIFICATION: "true"
+          DOCKER_PACKAGING_ROLES: reactor-telemetry-worker,simops-generator
           DOCKER_CONTEXT: default
           DOCKER_PACKAGING_PLATFORM: linux/amd64
           DOCKER_PACKAGING_REGISTRY_REUSE: "true"
@@ -280,14 +299,18 @@ jobs:
           DOCKER_BAKE_CACHE_TO_SIMOPS_GENERATOR: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=radiant-simops-generator-main,mode=max,ignore-error=true' || '' }}
           DOCKER_BAKE_CACHE_TO_GO_RUNTIME: ${{ github.ref == 'refs/heads/main' && 'type=gha,scope=radiant-go-runtime-main,mode=max,ignore-error=true' || '' }}
 
-      - name: Export Reactor Telemetry worker image
-        run: docker save radiant-scada-standins:ci --output radiant-scada-standins.tar
+      - name: Export verified worker delivery artifacts
+        run: |-
+          docker save radiant-scada-standins:ci --output radiant-scada-standins.tar
+          docker save radiant-simops-generator:latest --output radiant-simops-generator.tar
 
-      - name: Upload Reactor Telemetry worker image
+      - name: Upload verified worker delivery artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: reactor-telemetry-image
-          path: radiant-scada-standins.tar
+          name: worker-delivery-artifacts
+          path: |-
+            radiant-scada-standins.tar
+            radiant-simops-generator.tar
           retention-days: 1
 
       - name: Upload Docker packaging evidence
@@ -297,9 +320,38 @@ jobs:
           name: docker-packaging-evidence
           path: .local/docker-packaging-evidence/
 
+  browser:
+    name: browser acceptance
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Chromium for Playwright
+        run: bunx playwright install --with-deps chromium
+
+      - name: Run browser acceptance
+        run: bun run repository:verify -- --claim browser.acceptance
+        env:
+          RUN_BROWSER_ACCEPTANCE: "true"
+
+      - name: Upload browser acceptance diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: ignore
+
   verify:
     name: verify
-    needs: [fast, repository, backend, docker]
+    needs: [fast, repository, backend, docker, browser]
     if: ${{ always() }}
     runs-on: ubuntu-latest
     steps:
@@ -309,8 +361,10 @@ jobs:
           REPOSITORY: ${{ needs.repository.result }}
           BACKEND: ${{ needs.backend.result }}
           DOCKER: ${{ needs.docker.result }}
+          BROWSER: ${{ needs.browser.result }}
         run: |
           test "$FAST" = success
+          test "$BROWSER" = success
           for result in "$REPOSITORY" "$BACKEND" "$DOCKER"; do
             test "$result" = success -o "$result" = skipped
           done

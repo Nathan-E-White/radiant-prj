@@ -1,14 +1,113 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
+import { parse as parseYaml } from "yaml";
 
 import {
   formatVerificationReport,
   verifyRepository,
 } from "./repository-verification/verifier.mjs";
+
+test("browser acceptance is an explicit repository claim and a tracked CI job", async () => {
+  const root = path.resolve(".");
+  const manifest = JSON.parse(await readFile(path.join(root, "config/repository-verification.json"), "utf8"));
+  const workflow = parseYaml(await readFile(path.join(root, ".github/workflows/ci.yml"), "utf8"));
+
+  const acceptance = manifest.claims.find(({ id }) => id === "browser.acceptance");
+  assert.deepEqual(acceptance?.evidence.command, ["bun", "run", "test:e2e"]);
+  assert.equal(acceptance?.evidence.whenEnvironment, "RUN_BROWSER_ACCEPTANCE");
+
+  const browser = workflow.jobs.browser;
+  assert.equal(browser?.name, "browser acceptance");
+  assert.ok(browser?.steps.some(({ run }) => run === "bunx playwright install --with-deps chromium"));
+  assert.ok(browser?.steps.some(({ run }) => run === "bun run repository:verify -- --claim browser.acceptance"));
+  assert.ok(browser?.steps.some(({ uses }) => uses === "actions/upload-artifact@v4"));
+  assert.ok((workflow.jobs.verify.needs ?? []).includes("browser"));
+});
+
+test("browser acceptance preserves its failing scenario and missing-tool diagnostics", async () => {
+  const acceptance = commandClaim("browser.acceptance", ["bun", "run", "test:e2e"], "browser acceptance passes");
+  const failed = await verifyRepository({
+    root: "/repo",
+    manifest: manifest([acceptance]),
+    run: async () => ({
+      status: 1,
+      stdout: "tests/e2e/workbench-live-read.spec.ts:4:1 › Workbench live read\nExpected live Snapshot",
+      stderr: "",
+    }),
+  });
+  const missingTool = await verifyRepository({
+    root: "/repo",
+    manifest: manifest([acceptance]),
+    run: async () => ({ error: Object.assign(new Error("spawn bun ENOENT"), { code: "ENOENT" }) }),
+  });
+
+  assert.match(failed.results[0].observed, /workbench-live-read\.spec\.ts/);
+  assert.match(failed.results[0].observed, /Expected live Snapshot/);
+  assert.equal(missingTool.results[0].observed, "tool not found: bun");
+});
+
+test("browser acceptance is skipped unless its heavyweight CI profile is enabled", async () => {
+  const prior = process.env.RUN_BROWSER_ACCEPTANCE;
+  delete process.env.RUN_BROWSER_ACCEPTANCE;
+  try {
+    const report = await verifyRepository({
+      root: "/repo",
+      manifest: manifest([{ ...commandClaim("browser.acceptance", ["bun", "run", "test:e2e"], "browser acceptance passes"), evidence: { adapter: "command", source: "bun run test:e2e", whenEnvironment: "RUN_BROWSER_ACCEPTANCE", command: ["bun", "run", "test:e2e"] } }]),
+    });
+    assert.equal(report.results[0].status, "skip");
+  } finally {
+    if (prior === undefined) delete process.env.RUN_BROWSER_ACCEPTANCE;
+    else process.env.RUN_BROWSER_ACCEPTANCE = prior;
+  }
+});
+
+test("both Rust workers are explicit locked repository claims exercised by CI", async () => {
+  const manifest = JSON.parse(await readFile("config/repository-verification.json", "utf8"));
+  const workflow = await readFile(".github/workflows/ci.yml", "utf8");
+  for (const [id, manifestPath, target] of [
+    ["workers.simops-generator.tests", "workers/simops-generator/Cargo.toml", "/tmp/radiant-cargo-target/simops-generator"],
+    ["workers.scada-standins.tests", "workers/scada-standins/Cargo.toml", "/tmp/radiant-cargo-target/scada-standins"],
+  ]) {
+    const claim = manifest.claims.find((candidate) => candidate.id === id);
+    assert.deepEqual(claim?.evidence.command, ["cargo", "test", "--locked", "--manifest-path", manifestPath]);
+    assert.equal(claim?.evidence.env.CARGO_TARGET_DIR, target);
+  }
+  assert.match(workflow, /uses: dtolnay\/rust-toolchain@stable/);
+});
+
+test("Issue 202 architecture contract is pinned as document evidence", async () => {
+  const manifest = JSON.parse(await readFile("config/repository-verification.json", "utf8"));
+  const claim = manifest.claims.find((candidate) => candidate.id === "architecture.issue-202-contract");
+
+  assert.equal(claim?.evidence.adapter, "document");
+  assert.equal(claim?.evidence.source, "docs/design/recoverable-delivery-run-review-truth.md");
+  assert.ok(claim?.requiredText.includes("at-least-once with stable identity and reconciliation"));
+  assert.ok(claim?.requiredText.includes("No module may imply end-to-end exactly-once processing"));
+  assert.ok(claim?.requiredText.includes("The Workbench Review Context is presentation-only mediation"));
+});
+
+test("complete Go backend profiles are explicit claims run in the prepared backend job", async () => {
+  const manifest = JSON.parse(await readFile("config/repository-verification.json", "utf8"));
+  const workflow = parseYaml(await readFile(".github/workflows/ci.yml", "utf8"));
+  const ids = ["backend.go.default", "backend.go.docker-runtime", "backend.go.dataplane-iceberg", "backend.go.docker-compatibility-shim"];
+  for (const id of ids) {
+    const claim = manifest.claims.find((candidate) => candidate.id === id);
+    assert.equal(claim?.evidence.command[0], "go");
+    assert.equal(claim?.evidence.whenEnvironment, "RUN_BACKEND_GO_PROFILES");
+    assert.equal(claim?.evidence.env, undefined);
+  }
+
+  const setupGo = workflow.jobs.backend.steps.find(({ uses }) => uses === "actions/setup-go@v5");
+  assert.equal(setupGo?.with?.cache, true);
+  assert.equal(setupGo?.with?.["cache-dependency-path"], "backend/slurm-gateway/go.sum");
+  const verification = workflow.jobs.backend.steps.find(({ name }) => name === "Verify complete Go backend claims");
+  assert.match(verification?.run ?? "", /--claim backend\.go\.default/);
+  assert.equal(verification?.env?.RUN_BACKEND_GO_PROFILES, "true");
+});
 
 test("structured JSON evidence is parsed and checked by path", async (t) => {
   const root = await temporaryRepository(t);
@@ -122,6 +221,10 @@ test("source-set contracts survive behavior-preserving token moves between files
 });
 
 test("command adapters report missing tools and observable output", async () => {
+  const previousGoCache = process.env.GOCACHE;
+  const previousGoModCache = process.env.GOMODCACHE;
+  delete process.env.GOCACHE;
+  delete process.env.GOMODCACHE;
   const calls = [];
   const run = async (command, args, options) => {
     calls.push({ command, args, options });
@@ -131,22 +234,83 @@ test("command adapters report missing tools and observable output", async () => 
     return { status: 0, stdout: "contract passed\n", stderr: "" };
   };
 
-  const report = await verifyRepository({
-    root: "/repo",
-    run,
-    manifest: manifest([
-      { ...commandClaim("behavior.ok", ["go", "test", "./..."], "command succeeds"), evidence: { adapter: "command", source: "go test ./...", command: ["go", "test", "./..."], cwd: "backend", env: { GOCACHE: "/tmp/go-cache" } } },
-      commandClaim("behavior.tool", ["missing-tool", "--check"], "tool is available"),
-    ]),
-  });
+  try {
+    const report = await verifyRepository({
+      root: "/repo",
+      run,
+      manifest: manifest([
+        { ...commandClaim("behavior.ok", ["go", "test", "./..."], "command succeeds"), evidence: { adapter: "command", source: "go test ./...", command: ["go", "test", "./..."], cwd: "backend", env: { GOCACHE: "/tmp/go-cache" } } },
+        commandClaim("behavior.tool", ["missing-tool", "--check"], "tool is available"),
+      ]),
+    });
 
-  assert.equal(report.exitCode, 1);
-  assert.equal(report.results[0].observed, "exit 0: contract passed");
-  assert.equal(report.results[1].observed, "tool not found: missing-tool");
-  assert.deepEqual(calls[0].args, ["test", "./..."]);
-  assert.equal(calls[0].options.cwd, "/repo/backend");
-  assert.equal(calls[0].options.env.GOCACHE, "/tmp/go-cache");
-  assert.equal(calls[0].options.env.PATH, process.env.PATH);
+    assert.equal(report.exitCode, 1);
+    assert.equal(report.results[0].observed, "exit 0: contract passed");
+    assert.equal(report.results[1].observed, "tool not found: missing-tool");
+    assert.deepEqual(calls[0].args, ["test", "./..."]);
+    assert.equal(calls[0].options.cwd, "/repo/backend");
+    assert.equal(calls[0].options.env.GOCACHE, "/tmp/go-cache");
+    assert.equal(calls[0].options.env.PATH, process.env.PATH);
+  } finally {
+    if (previousGoCache === undefined) {
+      delete process.env.GOCACHE;
+    } else {
+      process.env.GOCACHE = previousGoCache;
+    }
+    if (previousGoModCache === undefined) {
+      delete process.env.GOMODCACHE;
+    } else {
+      process.env.GOMODCACHE = previousGoModCache;
+    }
+  }
+});
+
+test("command adapters allow process env to override configured command env keys", async () => {
+  const previousGoCache = process.env.GOCACHE;
+  const previousGoModCache = process.env.GOMODCACHE;
+  process.env.GOCACHE = "/tmp/override-go-cache";
+  process.env.GOMODCACHE = "/tmp/override-go-mod-cache";
+  const calls = [];
+  const run = async (command, args, options) => {
+    calls.push({ command, args, options });
+    return { status: 0, stdout: "contract passed\n", stderr: "" };
+  };
+
+  try {
+    const report = await verifyRepository({
+      root: "/repo",
+      run,
+      manifest: manifest([
+        {
+          ...commandClaim("behavior.ok", ["go", "test", "./..."], "command succeeds"),
+          evidence: {
+            adapter: "command",
+            source: "go test ./...",
+            command: ["go", "test", "./..."],
+            env: {
+              GOCACHE: "/tmp/configured-go-cache",
+              GOMODCACHE: "/tmp/configured-go-mod-cache"
+            }
+          }
+        }
+      ]),
+    });
+
+    assert.equal(report.exitCode, 0);
+    assert.equal(calls[0].options.env.GOCACHE, "/tmp/override-go-cache");
+    assert.equal(calls[0].options.env.GOMODCACHE, "/tmp/override-go-mod-cache");
+  } finally {
+    if (previousGoCache === undefined) {
+      delete process.env.GOCACHE;
+    } else {
+      process.env.GOCACHE = previousGoCache;
+    }
+    if (previousGoModCache === undefined) {
+      delete process.env.GOMODCACHE;
+    } else {
+      process.env.GOMODCACHE = previousGoModCache;
+    }
+  }
 });
 
 test("environment-gated executable evidence is explicit when unavailable", async () => {

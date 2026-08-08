@@ -69,15 +69,23 @@ func TestDefaultSimopsControllerUsesInjectedRuntime(t *testing.T) {
 	if len(spooler.stopProfiles) != 1 || spooler.stopProfiles[0].WorkerID != "scheduler-01" || spooler.stopProfiles[0].WorkerKind != SimopsWorkerScheduler {
 		t.Fatalf("unexpected stop profiles %#v", spooler.stopProfiles)
 	}
+	if spooler.profileCleanup != 1 {
+		t.Fatalf("expected injected profile cleanup to run once, got %d", spooler.profileCleanup)
+	}
+	if len(spooler.cleanupProfiles) != 1 || spooler.cleanupProfiles[0].WorkerID != "scheduler-01" || spooler.cleanupProfiles[0].WorkerKind != SimopsWorkerScheduler {
+		t.Fatalf("unexpected cleanup profiles %#v", spooler.cleanupProfiles)
+	}
 }
 
 type recordingSimopsSpooler struct {
-	legacyStarts  int
-	profileStarts int
-	profileStops  int
-	runID         string
-	profiles      []RunConnectionProfile
-	stopProfiles  []RunConnectionProfile
+	legacyStarts    int
+	profileStarts   int
+	profileStops    int
+	profileCleanup  int
+	runID           string
+	profiles        []RunConnectionProfile
+	stopProfiles    []RunConnectionProfile
+	cleanupProfiles []RunConnectionProfile
 }
 
 func (s *recordingSimopsSpooler) StartRun(_ context.Context, _ SimopsRunRecord, _ []SimopsWorkerKind) ([]SimopsWorkerRecord, []SimopsSpoolCommand, error) {
@@ -141,6 +149,18 @@ func (s *recordingSimopsSpooler) StopRunProfiles(ctx context.Context, runID stri
 	return nil
 }
 
+func (s *recordingSimopsSpooler) CleanupRunProfiles(ctx context.Context, runID string, profiles []RunConnectionProfile) error {
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	default:
+	}
+	s.profileCleanup++
+	s.runID = runID
+	s.cleanupProfiles = append([]RunConnectionProfile(nil), profiles...)
+	return nil
+}
+
 func (s *recordingSimopsSpooler) SyncRun(ctx context.Context, _ SimopsRunRecord, workers []SimopsWorkerRecord) ([]ObservedWorkerLifecycle, error) {
 	select {
 	case <-ctx.Done():
@@ -153,6 +173,27 @@ func (s *recordingSimopsSpooler) SyncRun(ctx context.Context, _ SimopsRunRecord,
 			RunID:      worker.RunID,
 			WorkerID:   worker.WorkerID,
 			WorkerKind: worker.WorkerKind,
+			State:      ObservedWorkerPending,
+			Runtime:    "test",
+			Reason:     "recording-runtime",
+			ObservedAt: fixedGatewayRuntimeNow(),
+		})
+	}
+	return observations, nil
+}
+
+func (s *recordingSimopsSpooler) SyncRunProfiles(ctx context.Context, run SimopsRunRecord, profiles []RunConnectionProfile) ([]ObservedWorkerLifecycle, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	default:
+	}
+	observations := make([]ObservedWorkerLifecycle, 0, len(profiles))
+	for _, profile := range profiles {
+		observations = append(observations, ObservedWorkerLifecycle{
+			RunID:      run.RunID,
+			WorkerID:   profile.WorkerID,
+			WorkerKind: profile.WorkerKind,
 			State:      ObservedWorkerPending,
 			Runtime:    "test",
 			Reason:     "recording-runtime",
