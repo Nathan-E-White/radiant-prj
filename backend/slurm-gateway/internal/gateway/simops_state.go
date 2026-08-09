@@ -224,7 +224,7 @@ func applyWorkerCleanupOutcome(state SimopsWorkerState, disposition SimopsCleanu
 		return state, &evidence
 	case SimopsCleanupFailed:
 		state.Condition.Status, state.FailureStage = SimopsConditionFailed, SimopsFailureCleanup
-		return state, nil
+		return state, &SimopsDegradationEvidence{Code: "cleanup-failed", Source: source, Message: message, ObservedAt: observedAt}
 	}
 	return state, nil
 }

@@ -124,6 +124,52 @@ func TestPostgresSimopsStoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestPostgresSimopsStopLedgerRetainsFailureAndCleanupFacts(t *testing.T) {
+	dsn := strings.TrimSpace(os.Getenv("SIMOPS_POSTGRES_TEST_DSN"))
+	if dsn == "" {
+		t.Skip("set SIMOPS_POSTGRES_TEST_DSN to run Postgres SimOps stop-ledger integration test")
+	}
+	store, err := NewPostgresSimopsStore(dsn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	runID := "RUN-PG-STOP-" + strings.ReplaceAll(now.Format("150405.000000"), ".", "")
+	run := SimopsRunRecord{RunID: runID, ScenarioID: "scheduler-drift", Lifecycle: SimopsStreaming, Source: "test", WorkScript: "test", LaunchMode: "resident", RuntimeLimitSec: 1, SubmittedBy: "postgres-test", IngestToken: "token", State: SimopsRunState{Phase: SimopsRunRunning, Condition: SimopsOperationalCondition{Status: SimopsConditionNominal}, Cleanup: SimopsCleanupNotRequested}, CreatedAt: now, UpdatedAt: now}
+	worker := SimopsWorkerRecord{RunID: runID, WorkerID: "scheduler-01", WorkerKind: SimopsWorkerScheduler, Lifecycle: SimopsStreaming, LaunchMode: "resident", State: SimopsWorkerState{Phase: SimopsWorkerExecuting, LaunchDisposition: SimopsLaunchLaunched, ActiveExecution: SimopsExecutionActive, Condition: SimopsOperationalCondition{Status: SimopsConditionNominal}, FailureStage: SimopsFailureNone, Cleanup: SimopsCleanupNotRequested}, UpdatedAt: now}
+	if _, created, err := store.CreateRun(run, []SimopsWorkerRecord{worker}, nil); err != nil || !created {
+		t.Fatalf("create: created=%v err=%v", created, err)
+	}
+	for _, cleanup := range []SimopsCleanupDisposition{SimopsCleanupRequested, SimopsCleanupInProgress} {
+		outcome, err := store.ApplyStopTransition(SimopsStopTransition{RunID: runID, Cleanup: cleanup, OccurredAt: now})
+		if err != nil || outcome.Run.State.Phase != SimopsRunStopping {
+			t.Fatalf("cleanup=%s outcome=%#v err=%v", cleanup, outcome, err)
+		}
+	}
+	outcome, err := store.ApplyStopTransition(SimopsStopTransition{RunID: runID, Cleanup: SimopsCleanupFailed, CleanupFailure: "delete rejected", CleanupConfirmed: true, OccurredAt: now})
+	if err != nil || outcome.Run.State.Phase != SimopsRunFailed || outcome.Intent != nil {
+		t.Fatalf("cleanup failure outcome=%#v err=%v", outcome, err)
+	}
+	if len(outcome.Workers) != 1 || outcome.Workers[0].State.FailureStage != SimopsFailureCleanup {
+		t.Fatalf("worker failure stage=%#v", outcome.Workers)
+	}
+	failedRun := run
+	failedRun.RunID = runID + "-TERMINAL"
+	failedRun.IdempotencyKey = ""
+	failedWorker := worker
+	failedWorker.RunID = failedRun.RunID
+	if _, created, err := store.CreateRun(failedRun, []SimopsWorkerRecord{failedWorker}, nil); err != nil || !created {
+		t.Fatalf("create failed-run fixture: created=%v err=%v", created, err)
+	}
+	if err := store.UpdateWorkerObservedLifecycle(ObservedWorkerLifecycle{RunID: failedRun.RunID, WorkerID: failedWorker.WorkerID, State: ObservedWorkerFailed, Runtime: "contract", ObservedAt: now}); err != nil {
+		t.Fatal(err)
+	}
+	outcome, err = store.ApplyStopTransition(SimopsStopTransition{RunID: failedRun.RunID, Cleanup: SimopsCleanupCompleted, OccurredAt: now})
+	if err != nil || outcome.Run.State.Phase != SimopsRunFailed || outcome.Intent != nil {
+		t.Fatalf("pre-existing failure cannot publish stopped: outcome=%#v err=%v", outcome, err)
+	}
+}
+
 type capturingKafkaWriter struct {
 	messages []SimopsBrokerMessage
 	err      error

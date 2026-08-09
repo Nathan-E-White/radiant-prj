@@ -230,40 +230,14 @@ func (c *SimopsController) StopRun(ctx context.Context, runID string) (SimopsRun
 		resp, _, err := c.responseFor(record, false)
 		return resp, http.StatusOK, err
 	}
-	workers, err := c.store.ListWorkers(runID)
+	orchestrator := NewSimopsStopOrchestrator(c.cfg, c.store, c.spooler, c.now)
+	outcome, err := orchestrator.Stop(ctx, runID)
 	if err != nil {
-		return SimopsRunResponse{}, http.StatusInternalServerError, err
-	}
-	if err := c.stopRunWorkers(ctx, record, workers); err != nil {
 		return SimopsRunResponse{}, http.StatusBadGateway, err
 	}
-	event := SimopsEvent{
-		RunID:      record.RunID,
-		EventType:  "run.lifecycle",
-		Lifecycle:  SimopsStopped,
-		OccurredAt: c.now().UTC(),
-	}
-	record, _, err = c.store.UpdateRunLifecycleWithPublicationIntent(runID, SimopsStopped, event)
-	if err != nil {
-		return SimopsRunResponse{}, http.StatusInternalServerError, err
-	}
-	for _, worker := range workers {
-		_ = c.store.UpdateWorkerFrames(runID, worker.WorkerID, SimopsStopped, 0)
-	}
-	_ = dispatchSimopsPublicationIntents(ctx, c.store, c.eventLog, record.RunID)
-	resp, _, err := c.responseFor(record, false)
+	_ = dispatchSimopsPublicationIntents(ctx, c.store, c.eventLog, outcome.Run.RunID)
+	resp, _, err := c.responseFor(outcome.Run, false)
 	return resp, http.StatusOK, err
-}
-
-func (c *SimopsController) stopRunWorkers(ctx context.Context, record SimopsRunRecord, workers []SimopsWorkerRecord) error {
-	profiles, err := c.runWorkerProfiles(record, workers)
-	if err != nil {
-		return err
-	}
-	if err := c.spooler.StopRunProfiles(ctx, record.RunID, profiles); err != nil {
-		return err
-	}
-	return c.spooler.CleanupRunProfiles(ctx, record.RunID, profiles)
 }
 
 func (c *SimopsController) syncRunWorkers(ctx context.Context, record SimopsRunRecord) error {

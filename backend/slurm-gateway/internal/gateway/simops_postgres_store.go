@@ -556,6 +556,97 @@ func (s *PostgresSimopsStore) UpdateWorkerFrames(runID string, workerID string, 
 	return requireAffected(result, ErrSimopsRunNotFound)
 }
 
+func (s *PostgresSimopsStore) ApplyStopTransition(transition SimopsStopTransition) (SimopsStopOutcome, error) {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	now := transition.OccurredAt.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return SimopsStopOutcome{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var exists string
+	if err := tx.QueryRowContext(ctx, `SELECT run_id FROM simops_runs WHERE run_id=$1 FOR UPDATE`, transition.RunID).Scan(&exists); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return SimopsStopOutcome{}, ErrSimopsRunNotFound
+		}
+		return SimopsStopOutcome{}, err
+	}
+	condition := "nominal"
+	phase, lifecycle := "stopping", string(SimopsDegraded)
+	if transition.StopConfirmed || transition.CleanupConfirmed {
+		condition = "failed"
+	} else if transition.StopFailure != "" || transition.Cleanup == SimopsCleanupIncomplete || transition.Cleanup == SimopsCleanupFailed {
+		condition = "degraded"
+	}
+	if transition.Cleanup == SimopsCleanupCompleted && transition.StopFailure == "" {
+		phase, lifecycle = "stopped", string(SimopsStopped)
+	}
+	workerPhase := ""
+	activeExecution := ""
+	if transition.Cleanup == SimopsCleanupCompleted && transition.StopFailure == "" {
+		workerPhase, activeExecution = "stopped", "terminal_observed"
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE simops_workers SET cleanup_disposition=$2, condition_status=CASE WHEN $4 OR $5 THEN 'failed' WHEN $3 <> '' OR $2 IN ('incomplete','failed') THEN 'degraded' ELSE condition_status END, failure_stage=CASE WHEN $5 THEN 'cleanup' WHEN $4 THEN 'stop' ELSE failure_stage END, state_phase=CASE WHEN $6 <> '' AND condition_status <> 'failed' THEN $6 ELSE state_phase END, active_execution=CASE WHEN $7 <> '' AND condition_status <> 'failed' THEN $7 ELSE active_execution END, lifecycle=CASE WHEN $6 <> '' AND condition_status <> 'failed' THEN 'stopped' ELSE lifecycle END, updated_at=$8 WHERE run_id=$1`, transition.RunID, string(transition.Cleanup), transition.StopFailure, transition.StopConfirmed, transition.CleanupConfirmed, workerPhase, activeExecution, now); err != nil {
+		return SimopsStopOutcome{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO simops_cleanup_attempts (run_id, disposition, source, message, observed_at) VALUES ($1,$2,'stop-orchestrator',$3,$4)`, transition.RunID, string(transition.Cleanup), nullableString(firstNonEmpty(transition.CleanupFailure, transition.StopFailure)), now); err != nil {
+		return SimopsStopOutcome{}, err
+	}
+	if transition.StopFailure != "" {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO simops_worker_observations (run_id, worker_id, code, source, message, observed_at) SELECT run_id, worker_id, 'stop-incomplete', 'stop-orchestrator', $2, $3 FROM simops_workers WHERE run_id=$1`, transition.RunID, transition.StopFailure, now); err != nil {
+			return SimopsStopOutcome{}, err
+		}
+	}
+	if transition.Cleanup == SimopsCleanupIncomplete || transition.Cleanup == SimopsCleanupFailed {
+		code := "cleanup-incomplete"
+		if transition.CleanupConfirmed {
+			code = "cleanup-failed"
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO simops_worker_observations (run_id, worker_id, code, source, message, observed_at) SELECT run_id, worker_id, $2, 'stop-orchestrator', $3, $4 FROM simops_workers WHERE run_id=$1`, transition.RunID, code, nullableString(transition.CleanupFailure), now); err != nil {
+			return SimopsStopOutcome{}, err
+		}
+	}
+	var anyFailed bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM simops_workers WHERE run_id=$1 AND condition_status='failed')`, transition.RunID).Scan(&anyFailed); err != nil {
+		return SimopsStopOutcome{}, err
+	}
+	if anyFailed {
+		phase, lifecycle, condition = "failed", string(SimopsFailed), "failed"
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE simops_runs SET state_phase=$2, condition_status=CASE WHEN $3 = 'failed' OR EXISTS (SELECT 1 FROM simops_workers w WHERE w.run_id=simops_runs.run_id AND w.condition_status='failed') THEN 'failed' WHEN $3 = 'degraded' OR EXISTS (SELECT 1 FROM simops_workers w WHERE w.run_id=simops_runs.run_id AND w.condition_status='degraded') THEN 'degraded' ELSE 'nominal' END, cleanup_disposition=$4, lifecycle=$5, updated_at=$6 WHERE run_id=$1`, transition.RunID, phase, condition, string(transition.Cleanup), lifecycle, now); err != nil {
+		return SimopsStopOutcome{}, err
+	}
+	var intent *SimopsPublicationIntent
+	if phase == "stopped" {
+		event := SimopsEvent{RunID: transition.RunID, EventType: "run.lifecycle", Lifecycle: SimopsStopped, OccurredAt: now}
+		raw, err := json.Marshal(event)
+		if err != nil {
+			return SimopsStopOutcome{}, err
+		}
+		created := newSimopsPublicationIntent(event, now)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO simops_publication_intents (intent_id, run_id, event, state, attempts, created_at, updated_at) VALUES ($1,$2,$3::jsonb,$4,0,$5,$6) ON CONFLICT (intent_id) DO NOTHING`, created.IntentID, transition.RunID, raw, created.State, now, now); err != nil {
+			return SimopsStopOutcome{}, err
+		}
+		intent = &created
+	}
+	if err := tx.Commit(); err != nil {
+		return SimopsStopOutcome{}, err
+	}
+	run, err := s.GetRun(transition.RunID)
+	if err != nil {
+		return SimopsStopOutcome{}, err
+	}
+	workers, err := s.ListWorkers(transition.RunID)
+	if err != nil {
+		return SimopsStopOutcome{}, err
+	}
+	return SimopsStopOutcome{Run: run, Workers: workers, Intent: intent}, nil
+}
+
 func (s *PostgresSimopsStore) UpdateWorkerObservedLifecycle(observation ObservedWorkerLifecycle) error {
 	ctx, cancel := simopsSQLContext()
 	defer cancel()

@@ -24,6 +24,7 @@ type SimopsStore interface {
 	UpdateRunLifecycleWithPublicationIntent(runID string, lifecycle SimopsLifecycle, event SimopsEvent) (SimopsRunRecord, SimopsPublicationIntent, error)
 	UpdateWorkerFrames(runID string, workerID string, lifecycle SimopsLifecycle, framesDelta int) error
 	UpdateWorkerObservedLifecycle(observation ObservedWorkerLifecycle) error
+	ApplyStopTransition(transition SimopsStopTransition) (SimopsStopOutcome, error)
 	SaveArtifact(record SimopsArtifactRecord) error
 	SaveEvent(event SimopsEvent) error
 	ListEvents(runID string) ([]SimopsEvent, error)
@@ -38,6 +39,22 @@ type SimopsStore interface {
 	MarkDeliveryAttemptUnknown(string, string) error
 	ListDeliveryAttempts(string) ([]DeliveryAttempt, error)
 	ActiveRunCount() int
+}
+
+type SimopsStopTransition struct {
+	RunID            string
+	Cleanup          SimopsCleanupDisposition
+	StopFailure      string
+	StopConfirmed    bool
+	CleanupFailure   string
+	CleanupConfirmed bool
+	OccurredAt       time.Time
+}
+
+type SimopsStopOutcome struct {
+	Run     SimopsRunRecord
+	Workers []SimopsWorkerRecord
+	Intent  *SimopsPublicationIntent
 }
 
 const (
@@ -402,6 +419,74 @@ func (s *InMemorySimopsStore) UpdateWorkerObservedLifecycle(observation Observed
 	run.UpdatedAt = worker.UpdatedAt
 	s.runs[observation.RunID] = run
 	return nil
+}
+
+func (s *InMemorySimopsStore) ApplyStopTransition(transition SimopsStopTransition) (SimopsStopOutcome, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	run, ok := s.runs[transition.RunID]
+	if !ok {
+		return SimopsStopOutcome{}, ErrSimopsRunNotFound
+	}
+	now := transition.OccurredAt.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	run.State = ensureSimopsRunState(run)
+	run.State.Phase, run.State.Cleanup = SimopsRunStopping, transition.Cleanup
+	workers := make([]SimopsWorkerRecord, 0, len(s.workersByRun[transition.RunID]))
+	for id, worker := range s.workersByRun[transition.RunID] {
+		worker.State = ensureSimopsWorkerState(worker)
+		state, cleanupEvidence := applyWorkerCleanupOutcome(worker.State, transition.Cleanup, now, "stop-orchestrator", transition.CleanupFailure)
+		worker.State = state
+		if transition.StopFailure != "" {
+			evidence := SimopsDegradationEvidence{Code: "stop-incomplete", Source: "stop-orchestrator", Message: transition.StopFailure, ObservedAt: now}
+			applyDegradation(&worker.State, evidence)
+			if transition.StopConfirmed {
+				worker.State.Condition.Status, worker.State.FailureStage = SimopsConditionFailed, SimopsFailureStop
+			}
+			if s.evidenceByWorker[transition.RunID] == nil {
+				s.evidenceByWorker[transition.RunID] = make(map[string][]SimopsDegradationEvidence)
+			}
+			s.evidenceByWorker[transition.RunID][id] = append(s.evidenceByWorker[transition.RunID][id], evidence)
+		}
+		if cleanupEvidence != nil {
+			if s.evidenceByWorker[transition.RunID] == nil {
+				s.evidenceByWorker[transition.RunID] = make(map[string][]SimopsDegradationEvidence)
+			}
+			s.evidenceByWorker[transition.RunID][id] = append(s.evidenceByWorker[transition.RunID][id], *cleanupEvidence)
+		}
+		if transition.Cleanup == SimopsCleanupCompleted && transition.StopFailure == "" && worker.State.Condition.Status != SimopsConditionFailed {
+			worker.State.Phase, worker.State.ActiveExecution = SimopsWorkerStopped, SimopsExecutionTerminal
+			worker.Lifecycle = projectWorkerLifecycle(worker.State)
+		}
+		worker.UpdatedAt = now
+		s.workersByRun[transition.RunID][id] = worker
+		workers = append(workers, worker)
+	}
+	if transition.Cleanup == SimopsCleanupCompleted && transition.StopFailure == "" {
+		run.State = deriveSimopsRunState(run.State, workers)
+	}
+	run.State.Cleanup = transition.Cleanup
+	if transition.Cleanup != SimopsCleanupCompleted || transition.StopFailure != "" {
+		run.State.Phase = SimopsRunStopping
+		if run.State.Condition.Status != SimopsConditionFailed {
+			run.State.Condition.Status = SimopsConditionDegraded
+		}
+	}
+	run.Lifecycle, run.UpdatedAt = projectRunLifecycle(run.State), now
+	s.runs[transition.RunID] = run
+	outcome := SimopsStopOutcome{Run: run, Workers: workers}
+	if run.State.Phase == SimopsRunStopped {
+		event := SimopsEvent{RunID: run.RunID, EventType: "run.lifecycle", Lifecycle: SimopsStopped, OccurredAt: now}
+		intent := newSimopsPublicationIntent(event, now)
+		if s.intentsByRun[run.RunID] == nil {
+			s.intentsByRun[run.RunID] = make(map[string]SimopsPublicationIntent)
+		}
+		s.intentsByRun[run.RunID][intent.IntentID] = intent
+		outcome.Intent = &intent
+	}
+	return outcome, nil
 }
 
 func (s *InMemorySimopsStore) ListWorkerDegradationEvidence(runID string, workerID string) ([]SimopsDegradationEvidence, error) {
