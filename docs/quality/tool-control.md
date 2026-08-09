@@ -23,6 +23,7 @@ This procedure defines controls for development, verification, and infrastructur
 | Stryker | Mutation analysis of Workbench Snapshot policy | Pinned package versions, `stryker.config.mjs`, and `bun run test:mutation:workbench`; `bun run ci` invokes the gate and fails below 80% |
 | Mutago | Diff-scoped Go mutation analysis of backend runtime seams | Pinned `github.com/quality-gates/mutago/v2/cmd/mutago@v2.7.7` invocation in `bun run test:mutation:go`; `bun run ci` and backend CI invoke the gate against changed Go implementation files with controlled floors of 65% MSI and 75% covered-MSI |
 | React Chaos | Browser fault injection at the Simulation Health presentation boundary | Pinned package version and `tests/e2e/workbench-health-chaos.spec.ts` |
+| Pumba plus controlled resilience runner | Local, hypothesis-led container fault experiments | Versioned Pumba image and `examples/chaos/*.json`; the thin `scripts/chaos-orchestrate.mjs` adapter supplies `bun run chaos:plan`, explicit `--execute`, `orbstack` context only, opt-in service label, probes, rollback verification, and ignored JSON evidence |
 | Vite | Web build | `vite.config.ts` |
 | Node.js | Utility scripts | Script review and deterministic output |
 | Terraform | Optional infrastructure validation | Static check plus optional native validation |

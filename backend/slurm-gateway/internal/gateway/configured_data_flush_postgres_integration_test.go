@@ -170,7 +170,7 @@ func seedConfiguredDataFlushRecords(t *testing.T, db *sql.DB) {
 	}{
 		{`INSERT INTO artifact_forge_requests VALUES ('forge-before-flush','game-before','forge-key','reactor-before',NULL,'intent-rejected','{"requestId":"forge-before-flush"}',$1,$1)`, []any{now}},
 		{`INSERT INTO artifact_forge_result_artifacts VALUES ('artifact-before-flush','run-before-flush','{"artifactId":"artifact-before-flush"}',$1)`, []any{now}},
-		{`INSERT INTO simops_runs VALUES ($1,$2,'complete','local-demo','fixture.sh','contract',60,$3,$4,$5,$6,$6)`, []any{"run-before-flush", "scenario-before", "before-flush", "flush-integration", "protected-ingest-token", now}},
+		{`INSERT INTO simops_runs (run_id,scenario_id,lifecycle,source,work_script,launch_mode,runtime_limit_sec,idempotency_key,submitted_by,ingest_token,created_at,updated_at) VALUES ($1,$2,'complete','local-demo','fixture.sh','contract',60,$3,$4,$5,$6,$6)`, []any{"run-before-flush", "scenario-before", "before-flush", "flush-integration", "protected-ingest-token", now}},
 		{`INSERT INTO simops_events (run_id,event_type,occurred_at) VALUES ('run-before-flush','run.lifecycle',$1)`, []any{now}},
 		{`INSERT INTO simops_telemetry_frames (received_at,run_id,frame) VALUES ($1,'run-before-flush','{}')`, []any{now}},
 		{`INSERT INTO scada_measured_frames (observed_at,sampled_at,source_id,tag_id,asset_id,signal_kind,sequence,unit,quality,value_basis,synthetic_status,value,frame,redpanda_topic,redpanda_partition,redpanda_offset) VALUES ($1,$1,'source-protected','tag-protected','asset','flux',1,'a.u.','good','measured','public-safe-standin','{}','{}','scada',0,1)`, []any{now}},
@@ -203,18 +203,34 @@ CREATE TABLE artifact_forge_requests (
 );
 CREATE TABLE simops_runs (
   run_id TEXT PRIMARY KEY, scenario_id TEXT NOT NULL, lifecycle TEXT NOT NULL, source TEXT NOT NULL,
-  work_script TEXT NOT NULL, launch_mode TEXT NOT NULL, runtime_limit_sec INTEGER NOT NULL,
-  idempotency_key TEXT, submitted_by TEXT NOT NULL, ingest_token TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL,
-  UNIQUE (submitted_by, idempotency_key)
+	work_script TEXT NOT NULL, launch_mode TEXT NOT NULL, runtime_limit_sec INTEGER NOT NULL,
+	idempotency_key TEXT, submitted_by TEXT NOT NULL, ingest_token TEXT NOT NULL,
+	created_at TIMESTAMPTZ NOT NULL, updated_at TIMESTAMPTZ NOT NULL,
+	state_phase TEXT, condition_status TEXT, cleanup_disposition TEXT,
+	launch_observation_deadline TIMESTAMPTZ,
+	UNIQUE (submitted_by, idempotency_key)
 );
 CREATE TABLE simops_workers (
   run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE, worker_id TEXT NOT NULL,
   worker_kind TEXT NOT NULL, lifecycle TEXT NOT NULL, launch_mode TEXT NOT NULL, endpoint TEXT,
-  frames INTEGER NOT NULL DEFAULT 0, labels JSONB NOT NULL DEFAULT '{}', observed_lifecycle TEXT,
-  observed_reason TEXT, observed_message TEXT, runtime TEXT, runtime_id TEXT,
-  observed_exit_code INTEGER, observed_at TIMESTAMPTZ, updated_at TIMESTAMPTZ NOT NULL,
+	frames INTEGER NOT NULL DEFAULT 0, labels JSONB NOT NULL DEFAULT '{}', observed_lifecycle TEXT,
+	observed_reason TEXT, observed_message TEXT, runtime TEXT, runtime_id TEXT,
+	observed_exit_code INTEGER, observed_at TIMESTAMPTZ, updated_at TIMESTAMPTZ NOT NULL,
+	state_phase TEXT, launch_disposition TEXT, active_execution TEXT, condition_status TEXT,
+	failure_stage TEXT, cleanup_disposition TEXT,
   PRIMARY KEY (run_id, worker_id)
+);
+CREATE TABLE simops_worker_observations (
+  observation_id BIGSERIAL PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
+  worker_id TEXT NOT NULL, code TEXT NOT NULL, source TEXT, message TEXT,
+  observed_at TIMESTAMPTZ NOT NULL
+);
+CREATE TABLE simops_cleanup_attempts (
+  cleanup_attempt_id BIGSERIAL PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
+  worker_id TEXT, disposition TEXT NOT NULL, source TEXT, message TEXT,
+  observed_at TIMESTAMPTZ NOT NULL
 );
 CREATE TABLE simops_spool_commands (
   command_id TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,

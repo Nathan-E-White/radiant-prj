@@ -46,6 +46,34 @@ bun run simulator-workbench:dataflow:smoke
 `bun run repository:verify` is the stable repository-claim verification surface used locally and in CI. It reports each claim's evidence source, expected invariant, and observed result, and exits non-zero when any claim fails. Use `bun run repository:verify -- --claim <claim-id>` for a focused claim. `bun run ci` runs the full local verification chain, including the repository verifier and its adapter tests.
 `bun run simops:smoke:local` and `bun run simulator-workbench:dataflow:smoke` are Docker-dependent and intentionally stay outside default CI.
 
+## Controlled local resilience experiments
+
+The local chaos runner is deliberately thin: it delegates the container suspension itself to
+the versioned [Pumba](https://github.com/alexei-led/pumba) image, while this repository owns
+the hypothesis, opt-in scope, probes, automatic rollback check, and timestamped JSON evidence
+under ignored `.local/chaos-evidence/`. It requires `--execute` for every state change and never
+deletes containers, volumes, or Docker-wide state.
+
+```bash
+# Read-only: validate and print the experiment contract.
+bun run chaos:plan
+
+# Start only the target service and its Compose dependencies.
+bun run chaos:up -- --execute
+
+# Pause the Timescale projection writer, verify loss of its health endpoint,
+# unpause it, and verify recovery. This is local/OrbStack only.
+bun run chaos:run:timescale-pause -- --execute
+
+# Inspect the scoped target or stop only that target (without volumes).
+bun run chaos:status
+bun run chaos:down -- --execute
+```
+
+The first experiment proves process-suspension recovery for the Timescale projection writer.
+It does not establish end-to-end delivery durability; that needs a separate, falsifiable
+experiment with a baseline and recovery assertion at the persisted telemetry boundary.
+
 Worker Rust tests use named external Cargo target directories by default:
 
 ```text

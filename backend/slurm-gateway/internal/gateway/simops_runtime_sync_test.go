@@ -349,6 +349,32 @@ func TestInMemoryStoreUpdatesObservedWorkerLifecycleWithoutIncrementingFrames(t 
 	}
 }
 
+func TestInMemoryStoreRetainsTerminalObservationWhenLaterSyncReportsActive(t *testing.T) {
+	store := NewInMemorySimopsStore()
+	now := fixedGatewayRuntimeNow()
+	run := SimopsRunRecord{RunID: "RUN-TERMINAL-OBSERVATION", ScenarioID: "scheduler-drift", Lifecycle: SimopsStreaming, CreatedAt: now, UpdatedAt: now}
+	worker := SimopsWorkerRecord{RunID: run.RunID, WorkerID: "scheduler-01", WorkerKind: SimopsWorkerScheduler, Lifecycle: SimopsStarting, LaunchMode: "auto", UpdatedAt: now}
+	if _, _, err := store.CreateRun(run, []SimopsWorkerRecord{worker}, nil); err != nil {
+		t.Fatalf("create run: %v", err)
+	}
+	if err := store.UpdateWorkerObservedLifecycle(ObservedWorkerLifecycle{RunID: run.RunID, WorkerID: worker.WorkerID, State: ObservedWorkerSucceeded, Runtime: "docker", RuntimeID: "container-terminal", ObservedAt: now.Add(time.Minute)}); err != nil {
+		t.Fatalf("record terminal observation: %v", err)
+	}
+	if err := store.UpdateWorkerObservedLifecycle(ObservedWorkerLifecycle{RunID: run.RunID, WorkerID: worker.WorkerID, State: ObservedWorkerActive, Runtime: "docker", RuntimeID: "container-terminal", ObservedAt: now.Add(2 * time.Minute)}); err != nil {
+		t.Fatalf("record contradictory observation: %v", err)
+	}
+	workers, err := store.ListWorkers(run.RunID)
+	if err != nil {
+		t.Fatalf("list workers: %v", err)
+	}
+	if got := workers[0].ObservedLifecycle; got != ObservedWorkerSucceeded {
+		t.Fatalf("terminal observation must not regress to active, got %#v", workers[0])
+	}
+	if !strings.Contains(workers[0].ObservedMessage, "contradictory runtime observation active") {
+		t.Fatalf("contradictory observation must remain visible as evidence, got %#v", workers[0])
+	}
+}
+
 func TestDataPlaneAndArtifactUpdatesDoNotMutateObservedRuntimeLifecycle(t *testing.T) {
 	store := NewInMemorySimopsStore()
 	now := fixedGatewayRuntimeNow()

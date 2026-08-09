@@ -50,6 +50,7 @@
 | ADR-0011 Data-Plane Storage Authority | Software | Accepted |
 | ADR-0012 Gateway Execution and Credential Authority | Software | Accepted |
 | ADR-0013 Coherent Workbench Snapshot And Lifecycle Reconciliation | Software | Accepted; implementation evidence pending |
+| ADR-0014 Orchestrate SimOps Stop And Cleanup Through One State Transition Seam | Software | Accepted; implementation evidence pending |
 | Workbench Snapshot Read And Lifecycle Policy | Software | Accepted design; implementation evidence pending |
 | Workbench Snapshot And Lifecycle: Primary-Source Research | Software | Research record |
 | Recoverable Delivery, Run, And Review Truth (RDRRT-001) | Software | Rev 1.0; Accepted architecture contract for Issue #202; evidence: `architecture.issue-202-contract` |

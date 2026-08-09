@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "id": "simops-timescale-writer-pause",
+  "title": "Timescale projection writer recovers after bounded process suspension",
+  "hypothesis": "When the local Timescale projection writer is paused for at most 10 seconds, its health endpoint becomes unavailable; after unpause, the same endpoint returns HTTP 200 within 30 seconds without container replacement.",
+  "environment": "local-orbstack",
+  "dockerContext": "orbstack",
+  "composeFile": "deploy/slurm-gateway.compose.yml",
+  "composeProject": "deploy",
+  "service": "simops-timescale-writer",
+  "requiredLabel": "com.radiant.chaos-enabled=true",
+  "fault": {
+    "kind": "container-pause",
+    "durationSeconds": 10,
+    "framework": {
+      "name": "pumba",
+      "image": "ghcr.io/alexei-led/pumba:1.1.7"
+    }
+  },
+  "limits": {
+    "totalSeconds": 60,
+    "probeSeconds": 5,
+    "recoverySeconds": 30
+  },
+  "probes": {
+    "baseline": "http://127.0.0.1:9450/healthz",
+    "duringFault": "http://127.0.0.1:9450/healthz",
+    "recovery": "http://127.0.0.1:9450/healthz"
+  }
+}

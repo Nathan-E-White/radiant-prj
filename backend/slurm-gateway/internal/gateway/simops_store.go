@@ -24,6 +24,7 @@ type SimopsStore interface {
 	UpdateRunLifecycleWithPublicationIntent(runID string, lifecycle SimopsLifecycle, event SimopsEvent) (SimopsRunRecord, SimopsPublicationIntent, error)
 	UpdateWorkerFrames(runID string, workerID string, lifecycle SimopsLifecycle, framesDelta int) error
 	UpdateWorkerObservedLifecycle(observation ObservedWorkerLifecycle) error
+	ApplyStopTransition(transition SimopsStopTransition) (SimopsStopOutcome, error)
 	SaveArtifact(record SimopsArtifactRecord) error
 	SaveEvent(event SimopsEvent) error
 	ListEvents(runID string) ([]SimopsEvent, error)
@@ -38,6 +39,22 @@ type SimopsStore interface {
 	MarkDeliveryAttemptUnknown(string, string) error
 	ListDeliveryAttempts(string) ([]DeliveryAttempt, error)
 	ActiveRunCount() int
+}
+
+type SimopsStopTransition struct {
+	RunID            string
+	Cleanup          SimopsCleanupDisposition
+	StopFailure      string
+	StopConfirmed    bool
+	CleanupFailure   string
+	CleanupConfirmed bool
+	OccurredAt       time.Time
+}
+
+type SimopsStopOutcome struct {
+	Run     SimopsRunRecord
+	Workers []SimopsWorkerRecord
+	Intent  *SimopsPublicationIntent
 }
 
 const (
@@ -58,6 +75,13 @@ type SimopsPublicationIntent struct {
 	PublishedAt *time.Time
 }
 
+// simopsWorkerEvidenceReader is deliberately optional during the additive
+// rollout: old store implementations still project a valid state, while the
+// authoritative stores enrich it with append-only evidence.
+type simopsWorkerEvidenceReader interface {
+	ListWorkerDegradationEvidence(runID string, workerID string) ([]SimopsDegradationEvidence, error)
+}
+
 type InMemorySimopsStore struct {
 	mu               sync.RWMutex
 	runs             map[string]SimopsRunRecord
@@ -67,6 +91,7 @@ type InMemorySimopsStore struct {
 	artifactsByRun   map[string][]SimopsArtifactRecord
 	eventsByRun      map[string][]SimopsEvent
 	intentsByRun     map[string]map[string]SimopsPublicationIntent
+	evidenceByWorker map[string]map[string][]SimopsDegradationEvidence
 	deliveryAttempts map[string]DeliveryAttempt
 }
 
@@ -79,6 +104,7 @@ func NewInMemorySimopsStore() *InMemorySimopsStore {
 		artifactsByRun:   make(map[string][]SimopsArtifactRecord),
 		eventsByRun:      make(map[string][]SimopsEvent),
 		intentsByRun:     make(map[string]map[string]SimopsPublicationIntent),
+		evidenceByWorker: make(map[string]map[string][]SimopsDegradationEvidence),
 		deliveryAttempts: make(map[string]DeliveryAttempt),
 	}
 }
@@ -188,6 +214,7 @@ func (s *InMemorySimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 	if _, ok := s.runs[record.RunID]; ok {
 		return SimopsRunRecord{}, false, ErrSimopsConflict
 	}
+	record.State = ensureSimopsRunState(record)
 
 	s.runs[record.RunID] = record
 	if record.IdempotencyKey != "" {
@@ -196,6 +223,7 @@ func (s *InMemorySimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 
 	workerMap := make(map[string]SimopsWorkerRecord, len(workers))
 	for _, worker := range workers {
+		worker.State = ensureSimopsWorkerState(worker)
 		if existing, ok := workerMap[worker.WorkerID]; ok && existing.Frames > worker.Frames {
 			worker.Frames = existing.Frames
 			worker.Lifecycle = existing.Lifecycle
@@ -221,6 +249,7 @@ func (s *InMemorySimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 		workerMap = make(map[string]SimopsWorkerRecord, len(workers))
 	}
 	for _, worker := range workers {
+		materializeWorkerLaunchState(&worker)
 		workerMap[worker.WorkerID] = worker
 	}
 	s.workersByRun[runID] = workerMap
@@ -305,6 +334,7 @@ func (s *InMemorySimopsStore) UpdateRunLifecycle(runID string, lifecycle SimopsL
 		return SimopsRunRecord{}, ErrSimopsRunNotFound
 	}
 	record.Lifecycle = lifecycle
+	record.State = ensureSimopsRunState(SimopsRunRecord{Lifecycle: lifecycle, State: SimopsRunState{LaunchObservationDeadline: record.State.LaunchObservationDeadline}})
 	record.UpdatedAt = time.Now().UTC()
 	s.runs[runID] = record
 	return record, nil
@@ -319,6 +349,7 @@ func (s *InMemorySimopsStore) UpdateRunLifecycleWithPublicationIntent(runID stri
 	}
 	now := time.Now().UTC()
 	record.Lifecycle = lifecycle
+	record.State = ensureSimopsRunState(SimopsRunRecord{Lifecycle: lifecycle, State: SimopsRunState{LaunchObservationDeadline: record.State.LaunchObservationDeadline}})
 	record.UpdatedAt = now
 	s.runs[runID] = record
 	if event.RunID == "" {
@@ -368,8 +399,103 @@ func (s *InMemorySimopsStore) UpdateWorkerObservedLifecycle(observation Observed
 		return ErrSimopsRunNotFound
 	}
 	applyObservedWorkerLifecycle(&worker, observation, time.Now)
+	worker.State = ensureSimopsWorkerState(worker)
+	state, evidence := applyWorkerRuntimeObservation(worker.State, observation)
+	worker.State = state
+	if evidence != nil {
+		applyDegradation(&worker.State, *evidence)
+		if s.evidenceByWorker[observation.RunID] == nil {
+			s.evidenceByWorker[observation.RunID] = make(map[string][]SimopsDegradationEvidence)
+		}
+		s.evidenceByWorker[observation.RunID][observation.WorkerID] = append(s.evidenceByWorker[observation.RunID][observation.WorkerID], *evidence)
+	}
 	workerMap[observation.WorkerID] = worker
+	run := s.runs[observation.RunID]
+	workers := make([]SimopsWorkerRecord, 0, len(workerMap))
+	for _, candidate := range workerMap {
+		workers = append(workers, candidate)
+	}
+	run.State = deriveSimopsRunState(ensureSimopsRunState(run), workers)
+	run.UpdatedAt = worker.UpdatedAt
+	s.runs[observation.RunID] = run
 	return nil
+}
+
+func (s *InMemorySimopsStore) ApplyStopTransition(transition SimopsStopTransition) (SimopsStopOutcome, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	run, ok := s.runs[transition.RunID]
+	if !ok {
+		return SimopsStopOutcome{}, ErrSimopsRunNotFound
+	}
+	now := transition.OccurredAt.UTC()
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	run.State = ensureSimopsRunState(run)
+	run.State.Phase, run.State.Cleanup = SimopsRunStopping, transition.Cleanup
+	workers := make([]SimopsWorkerRecord, 0, len(s.workersByRun[transition.RunID]))
+	for id, worker := range s.workersByRun[transition.RunID] {
+		worker.State = ensureSimopsWorkerState(worker)
+		state, cleanupEvidence := applyWorkerCleanupOutcome(worker.State, transition.Cleanup, now, "stop-orchestrator", transition.CleanupFailure)
+		worker.State = state
+		if transition.StopFailure != "" {
+			evidence := SimopsDegradationEvidence{Code: "stop-incomplete", Source: "stop-orchestrator", Message: transition.StopFailure, ObservedAt: now}
+			applyDegradation(&worker.State, evidence)
+			if transition.StopConfirmed {
+				worker.State.Condition.Status, worker.State.FailureStage = SimopsConditionFailed, SimopsFailureStop
+			}
+			if s.evidenceByWorker[transition.RunID] == nil {
+				s.evidenceByWorker[transition.RunID] = make(map[string][]SimopsDegradationEvidence)
+			}
+			s.evidenceByWorker[transition.RunID][id] = append(s.evidenceByWorker[transition.RunID][id], evidence)
+		}
+		if cleanupEvidence != nil {
+			if s.evidenceByWorker[transition.RunID] == nil {
+				s.evidenceByWorker[transition.RunID] = make(map[string][]SimopsDegradationEvidence)
+			}
+			s.evidenceByWorker[transition.RunID][id] = append(s.evidenceByWorker[transition.RunID][id], *cleanupEvidence)
+		}
+		if transition.Cleanup == SimopsCleanupCompleted && transition.StopFailure == "" && worker.State.Condition.Status != SimopsConditionFailed {
+			worker.State.Phase, worker.State.ActiveExecution = SimopsWorkerStopped, SimopsExecutionTerminal
+			worker.Lifecycle = projectWorkerLifecycle(worker.State)
+		}
+		worker.UpdatedAt = now
+		s.workersByRun[transition.RunID][id] = worker
+		workers = append(workers, worker)
+	}
+	if transition.Cleanup == SimopsCleanupCompleted && transition.StopFailure == "" {
+		run.State = deriveSimopsRunState(run.State, workers)
+	}
+	run.State.Cleanup = transition.Cleanup
+	if transition.Cleanup != SimopsCleanupCompleted || transition.StopFailure != "" {
+		run.State.Phase = SimopsRunStopping
+		if run.State.Condition.Status != SimopsConditionFailed {
+			run.State.Condition.Status = SimopsConditionDegraded
+		}
+	}
+	run.Lifecycle, run.UpdatedAt = projectRunLifecycle(run.State), now
+	s.runs[transition.RunID] = run
+	outcome := SimopsStopOutcome{Run: run, Workers: workers}
+	if run.State.Phase == SimopsRunStopped {
+		event := SimopsEvent{RunID: run.RunID, EventType: "run.lifecycle", Lifecycle: SimopsStopped, OccurredAt: now}
+		intent := newSimopsPublicationIntent(event, now)
+		if s.intentsByRun[run.RunID] == nil {
+			s.intentsByRun[run.RunID] = make(map[string]SimopsPublicationIntent)
+		}
+		s.intentsByRun[run.RunID][intent.IntentID] = intent
+		outcome.Intent = &intent
+	}
+	return outcome, nil
+}
+
+func (s *InMemorySimopsStore) ListWorkerDegradationEvidence(runID string, workerID string) ([]SimopsDegradationEvidence, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.runs[runID]; !ok {
+		return nil, ErrSimopsRunNotFound
+	}
+	return append([]SimopsDegradationEvidence(nil), s.evidenceByWorker[runID][workerID]...), nil
 }
 
 func (s *InMemorySimopsStore) SaveArtifact(record SimopsArtifactRecord) error {
@@ -523,6 +649,11 @@ func applyObservedWorkerLifecycle(worker *SimopsWorkerRecord, observation Observ
 	if observedAt.IsZero() {
 		observedAt = now().UTC()
 	}
+	if observedWorkerStateIsTerminal(worker.ObservedLifecycle) && !observedWorkerStateIsTerminal(observation.State) {
+		worker.ObservedMessage = observedWorkerContradiction(worker.ObservedLifecycle, observation.State, observation.Message)
+		worker.UpdatedAt = observedAt
+		return
+	}
 	worker.ObservedLifecycle = observation.State
 	worker.ObservedReason = observation.Reason
 	worker.ObservedMessage = observation.Message
@@ -534,6 +665,23 @@ func applyObservedWorkerLifecycle(worker *SimopsWorkerRecord, observation Observ
 	if len(observation.Labels) > 0 {
 		worker.Labels = copyStringMap(observation.Labels)
 	}
+}
+
+func observedWorkerStateIsTerminal(state ObservedWorkerState) bool {
+	switch state {
+	case ObservedWorkerSucceeded, ObservedWorkerFailed, ObservedWorkerImagePullFailed, ObservedWorkerStopped:
+		return true
+	default:
+		return false
+	}
+}
+
+func observedWorkerContradiction(terminal ObservedWorkerState, reported ObservedWorkerState, message string) string {
+	prefix := "contradictory runtime observation " + string(reported) + " retained after terminal " + string(terminal)
+	if message == "" {
+		return prefix
+	}
+	return prefix + ": " + message
 }
 
 func copyStringMap(values map[string]string) map[string]string {
