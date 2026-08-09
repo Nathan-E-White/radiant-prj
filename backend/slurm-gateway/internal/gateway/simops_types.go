@@ -82,6 +82,7 @@ type SimopsRunResponse struct {
 	RunID            string                 `json:"run_id"`
 	ScenarioID       string                 `json:"scenario_id"`
 	Lifecycle        SimopsLifecycle        `json:"lifecycle"`
+	State            SimopsRunState         `json:"state"`
 	Source           string                 `json:"source"`
 	LaunchMode       string                 `json:"launch_mode"`
 	RuntimeLimitSec  int                    `json:"runtime_limit_sec"`
@@ -113,6 +114,7 @@ type SimopsRunRecord struct {
 	RunID           string
 	ScenarioID      string
 	Lifecycle       SimopsLifecycle
+	State           SimopsRunState
 	Source          string
 	WorkScript      string
 	LaunchMode      string
@@ -129,6 +131,7 @@ type SimopsWorkerRecord struct {
 	WorkerID          string              `json:"worker_id"`
 	WorkerKind        SimopsWorkerKind    `json:"worker_kind"`
 	Lifecycle         SimopsLifecycle     `json:"lifecycle"`
+	State             SimopsWorkerState   `json:"state"`
 	ObservedLifecycle ObservedWorkerState `json:"observed_lifecycle,omitempty"`
 	ObservedReason    string              `json:"observed_reason,omitempty"`
 	ObservedMessage   string              `json:"observed_message,omitempty"`

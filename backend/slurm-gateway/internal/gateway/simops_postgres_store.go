@@ -45,14 +45,15 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 		return SimopsRunRecord{}, false, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	record.State = ensureSimopsRunState(record)
 
 	result, err := tx.ExecContext(ctx, `
 		INSERT INTO simops_runs (
 			run_id, scenario_id, lifecycle, source, work_script, launch_mode,
 			runtime_limit_sec, idempotency_key, submitted_by, ingest_token,
-			created_at, updated_at
+			created_at, updated_at, state_phase, condition_status, cleanup_disposition, launch_observation_deadline
 		)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
 		ON CONFLICT DO NOTHING
 	`,
 		record.RunID,
@@ -67,6 +68,7 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 		record.IngestToken,
 		record.CreatedAt,
 		record.UpdatedAt,
+		string(record.State.Phase), string(record.State.Condition.Status), string(record.State.Cleanup), nullableTime(timePtr(record.State.LaunchObservationDeadline)),
 	)
 	if err != nil {
 		return SimopsRunRecord{}, false, err
@@ -86,6 +88,7 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 	}
 
 	for _, worker := range workers {
+		worker.State = ensureSimopsWorkerState(worker)
 		labels, err := marshalLabels(worker.Labels)
 		if err != nil {
 			return SimopsRunRecord{}, false, err
@@ -95,9 +98,10 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 					run_id, worker_id, worker_kind, lifecycle, launch_mode,
 					endpoint, frames, labels, observed_lifecycle, observed_reason,
 					observed_message, runtime, runtime_id, observed_exit_code,
-					observed_at, updated_at
+					observed_at, updated_at, state_phase, launch_disposition, active_execution,
+					condition_status, failure_stage, cleanup_disposition
 				)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
 			`,
 			record.RunID,
 			worker.WorkerID,
@@ -115,6 +119,7 @@ func (s *PostgresSimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 			nullableInt(worker.ObservedExitCode),
 			nullableTime(worker.ObservedAt),
 			worker.UpdatedAt,
+			string(worker.State.Phase), string(worker.State.LaunchDisposition), string(worker.State.ActiveExecution), string(worker.State.Condition.Status), string(worker.State.FailureStage), string(worker.State.Cleanup),
 		); err != nil {
 			return SimopsRunRecord{}, false, err
 		}
@@ -170,6 +175,7 @@ func (s *PostgresSimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 	}
 
 	for _, worker := range workers {
+		materializeWorkerLaunchState(&worker)
 		labels, err := marshalLabels(worker.Labels)
 		if err != nil {
 			return err
@@ -179,9 +185,10 @@ func (s *PostgresSimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 					run_id, worker_id, worker_kind, lifecycle, launch_mode,
 					endpoint, frames, labels, observed_lifecycle, observed_reason,
 					observed_message, runtime, runtime_id, observed_exit_code,
-					observed_at, updated_at
+					observed_at, updated_at, state_phase, launch_disposition, active_execution,
+					condition_status, failure_stage, cleanup_disposition
 				)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16)
+				VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
 				ON CONFLICT (run_id, worker_id) DO UPDATE
 				SET worker_kind = EXCLUDED.worker_kind,
 				    lifecycle = CASE
@@ -199,6 +206,12 @@ func (s *PostgresSimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 			    runtime_id = COALESCE(EXCLUDED.runtime_id, simops_workers.runtime_id),
 			    observed_exit_code = COALESCE(EXCLUDED.observed_exit_code, simops_workers.observed_exit_code),
 			    observed_at = COALESCE(EXCLUDED.observed_at, simops_workers.observed_at),
+			    state_phase = EXCLUDED.state_phase,
+			    launch_disposition = EXCLUDED.launch_disposition,
+			    active_execution = EXCLUDED.active_execution,
+			    condition_status = EXCLUDED.condition_status,
+			    failure_stage = EXCLUDED.failure_stage,
+			    cleanup_disposition = EXCLUDED.cleanup_disposition,
 			    updated_at = GREATEST(simops_workers.updated_at, EXCLUDED.updated_at)
 		`,
 			runID,
@@ -217,6 +230,7 @@ func (s *PostgresSimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 			nullableInt(worker.ObservedExitCode),
 			nullableTime(worker.ObservedAt),
 			worker.UpdatedAt,
+			string(worker.State.Phase), string(worker.State.LaunchDisposition), string(worker.State.ActiveExecution), string(worker.State.Condition.Status), string(worker.State.FailureStage), string(worker.State.Cleanup),
 		); err != nil {
 			return err
 		}
@@ -261,7 +275,7 @@ func (s *PostgresSimopsStore) GetRunByIdempotency(identity string, key string) (
 	return s.scanRun(ctx, `
 		SELECT run_id, scenario_id, lifecycle, source, work_script, launch_mode,
 		       runtime_limit_sec, idempotency_key, submitted_by, ingest_token,
-		       created_at, updated_at
+		       created_at, updated_at, state_phase, condition_status, cleanup_disposition, launch_observation_deadline
 		FROM simops_runs
 		WHERE submitted_by = $1 AND idempotency_key = $2
 	`, identity, key)
@@ -273,7 +287,7 @@ func (s *PostgresSimopsStore) GetRun(runID string) (SimopsRunRecord, error) {
 	return s.scanRun(ctx, `
 		SELECT run_id, scenario_id, lifecycle, source, work_script, launch_mode,
 		       runtime_limit_sec, idempotency_key, submitted_by, ingest_token,
-		       created_at, updated_at
+		       created_at, updated_at, state_phase, condition_status, cleanup_disposition, launch_observation_deadline
 		FROM simops_runs
 		WHERE run_id = $1
 	`, runID)
@@ -286,7 +300,8 @@ func (s *PostgresSimopsStore) ListWorkers(runID string) ([]SimopsWorkerRecord, e
 		SELECT run_id, worker_id, worker_kind, lifecycle, launch_mode,
 		       endpoint, frames, labels, observed_lifecycle, observed_reason,
 		       observed_message, runtime, runtime_id, observed_exit_code,
-		       observed_at, updated_at
+		       observed_at, updated_at, state_phase, launch_disposition, active_execution,
+		       condition_status, failure_stage, cleanup_disposition
 		FROM simops_workers
 		WHERE run_id = $1
 		ORDER BY worker_id
@@ -304,6 +319,7 @@ func (s *PostgresSimopsStore) ListWorkers(runID string) ([]SimopsWorkerRecord, e
 		var observedLifecycle, observedReason, observedMessage, runtime, runtimeID sql.NullString
 		var observedExitCode sql.NullInt64
 		var observedAt sql.NullTime
+		var statePhase, launchDisposition, activeExecution, conditionStatus, failureStage, cleanupDisposition sql.NullString
 		var labelsRaw []byte
 		if err := rows.Scan(
 			&worker.RunID,
@@ -322,6 +338,7 @@ func (s *PostgresSimopsStore) ListWorkers(runID string) ([]SimopsWorkerRecord, e
 			&observedExitCode,
 			&observedAt,
 			&worker.UpdatedAt,
+			&statePhase, &launchDisposition, &activeExecution, &conditionStatus, &failureStage, &cleanupDisposition,
 		); err != nil {
 			return nil, err
 		}
@@ -359,6 +376,10 @@ func (s *PostgresSimopsStore) ListWorkers(runID string) ([]SimopsWorkerRecord, e
 			observedAtTime := observedAt.Time
 			worker.ObservedAt = &observedAtTime
 		}
+		if statePhase.Valid {
+			worker.State = SimopsWorkerState{Phase: SimopsWorkerPhase(statePhase.String), LaunchDisposition: SimopsLaunchDisposition(launchDisposition.String), ActiveExecution: SimopsActiveExecution(activeExecution.String), Condition: SimopsOperationalCondition{Status: SimopsConditionStatus(conditionStatus.String)}, FailureStage: SimopsFailureStage(failureStage.String), Cleanup: SimopsCleanupDisposition(cleanupDisposition.String)}
+		}
+		worker.State = ensureSimopsWorkerState(worker)
 		workers = append(workers, worker)
 	}
 	if err := rows.Err(); err != nil {
@@ -455,11 +476,11 @@ func (s *PostgresSimopsStore) UpdateRunLifecycle(runID string, lifecycle SimopsL
 	defer cancel()
 	row := s.db.QueryRowContext(ctx, `
 		UPDATE simops_runs
-		SET lifecycle = $2, updated_at = $3
+		SET lifecycle = $2, state_phase = CASE $2 WHEN 'starting' THEN 'launching' WHEN 'streaming' THEN 'running' WHEN 'complete' THEN 'completed' WHEN 'failed' THEN 'failed' WHEN 'stopped' THEN 'stopped' ELSE 'admitted' END, condition_status = CASE WHEN $2 = 'failed' THEN 'failed' ELSE condition_status END, updated_at = $3
 		WHERE run_id = $1
 		RETURNING run_id, scenario_id, lifecycle, source, work_script, launch_mode,
 		          runtime_limit_sec, idempotency_key, submitted_by, ingest_token,
-		          created_at, updated_at
+		          created_at, updated_at, state_phase, condition_status, cleanup_disposition, launch_observation_deadline
 	`, runID, string(lifecycle), time.Now().UTC())
 	return scanSimopsRun(row)
 }
@@ -489,11 +510,11 @@ func (s *PostgresSimopsStore) UpdateRunLifecycleWithPublicationIntent(runID stri
 
 	record, err := scanSimopsRun(tx.QueryRowContext(ctx, `
 		UPDATE simops_runs
-		SET lifecycle = $2, updated_at = $3
+		SET lifecycle = $2, state_phase = CASE $2 WHEN 'starting' THEN 'launching' WHEN 'streaming' THEN 'running' WHEN 'complete' THEN 'completed' WHEN 'failed' THEN 'failed' WHEN 'stopped' THEN 'stopped' ELSE 'admitted' END, condition_status = CASE WHEN $2 = 'failed' THEN 'failed' ELSE condition_status END, updated_at = $3
 		WHERE run_id = $1
 		RETURNING run_id, scenario_id, lifecycle, source, work_script, launch_mode,
 		          runtime_limit_sec, idempotency_key, submitted_by, ingest_token,
-		          created_at, updated_at
+		          created_at, updated_at, state_phase, condition_status, cleanup_disposition, launch_observation_deadline
 	`, runID, string(lifecycle), now))
 	if err != nil {
 		return SimopsRunRecord{}, SimopsPublicationIntent{}, err
@@ -542,32 +563,75 @@ func (s *PostgresSimopsStore) UpdateWorkerObservedLifecycle(observation Observed
 	if observedAt.IsZero() {
 		observedAt = time.Now().UTC()
 	}
-	result, err := s.db.ExecContext(ctx, `
-		UPDATE simops_workers
-		SET observed_lifecycle = CASE
-				WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped')
-					AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped')
-				THEN observed_lifecycle
-				ELSE $3
-			END,
-		    observed_reason = $4,
-		    observed_message = CASE
-				WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped')
-					AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped')
-				THEN CONCAT('contradictory runtime observation ', $3, ' retained after terminal ', observed_lifecycle, CASE WHEN $5 IS NULL THEN '' ELSE CONCAT(': ', $5) END)
-				ELSE $5
-			END,
-		    runtime = CASE WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') THEN runtime ELSE $6 END,
-		    runtime_id = CASE WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') THEN runtime_id ELSE $7 END,
-		    observed_exit_code = CASE WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') THEN observed_exit_code ELSE $8 END,
-		    observed_at = CASE WHEN observed_lifecycle IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') AND $3 NOT IN ('succeeded', 'failed', 'image-pull-failed', 'stopped') THEN observed_at ELSE $9 END,
-		    updated_at = $9
-		WHERE run_id = $1 AND worker_id = $2
-	`, observation.RunID, observation.WorkerID, nullableString(string(observation.State)), nullableString(observation.Reason), nullableString(observation.Message), nullableString(observation.Runtime), nullableString(observation.RuntimeID), nullableInt(observation.ExitCode), observedAt)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	return requireAffected(result, ErrSimopsRunNotFound)
+	defer func() { _ = tx.Rollback() }()
+	worker, err := scanSimopsWorker(tx.QueryRowContext(ctx, `
+		SELECT run_id, worker_id, worker_kind, lifecycle, launch_mode, endpoint, frames, labels,
+		       observed_lifecycle, observed_reason, observed_message, runtime, runtime_id,
+		       observed_exit_code, observed_at, updated_at, state_phase, launch_disposition,
+		       active_execution, condition_status, failure_stage, cleanup_disposition
+		FROM simops_workers WHERE run_id = $1 AND worker_id = $2 FOR UPDATE`, observation.RunID, observation.WorkerID))
+	if err != nil {
+		return err
+	}
+	applyObservedWorkerLifecycle(&worker, observation, time.Now)
+	worker.State = ensureSimopsWorkerState(worker)
+	state, evidence := applyWorkerRuntimeObservation(worker.State, observation)
+	worker.State = state
+	if evidence != nil {
+		applyDegradation(&worker.State, *evidence)
+		if _, err := tx.ExecContext(ctx, `INSERT INTO simops_worker_observations (run_id, worker_id, code, source, message, observed_at) VALUES ($1,$2,$3,$4,$5,$6)`, observation.RunID, observation.WorkerID, evidence.Code, nullableString(evidence.Source), nullableString(evidence.Message), evidence.ObservedAt); err != nil {
+			return err
+		}
+	}
+	result, err := tx.ExecContext(ctx, `UPDATE simops_workers SET observed_lifecycle=$3, observed_reason=$4, observed_message=$5, runtime=$6, runtime_id=$7, observed_exit_code=$8, observed_at=$9, updated_at=$10, state_phase=$11, launch_disposition=$12, active_execution=$13, condition_status=$14, failure_stage=$15, cleanup_disposition=$16 WHERE run_id=$1 AND worker_id=$2`, observation.RunID, observation.WorkerID, nullableString(string(worker.ObservedLifecycle)), nullableString(worker.ObservedReason), nullableString(worker.ObservedMessage), nullableString(worker.Runtime), nullableString(worker.RuntimeID), nullableInt(worker.ObservedExitCode), nullableTime(worker.ObservedAt), worker.UpdatedAt, string(worker.State.Phase), string(worker.State.LaunchDisposition), string(worker.State.ActiveExecution), string(worker.State.Condition.Status), string(worker.State.FailureStage), string(worker.State.Cleanup))
+	if err != nil {
+		return err
+	}
+	if err := requireAffected(result, ErrSimopsRunNotFound); err != nil {
+		return err
+	}
+	// Aggregate from the same transaction's worker facts. This is deliberately
+	// a persisted transition, not a read-path reconciliation (#215 owns due
+	// deadline evaluation separately).
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE simops_runs r SET
+		  condition_status = CASE WHEN EXISTS (SELECT 1 FROM simops_workers w WHERE w.run_id=r.run_id AND (w.condition_status='failed' OR w.cleanup_disposition='failed')) THEN 'failed'
+		                          WHEN EXISTS (SELECT 1 FROM simops_workers w WHERE w.run_id=r.run_id AND (w.condition_status='degraded' OR w.launch_disposition='attempted-absent' OR w.cleanup_disposition='incomplete')) THEN 'degraded'
+		                          ELSE 'nominal' END,
+		  state_phase = CASE WHEN EXISTS (SELECT 1 FROM simops_workers w WHERE w.run_id=r.run_id AND (w.condition_status='failed' OR w.cleanup_disposition='failed')) THEN 'failed'
+		                     WHEN EXISTS (SELECT 1 FROM simops_workers w WHERE w.run_id=r.run_id AND w.state_phase='executing') THEN 'running'
+		                     WHEN NOT EXISTS (SELECT 1 FROM simops_workers w WHERE w.run_id=r.run_id AND w.state_phase NOT IN ('completed','failed','stopped')) THEN 'completed'
+		                     ELSE 'launching' END,
+		  updated_at = $2
+		WHERE r.run_id = $1`, observation.RunID, worker.UpdatedAt); err != nil {
+		return err
+	}
+	return tx.Commit()
+}
+
+func (s *PostgresSimopsStore) ListWorkerDegradationEvidence(runID string, workerID string) ([]SimopsDegradationEvidence, error) {
+	ctx, cancel := simopsSQLContext()
+	defer cancel()
+	rows, err := s.db.QueryContext(ctx, `SELECT code, source, message, observed_at FROM simops_worker_observations WHERE run_id=$1 AND worker_id=$2 ORDER BY observed_at, observation_id`, runID, workerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	evidence := []SimopsDegradationEvidence{}
+	for rows.Next() {
+		var item SimopsDegradationEvidence
+		var source, message sql.NullString
+		if err := rows.Scan(&item.Code, &source, &message, &item.ObservedAt); err != nil {
+			return nil, err
+		}
+		item.Source, item.Message = source.String, message.String
+		evidence = append(evidence, item)
+	}
+	return evidence, rows.Err()
 }
 
 func (s *PostgresSimopsStore) SaveArtifact(record SimopsArtifactRecord) error {
@@ -934,10 +998,66 @@ type simopsPublicationIntentScanner interface {
 	Scan(dest ...any) error
 }
 
+type simopsWorkerScanner interface {
+	Scan(dest ...any) error
+}
+
+func scanSimopsWorker(row simopsWorkerScanner) (SimopsWorkerRecord, error) {
+	var worker SimopsWorkerRecord
+	var kind, lifecycle string
+	var endpoint, observedLifecycle, observedReason, observedMessage, runtime, runtimeID sql.NullString
+	var observedExitCode sql.NullInt64
+	var observedAt sql.NullTime
+	var labelsRaw []byte
+	var statePhase, launchDisposition, activeExecution, conditionStatus, failureStage, cleanupDisposition sql.NullString
+	if err := row.Scan(&worker.RunID, &worker.WorkerID, &kind, &lifecycle, &worker.LaunchMode, &endpoint, &worker.Frames, &labelsRaw, &observedLifecycle, &observedReason, &observedMessage, &runtime, &runtimeID, &observedExitCode, &observedAt, &worker.UpdatedAt, &statePhase, &launchDisposition, &activeExecution, &conditionStatus, &failureStage, &cleanupDisposition); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return SimopsWorkerRecord{}, ErrSimopsRunNotFound
+		}
+		return SimopsWorkerRecord{}, err
+	}
+	worker.WorkerKind, worker.Lifecycle, worker.Endpoint = SimopsWorkerKind(kind), SimopsLifecycle(lifecycle), endpoint.String
+	if len(labelsRaw) > 0 {
+		if err := json.Unmarshal(labelsRaw, &worker.Labels); err != nil {
+			return SimopsWorkerRecord{}, err
+		}
+	}
+	if observedLifecycle.Valid {
+		worker.ObservedLifecycle = ObservedWorkerState(observedLifecycle.String)
+	}
+	if observedReason.Valid {
+		worker.ObservedReason = observedReason.String
+	}
+	if observedMessage.Valid {
+		worker.ObservedMessage = observedMessage.String
+	}
+	if runtime.Valid {
+		worker.Runtime = runtime.String
+	}
+	if runtimeID.Valid {
+		worker.RuntimeID = runtimeID.String
+	}
+	if observedExitCode.Valid {
+		code := int(observedExitCode.Int64)
+		worker.ObservedExitCode = &code
+	}
+	if observedAt.Valid {
+		value := observedAt.Time
+		worker.ObservedAt = &value
+	}
+	if statePhase.Valid {
+		worker.State = SimopsWorkerState{Phase: SimopsWorkerPhase(statePhase.String), LaunchDisposition: SimopsLaunchDisposition(launchDisposition.String), ActiveExecution: SimopsActiveExecution(activeExecution.String), Condition: SimopsOperationalCondition{Status: SimopsConditionStatus(conditionStatus.String)}, FailureStage: SimopsFailureStage(failureStage.String), Cleanup: SimopsCleanupDisposition(cleanupDisposition.String)}
+	}
+	worker.State = ensureSimopsWorkerState(worker)
+	return worker, nil
+}
+
 func scanSimopsRun(row simopsRunScanner) (SimopsRunRecord, error) {
 	var record SimopsRunRecord
 	var lifecycle string
 	var idempotency sql.NullString
+	var statePhase, conditionStatus, cleanupDisposition sql.NullString
+	var launchObservationDeadline sql.NullTime
 	if err := row.Scan(
 		&record.RunID,
 		&record.ScenarioID,
@@ -951,6 +1071,10 @@ func scanSimopsRun(row simopsRunScanner) (SimopsRunRecord, error) {
 		&record.IngestToken,
 		&record.CreatedAt,
 		&record.UpdatedAt,
+		&statePhase,
+		&conditionStatus,
+		&cleanupDisposition,
+		&launchObservationDeadline,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return SimopsRunRecord{}, ErrSimopsRunNotFound
@@ -961,6 +1085,13 @@ func scanSimopsRun(row simopsRunScanner) (SimopsRunRecord, error) {
 	if idempotency.Valid {
 		record.IdempotencyKey = idempotency.String
 	}
+	if statePhase.Valid {
+		record.State = SimopsRunState{Phase: SimopsRunPhase(statePhase.String), Condition: SimopsOperationalCondition{Status: SimopsConditionStatus(conditionStatus.String)}, Cleanup: SimopsCleanupDisposition(cleanupDisposition.String)}
+		if launchObservationDeadline.Valid {
+			record.State.LaunchObservationDeadline = launchObservationDeadline.Time
+		}
+	}
+	record.State = ensureSimopsRunState(record)
 	return record, nil
 }
 

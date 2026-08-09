@@ -160,6 +160,7 @@ func (c *SimopsController) CreateRun(ctx context.Context, req SimopsRunRequest, 
 		IngestToken:     randomToken(),
 		CreatedAt:       now,
 		UpdatedAt:       now,
+		State:           initialSimopsRunState(now.Add(c.cfg.LaunchObservationTimeout)),
 	}
 
 	outcome, err := c.lifecycle.Start(ctx, record, workers)
@@ -396,6 +397,16 @@ func (c *SimopsController) responseFor(record SimopsRunRecord, created bool) (Si
 	if err != nil {
 		return SimopsRunResponse{}, http.StatusInternalServerError, err
 	}
+	if evidenceStore, ok := c.store.(simopsWorkerEvidenceReader); ok {
+		for index := range workers {
+			evidence, err := evidenceStore.ListWorkerDegradationEvidence(record.RunID, workers[index].WorkerID)
+			if err != nil {
+				return SimopsRunResponse{}, http.StatusInternalServerError, err
+			}
+			workers[index].State = ensureSimopsWorkerState(workers[index])
+			workers[index].State.Condition.Degradations = evidence
+		}
+	}
 	views := make([]DeliveryAttemptView, 0, len(attempts))
 	for _, attempt := range attempts {
 		view := DeliveryAttemptView{AttemptID: attempt.AttemptID, State: attempt.State, Coordinates: cloneDeliveryCoordinates(attempt.Coordinates)}
@@ -412,6 +423,7 @@ func (c *SimopsController) responseFor(record SimopsRunRecord, created bool) (Si
 		RunID:            record.RunID,
 		ScenarioID:       record.ScenarioID,
 		Lifecycle:        record.Lifecycle,
+		State:            record.State,
 		Source:           record.Source,
 		LaunchMode:       record.LaunchMode,
 		RuntimeLimitSec:  record.RuntimeLimitSec,

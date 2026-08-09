@@ -58,6 +58,13 @@ type SimopsPublicationIntent struct {
 	PublishedAt *time.Time
 }
 
+// simopsWorkerEvidenceReader is deliberately optional during the additive
+// rollout: old store implementations still project a valid state, while the
+// authoritative stores enrich it with append-only evidence.
+type simopsWorkerEvidenceReader interface {
+	ListWorkerDegradationEvidence(runID string, workerID string) ([]SimopsDegradationEvidence, error)
+}
+
 type InMemorySimopsStore struct {
 	mu               sync.RWMutex
 	runs             map[string]SimopsRunRecord
@@ -67,6 +74,7 @@ type InMemorySimopsStore struct {
 	artifactsByRun   map[string][]SimopsArtifactRecord
 	eventsByRun      map[string][]SimopsEvent
 	intentsByRun     map[string]map[string]SimopsPublicationIntent
+	evidenceByWorker map[string]map[string][]SimopsDegradationEvidence
 	deliveryAttempts map[string]DeliveryAttempt
 }
 
@@ -79,6 +87,7 @@ func NewInMemorySimopsStore() *InMemorySimopsStore {
 		artifactsByRun:   make(map[string][]SimopsArtifactRecord),
 		eventsByRun:      make(map[string][]SimopsEvent),
 		intentsByRun:     make(map[string]map[string]SimopsPublicationIntent),
+		evidenceByWorker: make(map[string]map[string][]SimopsDegradationEvidence),
 		deliveryAttempts: make(map[string]DeliveryAttempt),
 	}
 }
@@ -188,6 +197,7 @@ func (s *InMemorySimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 	if _, ok := s.runs[record.RunID]; ok {
 		return SimopsRunRecord{}, false, ErrSimopsConflict
 	}
+	record.State = ensureSimopsRunState(record)
 
 	s.runs[record.RunID] = record
 	if record.IdempotencyKey != "" {
@@ -196,6 +206,7 @@ func (s *InMemorySimopsStore) CreateRun(record SimopsRunRecord, workers []Simops
 
 	workerMap := make(map[string]SimopsWorkerRecord, len(workers))
 	for _, worker := range workers {
+		worker.State = ensureSimopsWorkerState(worker)
 		if existing, ok := workerMap[worker.WorkerID]; ok && existing.Frames > worker.Frames {
 			worker.Frames = existing.Frames
 			worker.Lifecycle = existing.Lifecycle
@@ -221,6 +232,7 @@ func (s *InMemorySimopsStore) SaveLaunch(runID string, workers []SimopsWorkerRec
 		workerMap = make(map[string]SimopsWorkerRecord, len(workers))
 	}
 	for _, worker := range workers {
+		materializeWorkerLaunchState(&worker)
 		workerMap[worker.WorkerID] = worker
 	}
 	s.workersByRun[runID] = workerMap
@@ -305,6 +317,7 @@ func (s *InMemorySimopsStore) UpdateRunLifecycle(runID string, lifecycle SimopsL
 		return SimopsRunRecord{}, ErrSimopsRunNotFound
 	}
 	record.Lifecycle = lifecycle
+	record.State = ensureSimopsRunState(SimopsRunRecord{Lifecycle: lifecycle, State: SimopsRunState{LaunchObservationDeadline: record.State.LaunchObservationDeadline}})
 	record.UpdatedAt = time.Now().UTC()
 	s.runs[runID] = record
 	return record, nil
@@ -319,6 +332,7 @@ func (s *InMemorySimopsStore) UpdateRunLifecycleWithPublicationIntent(runID stri
 	}
 	now := time.Now().UTC()
 	record.Lifecycle = lifecycle
+	record.State = ensureSimopsRunState(SimopsRunRecord{Lifecycle: lifecycle, State: SimopsRunState{LaunchObservationDeadline: record.State.LaunchObservationDeadline}})
 	record.UpdatedAt = now
 	s.runs[runID] = record
 	if event.RunID == "" {
@@ -368,8 +382,35 @@ func (s *InMemorySimopsStore) UpdateWorkerObservedLifecycle(observation Observed
 		return ErrSimopsRunNotFound
 	}
 	applyObservedWorkerLifecycle(&worker, observation, time.Now)
+	worker.State = ensureSimopsWorkerState(worker)
+	state, evidence := applyWorkerRuntimeObservation(worker.State, observation)
+	worker.State = state
+	if evidence != nil {
+		applyDegradation(&worker.State, *evidence)
+		if s.evidenceByWorker[observation.RunID] == nil {
+			s.evidenceByWorker[observation.RunID] = make(map[string][]SimopsDegradationEvidence)
+		}
+		s.evidenceByWorker[observation.RunID][observation.WorkerID] = append(s.evidenceByWorker[observation.RunID][observation.WorkerID], *evidence)
+	}
 	workerMap[observation.WorkerID] = worker
+	run := s.runs[observation.RunID]
+	workers := make([]SimopsWorkerRecord, 0, len(workerMap))
+	for _, candidate := range workerMap {
+		workers = append(workers, candidate)
+	}
+	run.State = deriveSimopsRunState(ensureSimopsRunState(run), workers)
+	run.UpdatedAt = worker.UpdatedAt
+	s.runs[observation.RunID] = run
 	return nil
+}
+
+func (s *InMemorySimopsStore) ListWorkerDegradationEvidence(runID string, workerID string) ([]SimopsDegradationEvidence, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if _, ok := s.runs[runID]; !ok {
+		return nil, ErrSimopsRunNotFound
+	}
+	return append([]SimopsDegradationEvidence(nil), s.evidenceByWorker[runID][workerID]...), nil
 }
 
 func (s *InMemorySimopsStore) SaveArtifact(record SimopsArtifactRecord) error {

@@ -45,6 +45,68 @@ ALTER TABLE simops_workers
   ADD COLUMN IF NOT EXISTS observed_exit_code INTEGER,
   ADD COLUMN IF NOT EXISTS observed_at TIMESTAMPTZ;
 
+-- #213 authoritative state hierarchy. The former lifecycle columns remain
+-- compatibility projections; these normalized columns are the current facts.
+ALTER TABLE simops_runs
+  ADD COLUMN IF NOT EXISTS state_phase TEXT,
+  ADD COLUMN IF NOT EXISTS condition_status TEXT,
+  ADD COLUMN IF NOT EXISTS cleanup_disposition TEXT,
+  ADD COLUMN IF NOT EXISTS launch_observation_deadline TIMESTAMPTZ;
+
+ALTER TABLE simops_workers
+  ADD COLUMN IF NOT EXISTS state_phase TEXT,
+  ADD COLUMN IF NOT EXISTS launch_disposition TEXT,
+  ADD COLUMN IF NOT EXISTS active_execution TEXT,
+  ADD COLUMN IF NOT EXISTS condition_status TEXT,
+  ADD COLUMN IF NOT EXISTS failure_stage TEXT,
+  ADD COLUMN IF NOT EXISTS cleanup_disposition TEXT;
+
+-- Only proven legacy lifecycle facts are backfilled. Unknown observation
+-- history remains unobserved instead of being manufactured during migration.
+UPDATE simops_runs
+SET state_phase = CASE lifecycle
+  WHEN 'starting' THEN 'launching' WHEN 'streaming' THEN 'running'
+  WHEN 'complete' THEN 'completed' WHEN 'failed' THEN 'failed'
+  WHEN 'stopped' THEN 'stopped' ELSE 'admitted' END,
+    condition_status = CASE WHEN lifecycle = 'failed' THEN 'failed' ELSE 'nominal' END,
+    cleanup_disposition = 'not_requested'
+WHERE state_phase IS NULL;
+
+UPDATE simops_workers
+SET state_phase = CASE lifecycle
+  WHEN 'starting' THEN 'launching' WHEN 'streaming' THEN 'executing'
+  WHEN 'complete' THEN 'completed' WHEN 'failed' THEN 'failed'
+  WHEN 'stopped' THEN 'stopped' ELSE 'planned' END,
+    launch_disposition = CASE WHEN lifecycle IN ('streaming','complete','failed','stopped') THEN 'launched' ELSE 'unattempted' END,
+    active_execution = CASE WHEN lifecycle IN ('complete','failed','stopped') THEN 'terminal_observed' WHEN lifecycle = 'streaming' THEN 'active_observed' ELSE 'unobserved' END,
+    condition_status = CASE WHEN lifecycle = 'failed' THEN 'failed' ELSE 'nominal' END,
+    failure_stage = CASE WHEN lifecycle = 'failed' THEN 'launch' ELSE 'none' END,
+    cleanup_disposition = 'not_requested'
+WHERE state_phase IS NULL;
+
+CREATE TABLE IF NOT EXISTS simops_worker_observations (
+  observation_id BIGSERIAL PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
+  worker_id TEXT NOT NULL,
+  code TEXT NOT NULL,
+  source TEXT,
+  message TEXT,
+  observed_at TIMESTAMPTZ NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_simops_worker_observations_worker_time
+  ON simops_worker_observations (run_id, worker_id, observed_at, observation_id);
+
+CREATE TABLE IF NOT EXISTS simops_cleanup_attempts (
+  cleanup_attempt_id BIGSERIAL PRIMARY KEY,
+  run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,
+  worker_id TEXT,
+  disposition TEXT NOT NULL,
+  source TEXT,
+  message TEXT,
+  observed_at TIMESTAMPTZ NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS simops_spool_commands (
   command_id TEXT PRIMARY KEY,
   run_id TEXT NOT NULL REFERENCES simops_runs(run_id) ON DELETE CASCADE,

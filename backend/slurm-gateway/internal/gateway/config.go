@@ -57,6 +57,7 @@ type SimopsConfig struct {
 	WorkerKubeconfig               string
 	WorkerCleanupTTL               time.Duration
 	LifecycleRecoveryTimeout       time.Duration
+	LaunchObservationTimeout       time.Duration
 	WorkerAutoRemove               bool
 	MoQWebTransportURL             string
 	StreamTokenTTL                 time.Duration
@@ -134,6 +135,7 @@ func DefaultConfig() Config {
 			WorkerKubernetesServiceAccount: "simops-worker",
 			WorkerCleanupTTL:               10 * time.Minute,
 			LifecycleRecoveryTimeout:       10 * time.Second,
+			LaunchObservationTimeout:       time.Minute,
 			WorkerAutoRemove:               false,
 			MoQWebTransportURL:             "https://127.0.0.1:9443/moq/simops",
 			StreamTokenTTL:                 15 * time.Minute,
@@ -198,6 +200,13 @@ func LoadConfigFromEnv() (Config, error) {
 	cfg.Simops.IcebergConsumerGroup = getenv("SIMOPS_ICEBERG_CONSUMER_GROUP", cfg.Simops.IcebergConsumerGroup)
 	cfg.Simops.MoQConsumerGroup = getenv("SIMOPS_MOQ_CONSUMER_GROUP", cfg.Simops.MoQConsumerGroup)
 	cfg.Simops.LaunchMode = getenv("SIMOPS_LAUNCH_MODE", cfg.Simops.LaunchMode)
+	if value := strings.TrimSpace(os.Getenv("SIMOPS_LAUNCH_OBSERVATION_TIMEOUT")); value != "" {
+		parsed, err := time.ParseDuration(value)
+		if err != nil {
+			return cfg, fmt.Errorf("SIMOPS_LAUNCH_OBSERVATION_TIMEOUT must be a duration: %w", err)
+		}
+		cfg.Simops.LaunchObservationTimeout = parsed
+	}
 	cfg.Simops.WorkerRuntime = getenv("SIMOPS_WORKER_RUNTIME", cfg.Simops.WorkerRuntime)
 	cfg.Simops.WorkerImage = getenv("SIMOPS_WORKER_IMAGE", cfg.Simops.WorkerImage)
 	cfg.Simops.WorkerManifestRoot = getenv("SIMOPS_WORKER_MANIFEST_ROOT", cfg.Simops.WorkerManifestRoot)
@@ -515,6 +524,9 @@ func (c SimopsConfig) Validate() error {
 	}
 	if c.StreamTokenTTL <= 0 {
 		return fmt.Errorf("SIMOPS_STREAM_TOKEN_TTL must be positive")
+	}
+	if c.LaunchObservationTimeout <= 0 {
+		return fmt.Errorf("SIMOPS_LAUNCH_OBSERVATION_TIMEOUT must be positive")
 	}
 	if c.MaxActiveRuns < 1 {
 		return fmt.Errorf("SIMOPS_MAX_ACTIVE_RUNS must be at least 1")
